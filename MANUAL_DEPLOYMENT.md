@@ -2,7 +2,7 @@
 
 > **Purpose**: Complete step-by-step manual deployment with timing checkpoints.  
 > **Target**:  Senior Middleware Application Server Engineer demonstration.  
-> **Estimated Total Time**: ~7 hours (420 minutes)
+> **Estimated Total Time**: ~5 hours (301 minutes)
 
 ---
 
@@ -40,7 +40,7 @@ This creates documented evidence of manual effort for ROI comparison.
 
 # Phase 1: Infrastructure Setup
 
-**Expected Time: 135 minutes**
+**Expected Time: 60 minutes**
 
 > **Choose ONE option below**: Option A for physical/VM servers, Option B for Podman demo on a single machine.
 
@@ -52,7 +52,7 @@ This creates documented evidence of manual effort for ROI comparison.
 
 ### Task 1.1: Prepare Server 1 (liberty-server-01)
 
-**Expected: 25 minutes** | **Actual: ______** | **Start Time: ______**
+**Expected: 10 minutes** | **Actual: ______** | **Start Time: ______**
 
 ```bash
 # Connect to server
@@ -86,19 +86,19 @@ EOF'
 
 ### Task 1.2: Prepare Server 2 (liberty-server-02)
 
-**Expected: 25 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: ______**
 
 Repeat Task 1.1 on second server (192.168.68.83), setting hostname to `liberty-server-02`.
 
 ### Task 1.3: Prepare Controller Server (liberty-controller-01)
 
-**Expected: 25 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: ______**
 
 Repeat Task 1.1 on controller server (192.168.68.86), setting hostname to `liberty-controller-01`.
 
 ### Task 1.4: Create Liberty User on All Servers
 
-**Expected: 45 minutes (15 per server)** | **Actual: ______**
+**Expected: 15 minutes (7 per server)** | **Actual: ______**
 
 Run on **each server**:
 
@@ -110,7 +110,7 @@ sudo chown -R liberty:liberty /opt/ibm /var/log/liberty /var/liberty
 
 ### Task 1.5: Configure Firewall Rules
 
-**Expected: 15 minutes** | **Actual: ______**
+**Expected: 8 minutes** | **Actual: ______**
 
 ```bash
 sudo ufw enable
@@ -131,7 +131,7 @@ sudo ufw status
 
 ### Task 1.1-P: Install Podman and Create Network
 
-**Expected: 10 minutes** | **Actual: 3 minutes.**
+**Expected: 5 minutes** | **Actual: 3 minutes.**
 
 ```bash
 # Install Podman
@@ -148,7 +148,7 @@ podman network ls
 
 ### Task 1.2-P: Create and Configure Controller Container
 
-**Expected: 20 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: ______**
 
 ```bash
 # Create controller container
@@ -197,7 +197,7 @@ exit
 
 ### Task 1.3-P: Create and Configure Server 1 Container
 
-**Expected: 20 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: ______**
 
 ```bash
 # Create server 1 container
@@ -238,7 +238,7 @@ exit
 
 ### Task 1.4-P: Create and Configure Server 2 Container
 
-**Expected: 20 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: ______**
 
 ```bash
 # Create server 2 container
@@ -279,7 +279,7 @@ exit
 
 ### Task 1.5-P: Verify All Containers
 
-**Expected: 5 minutes** | **Actual: ______**
+**Expected: 2 minutes** | **Actual: ______**
 
 ```bash
 # List all running containers
@@ -342,7 +342,7 @@ podman exec liberty-server-01 /opt/ibm/wlp/bin/server status appServer
 
 # Phase 2: Open Liberty Installation
 
-**Expected Time: 140 minutes**
+**Expected Time: 60 minutes**
 
 > **Podman Users**: For each task below, enter the appropriate container first:
 > ```bash
@@ -368,7 +368,7 @@ Liberty uses a **feature-based model** - you only enable what you need.
 
 ### Task 2.1: Download Open Liberty
 
-**Expected: 15 minutes per server (45 total)** | **Actual: ______**
+**Expected: 7 minutes per server (22 total)** | **Actual: ______**
 
 **Run on: liberty-server-01, liberty-server-02, AND liberty-controller**
 
@@ -427,7 +427,7 @@ done
 
 ### Task 2.2: Create Server Instance
 
-**Expected: 20 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: ______**
 
 **Run on: liberty-server-01 and liberty-server-02** (NOT controller yet)
 
@@ -475,7 +475,7 @@ done
 
 ### Task 2.3: Configure server.xml
 
-**Expected: 30 minutes** | **Actual: ______**
+**Expected: 15 minutes** | **Actual: ______**
 
 **Run on: liberty-server-01** (then copy to liberty-server-02)
 
@@ -605,7 +605,7 @@ podman exec liberty-server-02 su - liberty -c 'mkdir -p /opt/ibm/wlp/usr/servers
 
 ### Task 2.4: Generate SSL Certificates
 
-**Expected: 20 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: ______**
 
 **Run on: liberty-server-01 and liberty-server-02**
 
@@ -673,7 +673,7 @@ done
 
 ### Task 2.5: Configure Liberty Collective
 
-**Expected: 25 minutes** | **Actual: ______**
+**Expected: 12 minutes** | **Actual: ______**
 
 A **Liberty Collective** provides centralized management (similar to WAS ND Cell but lighter).
 
@@ -794,7 +794,7 @@ exit
 
 ### Task 2.6: Verify Liberty Servers
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 5 minutes** | **Actual: ______**
 
 ```bash
 # ============================================================
@@ -835,14 +835,14 @@ podman exec liberty-server-01 curl -s http://localhost:9080/metrics | head -20
 
 # Phase 3: Application Deployment
 
-**Expected Time: 75 minutes**
+**Expected Time: 35 minutes**
 
 > **Podman Users**: Tasks 3.1-3.2 run on your **host machine** (not inside containers).
 > The built WAR file is then copied into each container in Task 3.3.
 
 ### Task 3.1: Download JDBC Driver (Optional)
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 5 minutes** | **Actual: ______**
 
 *Skip this task if not using a database. The sample app doesn't require it.*
 
@@ -858,7 +858,7 @@ wget https://jdbc.postgresql.org/download/postgresql-42.7.1.jar
 
 ### Task 3.2: Build Sample Application
 
-**Expected: 15 minutes** | **Actual: ______**
+**Expected: 7 minutes** | **Actual: ______**
 
 > **Run on host machine** - requires Maven (see Prerequisites)
 
@@ -929,7 +929,7 @@ mvn clean package
 
 ### Task 3.3: Deploy Application
 
-**Expected: 20 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: ______**
 
 #### Option A: Physical/VM Servers
 
@@ -969,7 +969,7 @@ podman exec liberty-server-02 curl -s http://localhost:9080/hello-liberty/api/he
 
 ### Task 3.4: Configure Connection Pool
 
-**Expected: 15 minutes** | **Actual: ______**
+**Expected: 7 minutes** | **Actual: ______**
 
 Update dataSource in server.xml with tuned pool settings.
 
@@ -977,7 +977,7 @@ Update dataSource in server.xml with tuned pool settings.
 
 ### Task 3.5: Verify on Both Servers
 
-**Expected: 15 minutes** | **Actual: ______**
+**Expected: 7 minutes** | **Actual: ______**
 
 #### Physical/VM Servers
 ```bash
@@ -1003,13 +1003,13 @@ curl -s http://localhost:9180/hello-liberty/api/hello   # Server 02
 
 # Phase 4: Load Balancer (NGINX)
 
-**Expected Time: 75 minutes**
+**Expected Time: 37 minutes**
 
 > **Podman Users**: Skip to Option B to run NGINX as a container on the liberty-net network.
 
 ### Task 4.1: Install NGINX
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 5 minutes** | **Actual: ______**
 
 #### Option A: Physical/VM Servers
 
@@ -1069,7 +1069,7 @@ podman ps | grep nginx
 
 ### Task 4.2: Configure Load Balancer
 
-**Expected: 25 minutes** | **Actual: ______**
+**Expected: 12 minutes** | **Actual: ______**
 
 #### Option A: Physical/VM Servers
 
@@ -1113,7 +1113,7 @@ sudo rm -f /etc/nginx/sites-enabled/default
 
 ### Task 4.3: SSL Certificates
 
-**Expected: 20 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: ______**
 
 #### Option A: Physical/VM Servers
 
@@ -1133,7 +1133,7 @@ sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 
 ### Task 4.4: Test Load Balancer
 
-**Expected: 20 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: ______**
 
 #### Option A: Physical/VM Servers
 
@@ -1173,12 +1173,179 @@ done
 
 # Phase 5: Security Configuration
 
-**Expected Time: 80 minutes**
+**Expected Time: 40 minutes**
 
-### Task 5.1: Liberty Security (30 min)
-### Task 5.2: SSL Hardening (20 min)
-### Task 5.3: Audit Logging (15 min)
-### Task 5.4: Systemd Service (15 min)
+> **Podman Users**: Tasks 5.1-5.3 apply to both setups. Task 5.4 (Systemd) is for physical servers only.
+
+### Task 5.1: Liberty Security
+
+**Expected: 15 minutes** | **Actual: ______**
+
+Configure basic authentication and secure the admin center.
+
+#### Option A: Physical/VM Servers
+
+```bash
+# Add to server.xml - basic registry with admin user
+cat >> /opt/ibm/wlp/usr/servers/appServer/server.xml << 'EOF'
+
+    <!-- Basic Security Registry -->
+    <basicRegistry id="basic" realm="BasicRealm">
+        <user name="admin" password="admin123"/>
+        <user name="operator" password="operator123"/>
+    </basicRegistry>
+
+    <administrator-role>
+        <user>admin</user>
+    </administrator-role>
+
+    <reader-role>
+        <user>operator</user>
+    </reader-role>
+EOF
+
+# Restart server
+sudo systemctl restart liberty-appServer
+```
+
+#### Option B: Podman Containers
+
+```bash
+# Update server.xml in both containers
+for container in liberty-server-01 liberty-server-02; do
+    podman exec $container su - liberty -c 'cat >> /opt/ibm/wlp/usr/servers/appServer/server.xml << '\''EOF'\''
+
+    <!-- Basic Security Registry -->
+    <basicRegistry id="basic" realm="BasicRealm">
+        <user name="admin" password="admin123"/>
+    </basicRegistry>
+
+    <administrator-role>
+        <user>admin</user>
+    </administrator-role>
+EOF'
+
+    # Restart server
+    podman exec $container su - liberty -c '/opt/ibm/wlp/bin/server stop appServer'
+    podman exec $container su - liberty -c '/opt/ibm/wlp/bin/server start appServer'
+done
+```
+
+---
+
+### Task 5.2: SSL Hardening
+
+**Expected: 10 minutes** | **Actual: ______**
+
+Generate proper SSL certificates and configure TLS.
+
+> **Note**: HTTPS endpoints (ports 9443/9444/9543) will not work until this task is completed. The simplified server.xml from Phase 2 only enables HTTP.
+
+#### Option A: Physical/VM Servers
+
+```bash
+su - liberty
+cd /opt/ibm/wlp/usr/servers/appServer
+
+# Generate keystore with proper certificate
+/opt/ibm/wlp/bin/securityUtility createSSLCertificate \
+    --server=appServer \
+    --password=LibertySecure123 \
+    --validity=365 \
+    --subject="CN=$(hostname),O=MyOrg,C=US"
+
+# Update server.xml with SSL config
+cat >> /opt/ibm/wlp/usr/servers/appServer/server.xml << 'EOF'
+
+    <!-- SSL Configuration -->
+    <ssl id="defaultSSLConfig"
+         keyStoreRef="defaultKeyStore"
+         sslProtocol="TLSv1.2,TLSv1.3" />
+
+    <keyStore id="defaultKeyStore"
+              location="${server.config.dir}/resources/security/key.p12"
+              password="LibertySecure123"
+              type="PKCS12" />
+EOF
+```
+
+#### Option B: Podman Containers
+
+```bash
+# Generate SSL certs in both containers
+for container in liberty-server-01 liberty-server-02; do
+    echo "=== Generating SSL for $container ==="
+    podman exec $container su - liberty -c '
+        cd /opt/ibm/wlp/usr/servers/appServer
+        /opt/ibm/wlp/bin/securityUtility createSSLCertificate \
+            --server=appServer \
+            --password=LibertySecure123 \
+            --validity=365
+    '
+done
+
+# Test HTTPS endpoints
+curl -k https://localhost:9444/health   # Server 01
+curl -k https://localhost:9543/health   # Server 02
+```
+
+---
+
+### Task 5.3: Audit Logging
+
+**Expected: 7 minutes** | **Actual: ______**
+
+Enable audit logging for security events.
+
+#### Option A: Physical/VM Servers
+
+```bash
+# Add audit configuration to server.xml
+cat >> /opt/ibm/wlp/usr/servers/appServer/server.xml << 'EOF'
+
+    <!-- Audit Logging -->
+    <auditFileHandler maxFiles="10" maxFileSize="50" />
+
+    <audit auditRef="auditFileHandler">
+        <event name="JMX_MBEAN" outcome="SUCCESS"/>
+        <event name="JMX_MBEAN" outcome="FAILURE"/>
+        <event name="SECURITY_AUTHN" outcome="SUCCESS"/>
+        <event name="SECURITY_AUTHN" outcome="FAILURE"/>
+        <event name="SECURITY_AUTHZ" outcome="FAILURE"/>
+    </audit>
+EOF
+
+# Restart and verify
+sudo systemctl restart liberty-appServer
+ls -la /opt/ibm/wlp/usr/servers/appServer/logs/audit*
+```
+
+#### Option B: Podman Containers
+
+```bash
+# Enable audit feature in both containers
+for container in liberty-server-01 liberty-server-02; do
+    podman exec $container su - liberty -c '
+        # Add audit feature to featureManager
+        sed -i "s|</featureManager>|    <feature>audit-1.0</feature>\n    </featureManager>|" \
+            /opt/ibm/wlp/usr/servers/appServer/server.xml
+
+        /opt/ibm/wlp/bin/server stop appServer
+        /opt/ibm/wlp/bin/server start appServer
+    '
+done
+
+# Check audit logs
+podman exec liberty-server-01 ls -la /opt/ibm/wlp/usr/servers/appServer/logs/
+```
+
+---
+
+### Task 5.4: Systemd Service
+
+**Expected: 7 minutes** | **Actual: ______**
+
+#### Option A: Physical/VM Servers
 
 ```bash
 sudo cat > /etc/systemd/system/liberty-appServer.service << 'EOF'
@@ -1189,9 +1356,14 @@ After=network.target
 [Service]
 Type=forking
 User=liberty
+Group=liberty
+Environment="JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64"
 ExecStart=/opt/ibm/wlp/bin/server start appServer
 ExecStop=/opt/ibm/wlp/bin/server stop appServer
+ExecReload=/opt/ibm/wlp/bin/server stop appServer && /opt/ibm/wlp/bin/server start appServer
 Restart=on-failure
+RestartSec=10
+LimitNOFILE=65535
 
 [Install]
 WantedBy=multi-user.target
@@ -1199,6 +1371,28 @@ EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable liberty-appServer
+sudo systemctl start liberty-appServer
+sudo systemctl status liberty-appServer
+```
+
+#### Option B: Podman Containers
+
+*Systemd is not used for containers. Instead, use Podman's restart policy or generate systemd units for containers:*
+
+```bash
+# Option 1: Restart policy (already running containers)
+podman update --restart=always liberty-server-01
+podman update --restart=always liberty-server-02
+podman update --restart=always liberty-nginx
+
+# Option 2: Generate systemd unit files for containers
+mkdir -p ~/.config/systemd/user
+podman generate systemd --name liberty-server-01 > ~/.config/systemd/user/liberty-server-01.service
+podman generate systemd --name liberty-server-02 > ~/.config/systemd/user/liberty-server-02.service
+podman generate systemd --name liberty-nginx > ~/.config/systemd/user/liberty-nginx.service
+
+systemctl --user daemon-reload
+systemctl --user enable liberty-server-01 liberty-server-02 liberty-nginx
 ```
 
 **Checkpoint Phase 5:** _______ minutes
@@ -1207,28 +1401,363 @@ sudo systemctl enable liberty-appServer
 
 # Phase 6: Monitoring Setup
 
-**Expected Time: 100 minutes**
+**Expected Time: 50 minutes**
 
-### Task 6.1: Install Prometheus (25 min)
+> **Podman Users**: Skip to Option B to run Prometheus and Grafana as containers on the liberty-net network.
+
+### Task 6.1: Install Prometheus
+
+**Expected: 12 minutes** | **Actual: ______**
+
+#### Option A: Physical/VM Servers
 
 ```bash
 PROM_VERSION="2.48.0"
 wget https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz
 tar xzf prometheus-*.tar.gz
 sudo cp prometheus-*/prometheus /usr/local/bin/
+sudo cp prometheus-*/promtool /usr/local/bin/
+
+# Create prometheus user and directories
+sudo useradd --no-create-home --shell /bin/false prometheus
+sudo mkdir -p /etc/prometheus /var/lib/prometheus
+sudo chown prometheus:prometheus /etc/prometheus /var/lib/prometheus
+
+# Create config
+sudo cat > /etc/prometheus/prometheus.yml << 'EOF'
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'liberty'
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - '192.168.68.88:9080'
+          - '192.168.68.83:9080'
+EOF
+
+# Create systemd service
+sudo cat > /etc/systemd/system/prometheus.service << 'EOF'
+[Unit]
+Description=Prometheus
+After=network.target
+
+[Service]
+User=prometheus
+ExecStart=/usr/local/bin/prometheus \
+    --config.file=/etc/prometheus/prometheus.yml \
+    --storage.tsdb.path=/var/lib/prometheus/
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now prometheus
 ```
 
-### Task 6.2: Install Grafana (25 min)
+#### Option B: Podman Container
 
 ```bash
-sudo apt install -y grafana
+# Create Prometheus config directory
+mkdir -p ~/liberty-monitoring/prometheus
+
+# Create Prometheus configuration
+cat > ~/liberty-monitoring/prometheus/prometheus.yml << 'EOF'
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'liberty'
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 'liberty-server-01:9080'
+          - 'liberty-server-02:9080'
+        labels:
+          environment: 'podman-demo'
+EOF
+
+# Run Prometheus container
+podman run -d --name prometheus \
+    --network liberty-net \
+    -p 9090:9090 \
+    -v ~/liberty-monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+    docker.io/prom/prometheus:latest
+
+# Verify Prometheus is running
+podman ps | grep prometheus
+echo "Prometheus UI: http://localhost:9090"
+```
+
+---
+
+### Task 6.2: Install Grafana
+
+**Expected: 12 minutes** | **Actual: ______**
+
+#### Option A: Physical/VM Servers
+
+```bash
+# Install Grafana
+sudo apt-get install -y apt-transport-https software-properties-common
+wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
+echo "deb https://packages.grafana.com/oss/deb stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+sudo apt-get update
+sudo apt-get install -y grafana
+
 sudo systemctl enable --now grafana-server
 # Access: http://localhost:3000 (admin/admin)
 ```
 
-### Task 6.3: Create Alert Rules (20 min)
-### Task 6.4: Node Exporter (15 min)
-### Task 6.5: Import Dashboards (15 min)
+#### Option B: Podman Container
+
+```bash
+# Run Grafana container
+podman run -d --name grafana \
+    --network liberty-net \
+    -p 3000:3000 \
+    -e "GF_SECURITY_ADMIN_PASSWORD=admin123" \
+    docker.io/grafana/grafana:latest
+
+# Verify Grafana is running
+podman ps | grep grafana
+echo "Grafana UI: http://localhost:3000 (admin/admin123)"
+```
+
+---
+
+### Task 6.3: Create Alert Rules
+
+**Expected: 10 minutes** | **Actual: ______**
+
+#### Option A: Physical/VM Servers
+
+```bash
+sudo mkdir -p /etc/prometheus/rules
+
+sudo cat > /etc/prometheus/rules/liberty-alerts.yml << 'EOF'
+groups:
+  - name: liberty-alerts
+    rules:
+      - alert: LibertyServerDown
+        expr: up{job="liberty"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Liberty server {{ $labels.instance }} is down"
+
+      - alert: LibertyHighCPU
+        expr: base_cpu_processCpuLoad{job="liberty"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.instance }}"
+
+      - alert: LibertyHighHeapUsage
+        expr: base_memory_usedHeap_bytes{job="liberty"} / base_memory_maxHeap_bytes{job="liberty"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High heap usage on {{ $labels.instance }}"
+EOF
+
+# Update prometheus.yml to include rules
+sudo sed -i '/^scrape_configs:/i rule_files:\n  - "/etc/prometheus/rules/*.yml"\n' /etc/prometheus/prometheus.yml
+
+sudo systemctl restart prometheus
+```
+
+#### Option B: Podman Container
+
+```bash
+# Create alert rules
+mkdir -p ~/liberty-monitoring/prometheus/rules
+
+cat > ~/liberty-monitoring/prometheus/rules/liberty-alerts.yml << 'EOF'
+groups:
+  - name: liberty-alerts
+    rules:
+      - alert: LibertyServerDown
+        expr: up{job="liberty"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Liberty server {{ $labels.instance }} is down"
+
+      - alert: LibertyHighHeapUsage
+        expr: base_memory_usedHeap_bytes{job="liberty"} / base_memory_maxHeap_bytes{job="liberty"} > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High heap usage on {{ $labels.instance }}"
+EOF
+
+# Update Prometheus config to include rules
+cat > ~/liberty-monitoring/prometheus/prometheus.yml << 'EOF'
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'liberty'
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 'liberty-server-01:9080'
+          - 'liberty-server-02:9080'
+EOF
+
+# Restart Prometheus with rules volume
+podman stop prometheus && podman rm prometheus
+
+podman run -d --name prometheus \
+    --network liberty-net \
+    -p 9090:9090 \
+    -v ~/liberty-monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+    -v ~/liberty-monitoring/prometheus/rules:/etc/prometheus/rules:ro \
+    docker.io/prom/prometheus:latest
+```
+
+---
+
+### Task 6.4: Node Exporter
+
+**Expected: 7 minutes** | **Actual: ______**
+
+Export host system metrics (CPU, memory, disk).
+
+#### Option A: Physical/VM Servers
+
+```bash
+NODE_EXPORTER_VERSION="1.7.0"
+wget https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
+tar xzf node_exporter-*.tar.gz
+sudo cp node_exporter-*/node_exporter /usr/local/bin/
+
+sudo cat > /etc/systemd/system/node_exporter.service << 'EOF'
+[Unit]
+Description=Node Exporter
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/node_exporter
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now node_exporter
+
+# Add to Prometheus config
+# targets: ['localhost:9100']
+```
+
+#### Option B: Podman Container
+
+```bash
+# Run Node Exporter container (exports HOST metrics)
+podman run -d --name node-exporter \
+    --network liberty-net \
+    -p 9100:9100 \
+    --pid=host \
+    -v /:/host:ro,rslave \
+    docker.io/prom/node-exporter:latest \
+    --path.rootfs=/host
+
+# Add node-exporter to Prometheus config
+cat >> ~/liberty-monitoring/prometheus/prometheus.yml << 'EOF'
+
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+EOF
+
+# Restart Prometheus
+podman restart prometheus
+
+# Verify metrics
+curl -s http://localhost:9100/metrics | head -20
+```
+
+---
+
+### Task 6.5: Import Dashboards
+
+**Expected: 7 minutes** | **Actual: ______**
+
+Configure Grafana with Prometheus datasource and import dashboards.
+
+#### Both Options (via Grafana UI)
+
+1. **Add Prometheus Data Source:**
+   - Open Grafana: http://localhost:3000
+   - Login (admin/admin or admin/admin123)
+   - Go to: Configuration → Data Sources → Add data source
+   - Select: Prometheus
+   - URL:
+     - Physical: `http://localhost:9090`
+     - Podman: `http://prometheus:9090`
+   - Click: Save & Test
+
+2. **Import Liberty Dashboard:**
+   - Go to: Dashboards → Import
+   - Dashboard ID: `14370` (Open Liberty MicroProfile Metrics)
+   - Or ID: `1860` (Node Exporter Full)
+   - Select Prometheus data source
+   - Click: Import
+
+3. **Verify Dashboards:**
+   - Go to: Dashboards → Browse
+   - Open the imported dashboard
+   - Verify metrics are showing
+
+#### Podman: Configure via API (Optional)
+
+```bash
+# Wait for Grafana to be ready
+sleep 10
+
+# Add Prometheus datasource via API
+curl -X POST http://admin:admin123@localhost:3000/api/datasources \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Prometheus",
+    "type": "prometheus",
+    "url": "http://prometheus:9090",
+    "access": "proxy",
+    "isDefault": true
+  }'
+
+echo ""
+echo "Grafana configured! Open http://localhost:3000"
+echo "Import dashboard ID 14370 for Liberty metrics"
+```
 
 **Checkpoint Phase 6:** _______ minutes
 
@@ -1240,13 +1769,13 @@ sudo systemctl enable --now grafana-server
 
 | Phase | Expected | Actual | Variance |
 |-------|----------|--------|----------|
-| 1. Infrastructure | 135 min | _______ | _______ |
-| 2. Liberty Install | 140 min | _______ | _______ |
-| 3. Application | 75 min | _______ | _______ |
-| 4. Load Balancer | 75 min | _______ | _______ |
-| 5. Security | 80 min | _______ | _______ |
-| 6. Monitoring | 100 min | _______ | _______ |
-| **TOTAL** | **605 min** | _______ | _______ |
+| 1. Infrastructure | 67 min | _______ | _______ |
+| 2. Liberty Install | 70 min | _______ | _______ |
+| 3. Application | 37 min | _______ | _______ |
+| 4. Load Balancer | 37 min | _______ | _______ |
+| 5. Security | 40 min | _______ | _______ |
+| 6. Monitoring | 50 min | _______ | _______ |
+| **TOTAL** | **301 min** | _______ | _______ |
 
 ## Access URLs
 
@@ -1267,10 +1796,13 @@ sudo systemctl enable --now grafana-server
 |---------|-----|-------------|
 | Liberty Server 1 | http://localhost:9080 | - |
 | Liberty Server 2 | http://localhost:9180 | - |
-| Admin Center | https://localhost:9443/adminCenter | admin/adminpassword |
+| NGINX Load Balancer | http://localhost:8080 | - |
 | Health Check S1 | http://localhost:9080/health | - |
 | Health Check S2 | http://localhost:9180/health | - |
 | Metrics S1 | http://localhost:9080/metrics | - |
+| Prometheus | http://localhost:9090 | - |
+| Grafana | http://localhost:3000 | admin/admin123 |
+| Node Exporter | http://localhost:9100/metrics | - |
 
 ## Podman Cleanup
 
@@ -1278,17 +1810,20 @@ When done with the demo:
 
 ```bash
 # Stop all containers
-podman stop liberty-controller liberty-server-01 liberty-server-02
+podman stop liberty-server-01 liberty-server-02 liberty-nginx prometheus grafana node-exporter
 
 # Remove containers
-podman rm liberty-controller liberty-server-01 liberty-server-02
+podman rm liberty-server-01 liberty-server-02 liberty-nginx prometheus grafana node-exporter
 
 # Remove network
 podman network rm liberty-net
 
 # Or remove everything at once
-podman rm -f liberty-controller liberty-server-01 liberty-server-02
+podman rm -f liberty-server-01 liberty-server-02 liberty-nginx prometheus grafana node-exporter
 podman network rm liberty-net
+
+# Clean up config directories (optional)
+rm -rf ~/liberty-nginx ~/liberty-monitoring
 ```
 
 ---
