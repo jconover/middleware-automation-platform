@@ -1,0 +1,91 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Ansible
+*.retry
+ansible.log
+.vault_pass
+vault_password
+inventory/*.local.yml
+
+# Java/Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+dependency-reduced-pom.xml
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Open Liberty
+/opt/ibm/
+wlp/
+*.p12
+*.jks
+
+# Containers
+*.tar
+*.gz
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Secrets and credentials
+*.pem
+*.key
+*.crt
+*.env.local
+.env
+secrets/
+credentials/
+**/secrets.yml
+**/vault.yml
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# AWS
+.aws/
