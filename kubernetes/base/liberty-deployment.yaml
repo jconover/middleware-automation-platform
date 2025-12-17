@@ -1,0 +1,145 @@
+---
+# Open Liberty Kubernetes Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: liberty-app
+  labels:
+    app: liberty
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: liberty
+  template:
+    metadata:
+      labels:
+        app: liberty
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9080"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+
+      containers:
+        - name: liberty
+          image: icr.io/appcafe/open-liberty:kernel-slim-java17-openj9-ubi
+          imagePullPolicy: IfNotPresent
+          
+          ports:
+            - name: http
+              containerPort: 9080
+            - name: https
+              containerPort: 9443
+
+          env:
+            - name: WLP_LOGGING_CONSOLE_FORMAT
+              value: "JSON"
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: liberty-config
+                  key: db.host
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: db.password
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 15
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+
+          volumeMounts:
+            - name: config
+              mountPath: /config/server.xml
+              subPath: server.xml
+
+      volumes:
+        - name: config
+          configMap:
+            name: liberty-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: liberty-service
+  labels:
+    app: liberty
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9080
+      targetPort: http
+    - name: https
+      port: 9443
+      targetPort: https
+  selector:
+    app: liberty
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: liberty-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: liberty-app
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: liberty-pdb
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: liberty

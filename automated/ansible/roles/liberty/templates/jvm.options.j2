@@ -1,0 +1,6 @@
+-Xms{{ liberty_jvm_heap_min | default('512m') }}
+-Xmx{{ liberty_jvm_heap_max | default('2g') }}
+-XX:+UseG1GC
+-XX:MaxGCPauseMillis=200
+-XX:+HeapDumpOnOutOfMemoryError
+-Djava.net.preferIPv4Stack=true

@@ -1,0 +1,59 @@
+---
+# =============================================================================
+# Ansible Inventory - Local Development (Beelink Homelab)
+# =============================================================================
+
+all:
+  vars:
+    env_name: development
+    ansible_user: ubuntu
+    ansible_python_interpreter: /usr/bin/python3
+    
+    # Liberty settings
+    liberty_version: "24.0.0.1"
+    liberty_install_dir: /opt/ibm/wlp
+    liberty_user: liberty
+    liberty_http_port: 9080
+    liberty_https_port: 9443
+    
+    # Database
+    postgresql_version: "15"
+    redis_version: "7"
+
+  children:
+    liberty_servers:
+      hosts:
+        liberty-dev-01:
+          ansible_host: 192.168.68.88
+          liberty_server_name: appServer01
+          liberty_jvm_heap_max: 2g
+        liberty-dev-02:
+          ansible_host: 192.168.68.83
+          liberty_server_name: appServer02
+          liberty_jvm_heap_max: 2g
+
+    collective_controller:
+      hosts:
+        liberty-controller:
+          ansible_host: 192.168.68.86
+          liberty_server_name: collectiveController
+
+    database_servers:
+      hosts:
+        db-dev:
+          ansible_host: 192.168.68.86
+          postgresql_enabled: true
+          redis_enabled: true
+
+    load_balancers:
+      hosts:
+        lb-dev:
+          ansible_host: 192.168.68.86
+          nginx_upstream_servers:
+            - { host: "192.168.68.88", port: 9080 }
+            - { host: "192.168.68.83", port: 9080 }
+
+    monitoring_servers:
+      hosts:
+        monitoring-dev:
+          ansible_host: 192.168.68.86

@@ -1,0 +1,60 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: awx
+
+---
+apiVersion: awx.ansible.com/v1beta1
+kind: AWX
+metadata:
+  name: awx
+  namespace: awx
+spec:
+  service_type: LoadBalancer
+  
+  web_resource_requirements:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  
+  postgres_storage_class: longhorn
+  postgres_storage_requirements:
+    requests:
+      storage: 10Gi
+  
+  projects_persistence: true
+  projects_storage_class: longhorn
+  projects_storage_size: 5Gi
+  
+  admin_user: admin
+  admin_password_secret: awx-admin-password
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: awx-admin-password
+  namespace: awx
+type: Opaque
+stringData:
+  password: MiddlewareAdmin2024!
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: awx-lb
+  namespace: awx
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: "192.168.68.205"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: awx-web
+  ports:
+    - port: 80
+      targetPort: 8052

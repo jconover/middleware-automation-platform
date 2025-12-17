@@ -1,0 +1,44 @@
+groups:
+  - name: liberty
+    rules:
+      - alert: LibertyServerDown
+        expr: up{job="liberty"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Liberty server {{ $labels.instance }} is down"
+
+      - alert: LibertyHighHeapUsage
+        expr: base_memory_usedHeap_bytes / base_memory_maxHeap_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High heap usage on {{ $labels.instance }}"
+
+      - alert: LibertyHighErrorRate
+        expr: sum(rate(base_servlet_request_total{status=~"5.."}[5m])) / sum(rate(base_servlet_request_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on Liberty servers"
+
+  - name: infrastructure
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory on {{ $labels.instance }}"

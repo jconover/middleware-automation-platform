@@ -1,0 +1,9 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart Liberty
+  ansible.builtin.systemd:
+    name: "liberty-{{ liberty_server_name }}"
+    state: restarted

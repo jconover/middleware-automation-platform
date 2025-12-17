@@ -1,0 +1,16 @@
+[Unit]
+Description=Open Liberty Server - {{ liberty_server_name }}
+After=network.target
+
+[Service]
+Type=forking
+User={{ liberty_user }}
+Group={{ liberty_user }}
+ExecStart={{ liberty_install_dir }}/bin/server start {{ liberty_server_name }}
+ExecStop={{ liberty_install_dir }}/bin/server stop {{ liberty_server_name }}
+PIDFile={{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/workarea/.pid/{{ liberty_server_name }}.pid
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

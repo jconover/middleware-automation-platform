@@ -1,0 +1,105 @@
+---
+# =============================================================================
+# Enterprise Middleware Platform - Master Playbook
+# =============================================================================
+#
+# Usage:
+#   ansible-playbook -i inventory/dev.yml playbooks/site.yml
+#   ansible-playbook -i inventory/prod-aws.yml playbooks/site.yml
+#
+# =============================================================================
+
+- name: Validate Prerequisites
+  hosts: all
+  gather_facts: true
+  tags: [always, validate]
+  
+  pre_tasks:
+    - name: Display deployment information
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════════
+          Enterprise Middleware Platform Deployment
+          Environment: {{ env_name | default('development') }}
+          Timestamp:   {{ ansible_date_time.iso8601 }}
+          ═══════════════════════════════════════════════════════════════
+      run_once: true
+
+# =============================================================================
+# Phase 1: Common Setup
+# =============================================================================
+- name: "Phase 1: Common Setup"
+  hosts: all
+  become: true
+  tags: [common, phase1]
+  roles:
+    - role: common
+
+# =============================================================================
+# Phase 2: Liberty Installation
+# =============================================================================
+- name: "Phase 2: Install Open Liberty"
+  hosts: liberty_servers
+  become: true
+  tags: [liberty, phase2]
+  roles:
+    - role: liberty
+
+# =============================================================================
+# Phase 3: Database Setup
+# =============================================================================
+- name: "Phase 3: Configure Databases"
+  hosts: database_servers
+  become: true
+  tags: [database, phase3]
+  roles:
+    - role: postgresql
+      when: postgresql_enabled | default(false)
+    - role: redis
+      when: redis_enabled | default(false)
+
+# =============================================================================
+# Phase 4: Load Balancer
+# =============================================================================
+- name: "Phase 4: Configure Load Balancers"
+  hosts: load_balancers
+  become: true
+  tags: [nginx, phase4]
+  roles:
+    - role: nginx
+
+# =============================================================================
+# Phase 5: Monitoring
+# =============================================================================
+- name: "Phase 5: Deploy Monitoring"
+  hosts: monitoring_servers
+  become: true
+  tags: [monitoring, phase5]
+  roles:
+    - role: monitoring
+
+# =============================================================================
+# Phase 6: Validation
+# =============================================================================
+- name: "Phase 6: Validate Deployment"
+  hosts: localhost
+  gather_facts: false
+  tags: [validate, phase6]
+  
+  tasks:
+    - name: Health check Liberty servers
+      ansible.builtin.uri:
+        url: "http://{{ item }}:9080/health/ready"
+        status_code: 200
+        timeout: 30
+      loop: "{{ groups['liberty_servers'] }}"
+      register: health_results
+      retries: 5
+      delay: 10
+
+    - name: Display summary
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════════
+          DEPLOYMENT COMPLETE
+          ═══════════════════════════════════════════════════════════════

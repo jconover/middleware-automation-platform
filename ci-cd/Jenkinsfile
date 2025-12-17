@@ -1,0 +1,140 @@
+// =============================================================================
+// Enterprise Middleware Platform - Jenkins Pipeline
+// =============================================================================
+
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: maven
+    image: maven:3.9-eclipse-temurin-17
+    command: [cat]
+    tty: true
+  - name: podman
+    image: quay.io/podman/stable:latest
+    command: [cat]
+    tty: true
+    securityContext:
+      privileged: true
+  - name: ansible
+    image: cytopia/ansible:latest
+    command: [cat]
+    tty: true
+'''
+        }
+    }
+
+    environment {
+        APP_NAME = 'middleware-platform'
+        REGISTRY = 'registry.local'
+        DEPLOY_START_TIME = ''
+    }
+
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod-aws'], description: 'Target environment')
+        choice(name: 'DEPLOY_TYPE', choices: ['full', 'application-only'], description: 'Deployment type')
+        booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Dry run mode')
+        string(name: 'LIBERTY_VERSION', defaultValue: '24.0.0.1', description: 'Liberty version')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                script { env.DEPLOY_START_TIME = new Date().format("yyyy-MM-dd HH:mm:ss") }
+                checkout scm
+                echo """
+                ════════════════════════════════════════════════════════════
+                Enterprise Middleware Platform - CI/CD Pipeline
+                Environment: ${params.ENVIRONMENT}
+                Started:     ${env.DEPLOY_START_TIME}
+                ════════════════════════════════════════════════════════════
+                """
+            }
+        }
+
+        stage('Build Application') {
+            when { expression { params.DEPLOY_TYPE != 'infrastructure-only' } }
+            steps {
+                container('maven') {
+                    dir('sample-app') {
+                        sh 'mvn clean package -DskipTests -B'
+                    }
+                }
+            }
+            post {
+                success { archiveArtifacts artifacts: 'sample-app/target/*.war', fingerprint: true }
+            }
+        }
+
+        stage('Build Container') {
+            when { expression { params.DEPLOY_TYPE != 'infrastructure-only' } }
+            steps {
+                container('podman') {
+                    dir('containers/liberty') {
+                        sh '''
+                            mkdir -p apps
+                            cp ../../sample-app/target/*.war apps/ 2>/dev/null || true
+                            podman build -t ${REGISTRY}/${APP_NAME}:${BUILD_NUMBER} -f Containerfile .
+                            podman push ${REGISTRY}/${APP_NAME}:${BUILD_NUMBER}
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Deploy with Ansible') {
+            steps {
+                container('ansible') {
+                    dir('automated/ansible') {
+                        sh '''
+                            ANSIBLE_ARGS="-i inventory/${ENVIRONMENT}.yml playbooks/site.yml"
+                            ANSIBLE_ARGS="${ANSIBLE_ARGS} -e app_version=${BUILD_NUMBER}"
+                            ANSIBLE_ARGS="${ANSIBLE_ARGS} -e liberty_version=${LIBERTY_VERSION}"
+                            
+                            if [ "${DRY_RUN}" = "true" ]; then
+                                ANSIBLE_ARGS="${ANSIBLE_ARGS} --check"
+                            fi
+                            
+                            ansible-playbook ${ANSIBLE_ARGS}
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Health Check') {
+            when { expression { !params.DRY_RUN } }
+            steps {
+                sh '''
+                    sleep 30
+                    curl -sf http://liberty.${ENVIRONMENT}.local/health/ready || exit 1
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                def endTime = new Date().format("yyyy-MM-dd HH:mm:ss")
+                echo """
+                ════════════════════════════════════════════════════════════
+                DEPLOYMENT COMPLETE
+                Status:    ${currentBuild.currentResult}
+                Started:   ${env.DEPLOY_START_TIME}
+                Completed: ${endTime}
+                
+                TIMING COMPARISON:
+                Manual Deployment:    ~7 hours
+                Automated Pipeline:   ~25 minutes
+                ════════════════════════════════════════════════════════════
+                """
+            }
+            cleanWs()
+        }
+    }
+}

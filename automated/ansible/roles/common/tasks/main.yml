@@ -1,0 +1,26 @@
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+
+- name: Install common packages
+  ansible.builtin.package:
+    name:
+      - curl
+      - wget
+      - unzip
+      - vim
+      - htop
+      - jq
+      - net-tools
+    state: present
+
+- name: Configure timezone
+  ansible.builtin.timezone:
+    name: "{{ timezone | default('UTC') }}"
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"

@@ -1,0 +1,51 @@
+---
+# AWX Job Templates Configuration
+# Import: awx import < awx-resources.yml
+
+job_templates:
+  - name: "Deploy Liberty - Local"
+    project: "Middleware Platform"
+    playbook: "automated/ansible/playbooks/site.yml"
+    inventory: "Local Development"
+    credential: "Local SSH"
+    job_tags: "liberty"
+    extra_vars:
+      liberty_version: "24.0.0.1"
+
+  - name: "Deploy Liberty - AWS"
+    project: "Middleware Platform"
+    playbook: "automated/ansible/playbooks/site.yml"
+    inventory: "AWS Production"
+    credential: "AWS SSH"
+    job_tags: "liberty"
+
+  - name: "Deploy Monitoring"
+    project: "Middleware Platform"
+    playbook: "automated/ansible/playbooks/site.yml"
+    inventory: "Local Development"
+    job_tags: "monitoring"
+
+  - name: "Health Check"
+    project: "Middleware Platform"
+    playbook: "automated/ansible/playbooks/health-check.yml"
+    inventory: "All Environments"
+
+workflow_job_templates:
+  - name: "Full Deployment - Local"
+    workflow_nodes:
+      - identifier: "liberty"
+        unified_job_template: "Deploy Liberty - Local"
+        success_nodes: ["monitoring"]
+      - identifier: "monitoring"
+        unified_job_template: "Deploy Monitoring"
+        success_nodes: ["healthcheck"]
+      - identifier: "healthcheck"
+        unified_job_template: "Health Check"
+
+  - name: "Promote to Production"
+    workflow_nodes:
+      - identifier: "deploy_aws"
+        unified_job_template: "Deploy Liberty - AWS"
+        success_nodes: ["verify"]
+      - identifier: "verify"
+        unified_job_template: "Health Check"
