@@ -24,6 +24,17 @@ This creates documented evidence of manual effort for ROI comparison.
 - Or: Single machine with Podman for containerized demo
 - Internet access for package downloads
 - sudo/root access
+- **Maven 3.6+** (for building sample application in Phase 3)
+  ```bash
+  # Ubuntu/Debian
+  sudo apt install maven -y
+
+  # macOS
+  brew install maven
+
+  # Verify
+  mvn -version
+  ```
 
 ---
 
@@ -280,9 +291,10 @@ podman ps
 # xxxxxxxxxxxx  docker.io/ubuntu:22.04 sleep infinity  liberty-server-01
 # xxxxxxxxxxxx  docker.io/ubuntu:22.04 sleep infinity  liberty-server-02
 
-# Test network connectivity between containers
-podman exec liberty-server-01 ping -c 2 liberty-controller
-podman exec liberty-server-02 ping -c 2 liberty-server-01
+# Test network connectivity between containers (verify DNS resolution)
+podman exec liberty-server-01 getent hosts liberty-controller
+podman exec liberty-server-02 getent hosts liberty-server-01
+podman exec liberty-controller getent hosts liberty-server-02
 
 # Verify Java in all containers
 podman exec liberty-controller java -version
@@ -292,7 +304,7 @@ podman exec liberty-server-02 java -version
 
 **Checkpoint Option B Complete:**
 - [ ] 3 containers running
-- [ ] All can ping each other by hostname
+- [ ] All containers can resolve each other by hostname
 - [ ] Java working in all containers
 - **Total Phase 1 time: _______ minutes**
 
@@ -486,34 +498,16 @@ cat > /opt/ibm/wlp/usr/servers/appServer/server.xml << 'EOF'
 <server description="Enterprise Application Server">
 
     <!-- =================================================================== -->
-    <!-- FEATURES - Only enable what you need                                -->
+    <!-- FEATURES - Using umbrella features for compatibility                -->
+    <!-- Open Liberty 24.0.0.1: Jakarta EE 10 + MicroProfile 6.1             -->
     <!-- =================================================================== -->
     <featureManager>
-        <!-- Jakarta EE 10 Web Profile -->
-        <feature>servlet-6.0</feature>
-        <feature>jsp-3.1</feature>
-        <feature>restfulWS-3.1</feature>
-        <feature>jsonb-3.0</feature>
-        <feature>jsonp-2.1</feature>
-        <feature>cdi-4.0</feature>
-        
-        <!-- Database -->
-        <feature>jdbc-4.3</feature>
-        <feature>jpa-3.1</feature>
-        
-        <!-- MicroProfile (cloud-native) -->
-        <feature>mpConfig-3.0</feature>
-        <feature>mpHealth-4.0</feature>
-        <feature>mpMetrics-5.0</feature>
-        <feature>mpOpenAPI-3.0</feature>
-        
-        <!-- Security -->
-        <feature>ssl-1.0</feature>
-        <feature>transportSecurity-1.0</feature>
-        <feature>appSecurity-5.0</feature>
-        
-        <!-- Monitoring -->
-        <feature>monitor-1.0</feature>
+        <!-- Jakarta EE 10 Web Profile (includes servlet-6.0, pages-3.1, etc.) -->
+        <feature>webProfile-10.0</feature>
+
+        <!-- MicroProfile 6.1 (compatible with Jakarta EE 10) -->
+        <!-- Includes: mpConfig-3.1, mpHealth-4.0, mpMetrics-5.1, mpOpenAPI-3.1 -->
+        <feature>microProfile-6.1</feature>
     </featureManager>
 
     <!-- =================================================================== -->
@@ -528,44 +522,7 @@ cat > /opt/ibm/wlp/usr/servers/appServer/server.xml << 'EOF'
     </httpEndpoint>
 
     <!-- =================================================================== -->
-    <!-- SSL/TLS CONFIGURATION                                               -->
-    <!-- =================================================================== -->
-    <ssl id="defaultSSLConfig"
-         keyStoreRef="defaultKeyStore"
-         trustStoreRef="defaultTrustStore"
-         sslProtocol="TLSv1.3" />
-    
-    <keyStore id="defaultKeyStore"
-              location="${server.config.dir}/resources/security/key.p12"
-              password="${env.KEYSTORE_PASSWORD}"
-              type="PKCS12" />
-    
-    <keyStore id="defaultTrustStore"
-              location="${server.config.dir}/resources/security/trust.p12"
-              password="${env.TRUSTSTORE_PASSWORD}"
-              type="PKCS12" />
-
-    <!-- =================================================================== -->
-    <!-- DATABASE CONFIGURATION                                              -->
-    <!-- =================================================================== -->
-    <library id="PostgreSQLLib">
-        <fileset dir="${shared.resource.dir}/jdbc" includes="postgresql-*.jar"/>
-    </library>
-
-    <dataSource id="DefaultDataSource" jndiName="jdbc/appDB">
-        <jdbcDriver libraryRef="PostgreSQLLib"/>
-        <properties.postgresql
-            serverName="${env.DB_HOST}"
-            portNumber="${env.DB_PORT}"
-            databaseName="${env.DB_NAME}"
-            user="${env.DB_USER}"
-            password="${env.DB_PASSWORD}" />
-        <connectionManager minPoolSize="5" maxPoolSize="50"
-                          connectionTimeout="30s" maxIdleTime="10m" />
-    </dataSource>
-
-    <!-- =================================================================== -->
-    <!-- HEALTH & METRICS                                                    -->
+    <!-- HEALTH & METRICS (no authentication for demo)                       -->
     <!-- =================================================================== -->
     <mpHealth authentication="false" />
     <mpMetrics authentication="false" />
@@ -844,19 +801,25 @@ exit
 # PODMAN: Run from host machine
 # ============================================================
 
-# Check server status
+# Install curl on all containers (if not already installed)
+for container in liberty-controller liberty-server-01 liberty-server-02; do
+    podman exec $container apt install -y curl
+done
+
+# Check server status (primary verification)
 podman exec liberty-server-01 su - liberty -c '/opt/ibm/wlp/bin/server status appServer'
 podman exec liberty-server-02 su - liberty -c '/opt/ibm/wlp/bin/server status appServer'
 podman exec liberty-controller su - liberty -c '/opt/ibm/wlp/bin/server status collectiveController'
 
-# Test endpoints (from host, using mapped ports)
-curl http://localhost:9080/health         # Server 1
-curl http://localhost:9180/health         # Server 2
-curl http://localhost:9080/health/ready
-curl http://localhost:9080/metrics | head -20
-
-# Or from inside containers
+# Test endpoints from inside containers
 podman exec liberty-server-01 curl -s http://localhost:9080/health
+podman exec liberty-server-01 curl -s http://localhost:9080/health/ready
+podman exec liberty-server-02 curl -s http://localhost:9080/health
+podman exec liberty-server-01 curl -s http://localhost:9080/metrics | head -20
+
+# Alternative: Test from host if curl is installed on host machine
+# curl http://localhost:9080/health         # Server 1 (mapped port)
+# curl http://localhost:9180/health         # Server 2 (mapped port)
 ```
 
 **Checkpoint Phase 2 Complete:**
@@ -874,11 +837,17 @@ podman exec liberty-server-01 curl -s http://localhost:9080/health
 
 **Expected Time: 75 minutes**
 
-### Task 3.1: Download JDBC Driver
+> **Podman Users**: Tasks 3.1-3.2 run on your **host machine** (not inside containers).
+> The built WAR file is then copied into each container in Task 3.3.
+
+### Task 3.1: Download JDBC Driver (Optional)
 
 **Expected: 10 minutes** | **Actual: ______**
 
+*Skip this task if not using a database. The sample app doesn't require it.*
+
 ```bash
+# On physical servers only (not needed for Podman demo)
 sudo su - liberty
 mkdir -p /opt/ibm/wlp/usr/shared/resources/jdbc
 cd /opt/ibm/wlp/usr/shared/resources/jdbc
@@ -890,6 +859,8 @@ wget https://jdbc.postgresql.org/download/postgresql-42.7.1.jar
 ### Task 3.2: Build Sample Application
 
 **Expected: 15 minutes** | **Actual: ______**
+
+> **Run on host machine** - requires Maven (see Prerequisites)
 
 ```bash
 mkdir -p ~/liberty-test-app/src/main/java/com/example
@@ -960,6 +931,8 @@ mvn clean package
 
 **Expected: 20 minutes** | **Actual: ______**
 
+#### Option A: Physical/VM Servers
+
 ```bash
 # Copy to dropins for auto-deployment
 cp target/hello-liberty.war /opt/ibm/wlp/usr/servers/appServer/dropins/
@@ -970,6 +943,26 @@ tail -f /opt/ibm/wlp/usr/servers/appServer/logs/messages.log
 
 # Test
 curl http://localhost:9080/hello-liberty/api/hello
+```
+
+#### Option B: Podman Containers
+
+```bash
+# Copy WAR to both containers (run from ~/liberty-test-app directory)
+podman cp target/hello-liberty.war liberty-server-01:/opt/ibm/wlp/usr/servers/appServer/dropins/
+podman cp target/hello-liberty.war liberty-server-02:/opt/ibm/wlp/usr/servers/appServer/dropins/
+
+# Fix ownership
+podman exec liberty-server-01 chown liberty:liberty /opt/ibm/wlp/usr/servers/appServer/dropins/hello-liberty.war
+podman exec liberty-server-02 chown liberty:liberty /opt/ibm/wlp/usr/servers/appServer/dropins/hello-liberty.war
+
+# Watch logs (Liberty auto-deploys from dropins)
+podman exec liberty-server-01 tail -f /opt/ibm/wlp/usr/servers/appServer/logs/messages.log
+# Look for: CWWKZ0001I: Application hello-liberty started
+
+# Test both servers
+podman exec liberty-server-01 curl -s http://localhost:9080/hello-liberty/api/hello
+podman exec liberty-server-02 curl -s http://localhost:9080/hello-liberty/api/hello
 ```
 
 ---
@@ -986,10 +979,22 @@ Update dataSource in server.xml with tuned pool settings.
 
 **Expected: 15 minutes** | **Actual: ______**
 
+#### Physical/VM Servers
 ```bash
 for server in 192.168.68.88 192.168.68.83; do
     curl http://$server:9080/hello-liberty/api/hello
 done
+```
+
+#### Podman Containers
+```bash
+# From inside containers
+podman exec liberty-server-01 curl -s http://localhost:9080/hello-liberty/api/hello
+podman exec liberty-server-02 curl -s http://localhost:9080/hello-liberty/api/hello
+
+# From host machine (using mapped ports)
+curl -s http://localhost:9080/hello-liberty/api/hello   # Server 01
+curl -s http://localhost:9180/hello-liberty/api/hello   # Server 02
 ```
 
 **Checkpoint Phase 3:** _______ minutes
@@ -1000,13 +1005,64 @@ done
 
 **Expected Time: 75 minutes**
 
+> **Podman Users**: Skip to Option B to run NGINX as a container on the liberty-net network.
+
 ### Task 4.1: Install NGINX
 
 **Expected: 10 minutes** | **Actual: ______**
 
+#### Option A: Physical/VM Servers
+
 ```bash
 sudo apt update && sudo apt install -y nginx
 nginx -v
+```
+
+#### Option B: Podman Container
+
+```bash
+# Create NGINX config directory on host
+mkdir -p ~/liberty-nginx
+
+# Create NGINX configuration
+cat > ~/liberty-nginx/nginx.conf << 'EOF'
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream liberty_cluster {
+        least_conn;
+        server liberty-server-01:9080;
+        server liberty-server-02:9080;
+    }
+
+    server {
+        listen 80;
+
+        location / {
+            proxy_pass http://liberty_cluster;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location /health {
+            proxy_pass http://liberty_cluster/health;
+        }
+    }
+}
+EOF
+
+# Run NGINX container
+podman run -d --name liberty-nginx \
+    --hostname liberty-nginx \
+    --network liberty-net \
+    -p 8080:80 \
+    -v ~/liberty-nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+    docker.io/nginx:alpine
+
+# Verify NGINX is running
+podman ps | grep nginx
 ```
 
 ---
@@ -1014,6 +1070,8 @@ nginx -v
 ### Task 4.2: Configure Load Balancer
 
 **Expected: 25 minutes** | **Actual: ______**
+
+#### Option A: Physical/VM Servers
 
 ```bash
 sudo cat > /etc/nginx/conf.d/liberty-upstream.conf << 'EOF'
@@ -1029,14 +1087,14 @@ sudo cat > /etc/nginx/sites-available/liberty << 'EOF'
 server {
     listen 80;
     server_name liberty.local;
-    
+
     location / {
         proxy_pass http://liberty_cluster;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
-    
+
     location /health {
         proxy_pass http://liberty_cluster/health;
     }
@@ -1047,11 +1105,17 @@ sudo ln -sf /etc/nginx/sites-available/liberty /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 ```
 
+#### Option B: Podman Container
+
+*Configuration was created in Task 4.1. Skip to Task 4.4 to test.*
+
 ---
 
 ### Task 4.3: SSL Certificates
 
 **Expected: 20 minutes** | **Actual: ______**
+
+#### Option A: Physical/VM Servers
 
 ```bash
 sudo mkdir -p /etc/nginx/ssl
@@ -1061,11 +1125,17 @@ sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -subj "/CN=liberty.local"
 ```
 
+#### Option B: Podman Container
+
+*Optional for demo - skip to Task 4.4 to test HTTP load balancing.*
+
 ---
 
 ### Task 4.4: Test Load Balancer
 
 **Expected: 20 minutes** | **Actual: ______**
+
+#### Option A: Physical/VM Servers
 
 ```bash
 sudo nginx -t
@@ -1074,6 +1144,26 @@ sudo systemctl reload nginx
 # Test load balancing
 for i in {1..10}; do
     curl -s http://liberty.local/hello-liberty/api/hello | jq -r '.server'
+done
+```
+
+#### Option B: Podman Container
+
+```bash
+# Test health endpoint through load balancer
+curl -s http://localhost:8080/health
+
+# Test load balancing - health check should succeed on both backends
+for i in {1..6}; do
+    curl -s http://localhost:8080/health
+    echo ""
+done
+
+# If sample app is deployed (Phase 3), test the API endpoint
+# The "server" field shows which Liberty server handled the request
+for i in {1..6}; do
+    curl -s http://localhost:8080/hello-liberty/api/hello
+    echo ""
 done
 ```
 
