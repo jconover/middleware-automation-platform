@@ -10,12 +10,27 @@
       - liberty_install_dir is defined
     fail_msg: "Required Liberty variables not defined"
 
-# Fetch database credentials from AWS Secrets Manager (production only)
+# Fetch database credentials from AWS Secrets Manager (optional)
+# If AWS CLI is available and password not set, fetch from Secrets Manager
+- name: Check if AWS CLI is available
+  ansible.builtin.command:
+    cmd: which aws
+  register: aws_cli_check
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  failed_when: false
+  when:
+    - env_name == 'production'
+    - postgresql_host is defined
+    - postgresql_password is not defined
+
 - name: Fetch database credentials from Secrets Manager
   when:
     - env_name == 'production'
     - postgresql_host is defined
     - postgresql_password is not defined
+    - aws_cli_check.rc is defined and aws_cli_check.rc == 0
   block:
     - name: Get database secret from AWS Secrets Manager
       ansible.builtin.command:
@@ -35,6 +50,14 @@
         postgresql_password: "{{ (db_secret_result.stdout | from_json).password }}"
         postgresql_user: "{{ (db_secret_result.stdout | from_json).username }}"
       no_log: true
+
+- name: Warn if database password not available
+  ansible.builtin.debug:
+    msg: "WARNING: Database password not set. Set postgresql_password in inventory or ensure AWS CLI is available."
+  when:
+    - postgresql_host is defined
+    - postgresql_password is not defined
+    - aws_cli_check.rc is defined and aws_cli_check.rc != 0
 
 # User and Directory Setup
 - name: Create Liberty service account
