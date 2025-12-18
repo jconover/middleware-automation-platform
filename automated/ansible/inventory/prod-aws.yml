@@ -1,0 +1,72 @@
+---
+# =============================================================================
+# Ansible Inventory - AWS Production
+# =============================================================================
+# This is a static inventory. For dynamic EC2 discovery, use prod-aws-ec2.yml
+#
+# Update the IPs after running: terraform output ansible_inventory
+# =============================================================================
+
+all:
+  vars:
+    env_name: production
+    ansible_user: ansible
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+    ansible_python_interpreter: /usr/bin/python3
+
+    # Liberty settings
+    liberty_version: "24.0.0.1"
+    liberty_install_dir: /opt/ibm/wlp
+    liberty_user: liberty
+    liberty_http_port: 9080
+    liberty_https_port: 9443
+    liberty_java_version: "17"
+
+    # Database - Update from Terraform outputs
+    postgresql_host: "{{ lookup('env', 'TF_VAR_db_host') | default('middleware-platform-production-postgres.xxxxx.us-east-1.rds.amazonaws.com', true) }}"
+    postgresql_port: 5432
+    postgresql_database: appdb
+    postgresql_version: "15"
+
+    # Redis - Update from Terraform outputs
+    redis_host: "{{ lookup('env', 'TF_VAR_redis_host') | default('middleware-platform-production-redis.xxxxx.cache.amazonaws.com', true) }}"
+    redis_port: 6379
+    redis_version: "7"
+
+    # AWS-specific settings
+    aws_region: us-east-1
+
+  children:
+    liberty_servers:
+      hosts:
+        # Update these IPs from Terraform output: liberty_private_ips
+        liberty-prod-01:
+          ansible_host: 10.10.10.x  # Update from terraform output
+          liberty_server_name: appServer01
+          liberty_jvm_heap_max: 2g
+        liberty-prod-02:
+          ansible_host: 10.10.10.x  # Update from terraform output
+          liberty_server_name: appServer02
+          liberty_jvm_heap_max: 2g
+
+    # No local database servers - using RDS
+    database_servers:
+      hosts: {}
+      vars:
+        postgresql_enabled: false
+        redis_enabled: false
+
+    # No local load balancers - using ALB
+    load_balancers:
+      hosts: {}
+
+    # Monitoring can be deployed to Liberty servers or separate instance
+    monitoring_servers:
+      hosts:
+        liberty-prod-01:
+          ansible_host: 10.10.10.x  # Same as Liberty server 01
+
+    # Group all AWS hosts
+    aws:
+      children:
+        liberty_servers:

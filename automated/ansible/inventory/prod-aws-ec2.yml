@@ -1,0 +1,61 @@
+---
+# =============================================================================
+# Ansible Dynamic EC2 Inventory
+# =============================================================================
+# Uses the aws_ec2 plugin to automatically discover EC2 instances.
+#
+# Prerequisites:
+#   pip install boto3 botocore
+#   AWS credentials configured (aws configure or environment variables)
+#
+# Usage:
+#   ansible-playbook -i inventory/prod-aws-ec2.yml playbooks/site.yml
+#   ansible-inventory -i inventory/prod-aws-ec2.yml --graph
+# =============================================================================
+
+plugin: amazon.aws.aws_ec2
+
+# AWS Configuration
+regions:
+  - us-east-1
+
+# Filter instances by tags
+filters:
+  tag:Project: middleware-platform
+  tag:Environment: production
+  instance-state-name: running
+
+# How to identify hosts
+hostnames:
+  - private-ip-address
+
+# Compose variables from EC2 instance attributes
+compose:
+  ansible_host: private_ip_address
+  ansible_user: ansible
+  ansible_ssh_private_key_file: ~/.ssh/id_rsa
+  liberty_server_name: tags.LibertyServerName | default('appServer')
+  liberty_jvm_heap_max: "'2g'"
+
+# Group instances by tags
+keyed_groups:
+  # Group by Role tag (e.g., liberty_servers)
+  - key: tags.AnsibleGroup
+    separator: ""
+  # Group by environment
+  - key: tags.Environment
+    prefix: env
+  # Group by instance type
+  - key: instance_type
+    prefix: instance_type
+
+# Static groups for compatibility with playbooks
+groups:
+  liberty_servers: "'liberty-server' in tags.Role"
+  aws: true
+
+# Cache settings (optional, improves performance)
+cache: true
+cache_plugin: jsonfile
+cache_timeout: 300
+cache_connection: /tmp/aws_ec2_inventory_cache

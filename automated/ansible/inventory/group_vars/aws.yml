@@ -1,0 +1,50 @@
+---
+# =============================================================================
+# Group Variables for AWS Hosts
+# =============================================================================
+
+# Environment identifier
+env_name: production
+cloud_provider: aws
+
+# Liberty settings (same as dev, but can be overridden)
+liberty_version: "24.0.0.1"
+liberty_install_dir: /opt/ibm/wlp
+liberty_user: liberty
+liberty_http_port: 9080
+liberty_https_port: 9443
+liberty_java_version: "17"
+
+# JVM settings for production (can use more memory on t3.small)
+liberty_jvm_heap_min: 512m
+liberty_jvm_heap_max: 1536m
+
+# AWS-specific Liberty features
+liberty_features:
+  - restfulWS-3.1
+  - jsonb-3.0
+  - cdi-4.0
+  - mpHealth-4.0
+  - mpMetrics-5.0
+  - jdbc-4.3
+  - ssl-1.0
+  - mpConfig-3.0
+
+# Database connection (RDS)
+# These should be overridden by Terraform outputs or environment variables
+db_type: postgresql
+db_port: 5432
+db_name: appdb
+
+# Redis connection (ElastiCache)
+redis_port: 6379
+
+# Monitoring settings
+# In AWS, Prometheus can scrape via private IPs
+prometheus_liberty_targets: "{{ groups['liberty_servers'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '$', ':9080') | list }}"
+
+# SSH settings for AWS
+ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+
+# CloudWatch agent (optional)
+install_cloudwatch_agent: true

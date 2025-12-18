@@ -1,0 +1,66 @@
+# =============================================================================
+# Terraform Variables Example
+# =============================================================================
+# Copy this file to terraform.tfvars and customize for your environment.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# General
+# -----------------------------------------------------------------------------
+aws_region   = "us-east-1"
+environment  = "production"
+project_name = "middleware-platform"
+
+# -----------------------------------------------------------------------------
+# Networking
+# -----------------------------------------------------------------------------
+vpc_cidr           = "10.10.0.0/16"
+availability_zones = 2
+
+# -----------------------------------------------------------------------------
+# Compute
+# -----------------------------------------------------------------------------
+liberty_instance_type  = "t3.small"   # 2 vCPU, 2GB RAM (~$15/month each)
+liberty_instance_count = 2
+ssh_public_key_path    = "~/.ssh/ansible_ed25519.pub"
+
+# Optional: Allow SSH from specific CIDRs (for bastion access)
+# allowed_ssh_cidr_blocks = ["203.0.113.0/24"]
+
+# -----------------------------------------------------------------------------
+# Database
+# -----------------------------------------------------------------------------
+db_instance_class          = "db.t3.micro"  # ~$15/month
+db_name                    = "appdb"
+db_username                = "appuser"
+db_allocated_storage       = 20
+db_backup_retention_period = 7
+
+# -----------------------------------------------------------------------------
+# Cache
+# -----------------------------------------------------------------------------
+cache_node_type = "cache.t3.micro"  # ~$12/month
+
+# -----------------------------------------------------------------------------
+# SSL/TLS Configuration
+# -----------------------------------------------------------------------------
+# Option 1: No HTTPS (development/testing)
+create_certificate = false
+domain_name        = ""
+certificate_arn    = ""
+
+# Option 2: Create new ACM certificate (requires DNS validation)
+# create_certificate = true
+# domain_name        = "app.example.com"
+
+# Option 3: Use existing ACM certificate
+# create_certificate = false
+# certificate_arn    = "arn:aws:acm:us-east-1:123456789012:certificate/abc123"
+
+# -----------------------------------------------------------------------------
+# Additional Tags
+# -----------------------------------------------------------------------------
+additional_tags = {
+  CostCenter = "middleware"
+  Owner      = "platform-team"
+}
