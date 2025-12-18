@@ -199,6 +199,69 @@ cat README.md
 # Continue through each phase...
 ```
 
+### Teardown / Clean Reinstall
+
+```bash
+# Remove all deployed components (prompts for confirmation)
+./automated/scripts/destroy.sh --environment dev
+
+# Force destroy without confirmation
+./automated/scripts/destroy.sh --environment dev --force
+
+# Destroy specific component only
+./automated/scripts/destroy.sh --environment dev --phase liberty
+./automated/scripts/destroy.sh --environment dev --phase monitoring
+```
+
+---
+
+## Verification & Console URLs
+
+After deployment, verify all services are running:
+
+### Health Checks
+
+```bash
+# Liberty Servers
+curl -s http://192.168.68.86:9080/health/ready   # Liberty Server 01
+curl -s http://192.168.68.88:9080/health/ready   # Liberty Server 02
+
+# Prometheus
+curl -s http://192.168.68.82:9090/-/ready
+
+# Grafana
+curl -s http://192.168.68.82:3000/api/health
+```
+
+### Quick Verification Script
+
+```bash
+echo "=== Liberty Servers ==="
+for ip in 192.168.68.86 192.168.68.88; do
+  status=$(curl -s -o /dev/null -w "%{http_code}" http://$ip:9080/health/ready)
+  echo "$ip: $status"
+done
+
+echo "=== Monitoring ==="
+echo "Prometheus: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:9090/-/ready)"
+echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:3000/api/health)"
+```
+
+### Web Console URLs
+
+| Service | URL | Default Credentials |
+|---------|-----|---------------------|
+| **Liberty Server 01** | http://192.168.68.86:9080 | - |
+| **Liberty Server 02** | http://192.168.68.88:9080 | - |
+| **Liberty Health** | http://192.168.68.86:9080/health/ready | - |
+| **Liberty Metrics** | http://192.168.68.86:9080/metrics | - |
+| **Prometheus** | http://192.168.68.82:9090 | - |
+| **Grafana** | http://192.168.68.82:3000 | admin / admin |
+| **AWX** | http://192.168.68.205 | (configured separately) |
+| **Jenkins** | http://192.168.68.206:8080 | (configured separately) |
+
+> **Note:** Update IPs for your environment. See [CONFIGURATION.md](./CONFIGURATION.md) for details.
+
 ---
 
 ## AWS Cost Estimate (Production)
@@ -219,6 +282,7 @@ cat README.md
 
 | Document | Description |
 |----------|-------------|
+| [CONFIGURATION.md](./CONFIGURATION.md) | IP addresses and environment setup |
 | [MANUAL_DEPLOYMENT.md](./MANUAL_DEPLOYMENT.md) | Complete manual deployment guide |
 | [docs/architecture/HYBRID_ARCHITECTURE.md](./docs/architecture/HYBRID_ARCHITECTURE.md) | Hybrid architecture details |
 | [docs/timing-analysis/](./docs/timing-analysis/) | Timing comparison reports |
