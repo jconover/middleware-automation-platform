@@ -2,7 +2,12 @@
 # https://github.com/redisson/redisson/wiki/2.-Configuration
 
 singleServerConfig:
+{% if env_name == 'production' %}
+  # ElastiCache requires TLS (rediss://)
+  address: "rediss://{{ redis_host }}:{{ redis_port | default(6379) }}"
+{% else %}
   address: "redis://{{ redis_host }}:{{ redis_port | default(6379) }}"
+{% endif %}
   connectionPoolSize: {{ redis_pool_size | default(64) }}
   connectionMinimumIdleSize: {{ redis_pool_min | default(10) }}
   connectTimeout: {{ redis_connect_timeout | default(10000) }}

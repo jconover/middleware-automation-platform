@@ -112,9 +112,8 @@
     </library>
 
     <!-- HTTP Session Cache with Redis -->
-    <httpSessionCache libraryRef="jCacheVendorLib">
-        <properties
-            redisson.config="${server.config.dir}/redisson.yaml"/>
+    <httpSessionCache libraryRef="jCacheVendorLib"
+                      uri="file:${server.config.dir}/redisson.yaml">
     </httpSessionCache>
 {% endif %}
 
