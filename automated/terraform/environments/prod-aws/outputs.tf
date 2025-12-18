@@ -170,17 +170,20 @@ output "estimated_monthly_cost" {
     ESTIMATED MONTHLY COSTS (us-east-1)
     ═══════════════════════════════════════════════════════
 
-    EC2 ${var.liberty_instance_type} x${var.liberty_instance_count}:  ~$${var.liberty_instance_count * 15}
+    EC2 Liberty ${var.liberty_instance_type} x${var.liberty_instance_count}:  ~$${var.liberty_instance_count * 15}
+    EC2 Management t3.medium:                        ~$30
     RDS ${var.db_instance_class}:                    ~$15
     ElastiCache ${var.cache_node_type}:              ~$12
     Application Load Balancer:                       ~$20
     NAT Gateway + Data Transfer:                     ~$35
+    Elastic IP (management):                         ~$4
     S3 (logs/state):                                 ~$5
     CloudWatch Logs:                                 ~$5
     ───────────────────────────────────────────────────────
-    TOTAL:                                           ~$${(var.liberty_instance_count * 15) + 15 + 12 + 20 + 35 + 5 + 5}
+    TOTAL:                                           ~$${(var.liberty_instance_count * 15) + 30 + 15 + 12 + 20 + 35 + 4 + 5 + 5}
 
     Note: Actual costs may vary based on usage patterns.
+    Management server can be stopped when not in use to save ~$30/month.
 
   EOT
 }
