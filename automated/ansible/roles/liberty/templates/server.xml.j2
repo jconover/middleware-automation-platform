@@ -1,27 +1,163 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<server description="Open Liberty Server">
+<server description="Open Liberty Server - {{ liberty_server_name | default('appServer') }}">
+
+    <!-- ===================================================================== -->
+    <!-- Feature Manager                                                       -->
+    <!-- ===================================================================== -->
     <featureManager>
+        <!-- REST and JSON -->
         <feature>restfulWS-3.1</feature>
         <feature>jsonb-3.0</feature>
+        <feature>jsonp-2.1</feature>
+
+        <!-- CDI and Dependency Injection -->
         <feature>cdi-4.0</feature>
+
+        <!-- MicroProfile -->
         <feature>mpHealth-4.0</feature>
         <feature>mpMetrics-5.0</feature>
+        <feature>mpConfig-3.0</feature>
+
+        <!-- Database -->
         <feature>jdbc-4.3</feature>
+        <feature>jndi-1.0</feature>
+
+        <!-- Security and SSL -->
         <feature>ssl-1.0</feature>
+        <feature>appSecurity-5.0</feature>
+
+        <!-- Admin Console -->
         <feature>adminCenter-1.0</feature>
+
+{% if redis_host is defined and redis_host != '' %}
+        <!-- Session Caching with Redis -->
+        <feature>sessionCache-1.0</feature>
+{% endif %}
     </featureManager>
 
+    <!-- ===================================================================== -->
+    <!-- HTTP Endpoint                                                         -->
+    <!-- ===================================================================== -->
     <httpEndpoint id="defaultHttpEndpoint"
                   host="*"
                   httpPort="{{ liberty_http_port | default(9080) }}"
                   httpsPort="{{ liberty_https_port | default(9443) }}" />
 
+    <!-- ===================================================================== -->
+    <!-- SSL Configuration                                                     -->
+    <!-- ===================================================================== -->
     <ssl id="defaultSSLConfig"
          keyStoreRef="defaultKeyStore" />
+
     <keyStore id="defaultKeyStore"
               location="${server.config.dir}/resources/security/key.p12"
               password="{{ liberty_keystore_password | default('changeit') }}"
               type="PKCS12" />
 
-    <logging consoleLogLevel="INFO" copySystemStreams="true" />
+    <!-- ===================================================================== -->
+    <!-- Logging                                                               -->
+    <!-- ===================================================================== -->
+    <logging consoleLogLevel="INFO"
+             copySystemStreams="true"
+             traceSpecification="*=info:com.ibm.ws.session*=debug" />
+
+{% if postgresql_host is defined and postgresql_host != '' %}
+    <!-- ===================================================================== -->
+    <!-- PostgreSQL Database Configuration                                     -->
+    <!-- ===================================================================== -->
+
+    <!-- PostgreSQL JDBC Driver Library -->
+    <library id="postgresLib">
+        <fileset dir="${server.config.dir}/jdbc" includes="postgresql-*.jar"/>
+    </library>
+
+    <!-- DataSource Configuration -->
+    <dataSource id="DefaultDataSource" jndiName="jdbc/appDB">
+        <jdbcDriver libraryRef="postgresLib"/>
+        <properties.postgresql
+            serverName="{{ postgresql_host }}"
+            portNumber="{{ postgresql_port | default(5432) }}"
+            databaseName="{{ postgresql_database | default('appdb') }}"
+            user="{{ postgresql_user | default('appuser') }}"
+            password="{{ postgresql_password | default('') }}"
+            ssl="{{ postgresql_ssl | default('true') if env_name == 'production' else 'false' }}"
+{% if env_name == 'production' %}
+            sslMode="require"
+{% endif %}
+        />
+        <connectionManager
+            maxPoolSize="{{ liberty_db_pool_max | default(20) }}"
+            minPoolSize="{{ liberty_db_pool_min | default(5) }}"
+            connectionTimeout="30s"
+            maxIdleTime="10m"
+            agedTimeout="30m" />
+    </dataSource>
+
+    <!-- Health check for database -->
+    <mpHealth>
+        <health-check-config
+            datasource-health-check="DefaultDataSource"
+            enabled="true"/>
+    </mpHealth>
+{% endif %}
+
+{% if redis_host is defined and redis_host != '' %}
+    <!-- ===================================================================== -->
+    <!-- Redis Session Cache Configuration                                     -->
+    <!-- ===================================================================== -->
+
+    <!-- JCache/Redis Library -->
+    <library id="jCacheVendorLib">
+        <fileset dir="${server.config.dir}/jcache" includes="*.jar"/>
+    </library>
+
+    <!-- HTTP Session Cache with Redis -->
+    <httpSessionCache libraryRef="jCacheVendorLib">
+        <properties
+            redisson.config="${server.config.dir}/redisson.yaml"/>
+    </httpSessionCache>
+{% endif %}
+
+    <!-- ===================================================================== -->
+    <!-- Application Configuration                                             -->
+    <!-- ===================================================================== -->
+
+    <!-- Default application location -->
+    <webApplication id="app" location="app.war" contextRoot="/">
+{% if postgresql_host is defined %}
+        <application-bnd>
+            <resource-ref name="jdbc/appDB" binding-name="jdbc/appDB"/>
+        </application-bnd>
+{% endif %}
+    </webApplication>
+
+    <!-- ===================================================================== -->
+    <!-- Admin Center Configuration                                            -->
+    <!-- ===================================================================== -->
+    <basicRegistry id="basic" realm="BasicRealm">
+        <user name="{{ liberty_admin_user | default('admin') }}"
+              password="{{ liberty_admin_password | default('admin') }}" />
+    </basicRegistry>
+
+    <administrator-role>
+        <user>{{ liberty_admin_user | default('admin') }}</user>
+    </administrator-role>
+
+    <!-- ===================================================================== -->
+    <!-- MicroProfile Config Sources                                           -->
+    <!-- ===================================================================== -->
+    <mpConfig>
+        <configSource name="EnvVariables" ordinal="400"/>
+        <configSource name="SystemProperties" ordinal="300"/>
+    </mpConfig>
+
+    <!-- ===================================================================== -->
+    <!-- Environment Variables (can be overridden at runtime)                  -->
+    <!-- ===================================================================== -->
+    <variable name="DB_HOST" defaultValue="{{ postgresql_host | default('localhost') }}"/>
+    <variable name="DB_PORT" defaultValue="{{ postgresql_port | default(5432) }}"/>
+    <variable name="DB_NAME" defaultValue="{{ postgresql_database | default('appdb') }}"/>
+    <variable name="REDIS_HOST" defaultValue="{{ redis_host | default('localhost') }}"/>
+    <variable name="REDIS_PORT" defaultValue="{{ redis_port | default(6379) }}"/>
+
 </server>

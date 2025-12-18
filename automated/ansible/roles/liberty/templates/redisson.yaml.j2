@@ -1,0 +1,28 @@
+# Redisson Configuration for Liberty Session Cache
+# https://github.com/redisson/redisson/wiki/2.-Configuration
+
+singleServerConfig:
+  address: "redis://{{ redis_host }}:{{ redis_port | default(6379) }}"
+  connectionPoolSize: {{ redis_pool_size | default(64) }}
+  connectionMinimumIdleSize: {{ redis_pool_min | default(10) }}
+  connectTimeout: {{ redis_connect_timeout | default(10000) }}
+  timeout: {{ redis_timeout | default(3000) }}
+  retryAttempts: {{ redis_retry_attempts | default(3) }}
+  retryInterval: {{ redis_retry_interval | default(1500) }}
+{% if redis_password is defined and redis_password != '' %}
+  password: "{{ redis_password }}"
+{% endif %}
+{% if redis_database is defined %}
+  database: {{ redis_database }}
+{% endif %}
+{% if env_name == 'production' %}
+  # Production SSL settings for ElastiCache
+  sslEnableEndpointIdentification: false
+{% endif %}
+
+# Thread settings
+threads: {{ redis_threads | default(16) }}
+nettyThreads: {{ redis_netty_threads | default(32) }}
+
+# Codec
+codec: !<org.redisson.codec.Kryo5Codec> {}

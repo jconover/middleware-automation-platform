@@ -1,17 +1,20 @@
 ---
 # =============================================================================
-# Ansible Inventory - AWS Production
+# Ansible Inventory - AWS Production (EXAMPLE)
 # =============================================================================
-# This is a static inventory. For dynamic EC2 discovery, use prod-aws-ec2.yml
+# Copy this file to prod-aws.yml and update with your Terraform outputs:
 #
-# Update the IPs after running: terraform output ansible_inventory
+#   cp prod-aws.yml.example prod-aws.yml
+#   cd ../../terraform/environments/prod-aws
+#   terraform output ansible_inventory
+#   # Copy the IPs and endpoints into prod-aws.yml
 # =============================================================================
 
 all:
   vars:
     env_name: production
     ansible_user: ansible
-    ansible_ssh_private_key_file: ~/.ssh/ansible_ed25519
+    ansible_ssh_private_key_file: ~/.ssh/ansible_ed25519  # <-- Your SSH key
     ansible_python_interpreter: /usr/bin/python3
 
     # Liberty settings
@@ -22,33 +25,38 @@ all:
     liberty_https_port: 9443
     liberty_java_version: "17"
 
+    # ==========================================================================
+    # UPDATE THESE VALUES FROM TERRAFORM OUTPUT
+    # ==========================================================================
+
     # Database - RDS PostgreSQL
-    postgresql_host: mw-prod-postgres.chuo6gkeifxo.us-east-1.rds.amazonaws.com
+    # Get from: terraform output db_endpoint
+    postgresql_host: YOUR_RDS_ENDPOINT.us-east-1.rds.amazonaws.com  # <-- CHANGE
     postgresql_port: 5432
     postgresql_database: appdb
     postgresql_user: appuser
     postgresql_version: "15"
-    # Password is fetched from AWS Secrets Manager (see liberty role)
-    # Secret ARN: mw-prod/database/credentials
+    # Password is auto-fetched from AWS Secrets Manager
 
     # Redis - ElastiCache
-    redis_host: mw-prod-redis.1jnokz.0001.use1.cache.amazonaws.com
+    # Get from: terraform output redis_endpoint
+    redis_host: YOUR_REDIS_ENDPOINT.cache.amazonaws.com  # <-- CHANGE
     redis_port: 6379
     redis_version: "7"
 
     # AWS-specific settings
-    aws_region: us-east-1
+    aws_region: us-east-1  # <-- CHANGE if using different region
 
   children:
     liberty_servers:
       hosts:
-        # Update these IPs from Terraform output: liberty_private_ips
+        # Get IPs from: terraform output liberty_private_ips
         liberty-prod-01:
-          ansible_host: 10.10.10.60  # Update from terraform output
+          ansible_host: 10.10.10.X  # <-- CHANGE to first Liberty IP
           liberty_server_name: appServer01
           liberty_jvm_heap_max: 2g
         liberty-prod-02:
-          ansible_host: 10.10.11.119
+          ansible_host: 10.10.11.X  # <-- CHANGE to second Liberty IP
           liberty_server_name: appServer02
           liberty_jvm_heap_max: 2g
 
@@ -63,11 +71,11 @@ all:
     load_balancers:
       hosts: {}
 
-    # Monitoring can be deployed to Liberty servers or separate instance
+    # Monitoring deployed to first Liberty server
     monitoring_servers:
       hosts:
         liberty-prod-01:
-          ansible_host: 10.10.10.60
+          ansible_host: 10.10.10.X  # <-- CHANGE (same as liberty-prod-01)
 
     # Group all AWS hosts
     aws:

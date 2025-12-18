@@ -10,6 +10,32 @@
       - liberty_install_dir is defined
     fail_msg: "Required Liberty variables not defined"
 
+# Fetch database credentials from AWS Secrets Manager (production only)
+- name: Fetch database credentials from Secrets Manager
+  when:
+    - env_name == 'production'
+    - postgresql_host is defined
+    - postgresql_password is not defined
+  block:
+    - name: Get database secret from AWS Secrets Manager
+      ansible.builtin.command:
+        cmd: >
+          aws secretsmanager get-secret-value
+          --secret-id mw-prod/database/credentials
+          --query SecretString
+          --output text
+          --region {{ aws_region | default('us-east-1') }}
+      register: db_secret_result
+      changed_when: false
+      delegate_to: localhost
+      become: false
+
+    - name: Parse database credentials
+      ansible.builtin.set_fact:
+        postgresql_password: "{{ (db_secret_result.stdout | from_json).password }}"
+        postgresql_user: "{{ (db_secret_result.stdout | from_json).username }}"
+      no_log: true
+
 # User and Directory Setup
 - name: Create Liberty service account
   ansible.builtin.user:
@@ -97,6 +123,56 @@
     dest: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/jvm.options"
     owner: "{{ liberty_user }}"
     mode: "0640"
+  notify: Restart Liberty
+
+# Database Driver (PostgreSQL)
+- name: Create JDBC directory
+  ansible.builtin.file:
+    path: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/jdbc"
+    state: directory
+    owner: "{{ liberty_user }}"
+    group: "{{ liberty_user }}"
+    mode: "0755"
+  when: postgresql_host is defined and postgresql_host != ''
+
+- name: Download PostgreSQL JDBC driver
+  ansible.builtin.get_url:
+    url: "https://jdbc.postgresql.org/download/postgresql-{{ postgresql_jdbc_version | default('42.7.1') }}.jar"
+    dest: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/jdbc/postgresql-{{ postgresql_jdbc_version | default('42.7.1') }}.jar"
+    owner: "{{ liberty_user }}"
+    group: "{{ liberty_user }}"
+    mode: "0644"
+  when: postgresql_host is defined and postgresql_host != ''
+  notify: Restart Liberty
+
+# Redis/JCache Configuration
+- name: Create JCache directory
+  ansible.builtin.file:
+    path: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/jcache"
+    state: directory
+    owner: "{{ liberty_user }}"
+    group: "{{ liberty_user }}"
+    mode: "0755"
+  when: redis_host is defined and redis_host != ''
+
+- name: Download Redisson JCache provider
+  ansible.builtin.get_url:
+    url: "https://repo1.maven.org/maven2/org/redisson/redisson-all/{{ redisson_version | default('3.24.3') }}/redisson-all-{{ redisson_version | default('3.24.3') }}.jar"
+    dest: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/jcache/redisson-all-{{ redisson_version | default('3.24.3') }}.jar"
+    owner: "{{ liberty_user }}"
+    group: "{{ liberty_user }}"
+    mode: "0644"
+  when: redis_host is defined and redis_host != ''
+  notify: Restart Liberty
+
+- name: Deploy Redisson configuration
+  ansible.builtin.template:
+    src: redisson.yaml.j2
+    dest: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/redisson.yaml"
+    owner: "{{ liberty_user }}"
+    group: "{{ liberty_user }}"
+    mode: "0640"
+  when: redis_host is defined and redis_host != ''
   notify: Restart Liberty
 
 # SSL Certificates

@@ -4,10 +4,29 @@ This document explains how to configure the platform for your environment.
 
 ## Quick Links
 
-| Environment | Configuration File |
-|-------------|-------------------|
-| Local Development | `automated/ansible/inventory/dev.yml` |
-| AWS Production | `automated/terraform/environments/prod-aws/terraform.tfvars` |
+| Environment | Example File | Your Config |
+|-------------|--------------|-------------|
+| Local Development | - | `automated/ansible/inventory/dev.yml` |
+| AWS Terraform | `terraform.tfvars.example` | `terraform.tfvars` |
+| AWS Ansible | `prod-aws.yml.example` | `prod-aws.yml` |
+
+### Setup Workflow
+
+```bash
+# Local Development - edit directly
+vim automated/ansible/inventory/dev.yml
+
+# AWS Production - copy examples first
+cd automated/terraform/environments/prod-aws
+cp terraform.tfvars.example terraform.tfvars
+vim terraform.tfvars
+
+cd ../../ansible/inventory
+cp prod-aws.yml.example prod-aws.yml
+# After terraform apply, get values:
+#   terraform output ansible_inventory
+vim prod-aws.yml
+```
 
 ---
 
