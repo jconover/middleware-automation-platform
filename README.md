@@ -199,8 +199,49 @@ cat README.md
 # Continue through each phase...
 ```
 
+### Option 3: AWS Production Deployment
+
+```bash
+# 1. Bootstrap Terraform state backend (one-time)
+cd automated/terraform/bootstrap
+terraform init
+terraform apply
+
+# 2. Deploy AWS infrastructure
+cd ../environments/prod-aws
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your settings (domain, instance types, etc.)
+terraform init
+terraform plan    # Review changes
+terraform apply   # Deploy (~5-10 minutes)
+
+# 3. Get instance IPs for Ansible inventory
+terraform output ansible_inventory
+# Update automated/ansible/inventory/prod-aws.yml with the IPs
+# Or use dynamic inventory (requires AWS credentials):
+#   ansible-inventory -i inventory/prod-aws-ec2.yml --graph
+
+# 4. Deploy Liberty to EC2 instances
+# Note: Requires VPN or bastion access to private subnets
+cd ../../ansible
+ansible-playbook -i inventory/prod-aws-ec2.yml playbooks/site.yml
+
+# 5. Verify deployment
+ALB_DNS=$(cd ../terraform/environments/prod-aws && terraform output -raw alb_dns_name)
+curl http://$ALB_DNS/health/ready
+```
+
+**AWS Prerequisites:**
+- AWS CLI configured (`aws configure`)
+- Terraform 1.6+
+- SSH key at `~/.ssh/ansible_ed25519.pub`
+- VPN or bastion host access to private subnets
+
+**Estimated Cost:** ~$137/month (see [terraform.tfvars.example](./automated/terraform/environments/prod-aws/terraform.tfvars.example))
+
 ### Teardown / Clean Reinstall
 
+**Local Development:**
 ```bash
 # Remove all deployed components (prompts for confirmation)
 ./automated/scripts/destroy.sh --environment dev
@@ -211,6 +252,12 @@ cat README.md
 # Destroy specific component only
 ./automated/scripts/destroy.sh --environment dev --phase liberty
 ./automated/scripts/destroy.sh --environment dev --phase monitoring
+```
+
+**AWS Production:**
+```bash
+cd automated/terraform/environments/prod-aws
+terraform destroy
 ```
 
 ---
@@ -282,7 +329,8 @@ echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:300
 
 | Document | Description |
 |----------|-------------|
-| [CONFIGURATION.md](./CONFIGURATION.md) | IP addresses and environment setup |
+| [CONFIGURATION.md](./CONFIGURATION.md) | IP addresses and environment setup (local) |
+| [terraform.tfvars.example](./automated/terraform/environments/prod-aws/terraform.tfvars.example) | AWS production configuration |
 | [MANUAL_DEPLOYMENT.md](./MANUAL_DEPLOYMENT.md) | Complete manual deployment guide |
 | [docs/architecture/HYBRID_ARCHITECTURE.md](./docs/architecture/HYBRID_ARCHITECTURE.md) | Hybrid architecture details |
 | [docs/timing-analysis/](./docs/timing-analysis/) | Timing comparison reports |
