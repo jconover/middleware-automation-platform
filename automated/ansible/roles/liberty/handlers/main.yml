@@ -7,3 +7,11 @@
   ansible.builtin.systemd:
     name: "liberty-{{ liberty_server_name }}"
     state: restarted
+  async: 360
+  poll: 10
+  register: liberty_restart
+
+- name: Verify Liberty restart
+  ansible.builtin.debug:
+    msg: "Liberty restart completed"
+  when: liberty_restart is defined
