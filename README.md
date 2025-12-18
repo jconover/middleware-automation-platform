@@ -238,8 +238,8 @@ curl -s http://192.168.68.82:3000/api/health
 ```bash
 echo "=== Liberty Servers ==="
 for ip in 192.168.68.86 192.168.68.88; do
-  status=$(curl -s -o /dev/null -w "%{http_code}" http://$ip:9080/health/ready)
-  echo "$ip: $status"
+  http_code=$(curl -s -o /dev/null -w "%{http_code}" http://$ip:9080/health/ready)
+  echo "$ip: $http_code"
 done
 
 echo "=== Monitoring ==="
