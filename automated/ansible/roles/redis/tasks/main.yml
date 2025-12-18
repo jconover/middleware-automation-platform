@@ -1,0 +1,9 @@
+---
+# Redis Role - Stub for AWS (using ElastiCache)
+# This role is only used for on-premise deployments.
+# For AWS, ElastiCache is provisioned via Terraform.
+
+- name: Redis stub (AWS uses ElastiCache)
+  ansible.builtin.debug:
+    msg: "Skipping Redis installation - using AWS ElastiCache"
+  when: false  # Never runs, just prevents empty role error

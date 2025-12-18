@@ -1,0 +1,9 @@
+---
+# NGINX Role - Stub for AWS (using ALB)
+# This role is only used for on-premise deployments.
+# For AWS, ALB is provisioned via Terraform.
+
+- name: NGINX stub (AWS uses ALB)
+  ansible.builtin.debug:
+    msg: "Skipping NGINX installation - using AWS ALB"
+  when: false  # Never runs, just prevents empty role error

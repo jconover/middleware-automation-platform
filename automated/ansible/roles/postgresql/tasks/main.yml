@@ -1,0 +1,9 @@
+---
+# PostgreSQL Role - Stub for AWS (using RDS)
+# This role is only used for on-premise deployments.
+# For AWS, RDS is provisioned via Terraform.
+
+- name: PostgreSQL stub (AWS uses RDS)
+  ansible.builtin.debug:
+    msg: "Skipping PostgreSQL installation - using AWS RDS"
+  when: false  # Never runs, just prevents empty role error
