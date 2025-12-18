@@ -1,0 +1,23 @@
+---
+# =============================================================================
+# Monitoring Role - Handlers
+# =============================================================================
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart Prometheus
+  ansible.builtin.systemd:
+    name: prometheus
+    state: restarted
+
+- name: Restart Node Exporter
+  ansible.builtin.systemd:
+    name: node_exporter
+    state: restarted
+
+- name: Restart Grafana
+  ansible.builtin.systemd:
+    name: grafana-server
+    state: restarted

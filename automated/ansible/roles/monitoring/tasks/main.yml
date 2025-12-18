@@ -1,0 +1,216 @@
+---
+# =============================================================================
+# Monitoring Role - Main Tasks
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Prometheus Installation
+# -----------------------------------------------------------------------------
+- name: Create Prometheus user
+  ansible.builtin.user:
+    name: "{{ prometheus_user }}"
+    system: true
+    shell: /bin/false
+    createhome: false
+
+- name: Create Prometheus directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_user }}"
+    mode: "0755"
+  loop:
+    - "{{ prometheus_install_dir }}"
+    - "{{ prometheus_config_dir }}"
+    - "{{ prometheus_config_dir }}/rules"
+    - "{{ prometheus_data_dir }}"
+
+- name: Check if Prometheus is installed
+  ansible.builtin.stat:
+    path: "{{ prometheus_install_dir }}/prometheus"
+  register: prometheus_installed
+
+- name: Download Prometheus
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+    dest: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+    mode: "0644"
+  when: not prometheus_installed.stat.exists
+
+- name: Extract Prometheus
+  ansible.builtin.unarchive:
+    src: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
+    dest: "/tmp"
+    remote_src: true
+  when: not prometheus_installed.stat.exists
+
+- name: Install Prometheus binaries
+  ansible.builtin.copy:
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+    dest: "{{ prometheus_install_dir }}/{{ item }}"
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_user }}"
+    mode: "0755"
+    remote_src: true
+  loop:
+    - prometheus
+    - promtool
+  when: not prometheus_installed.stat.exists
+  notify: Restart Prometheus
+
+- name: Deploy Prometheus configuration
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../monitoring/prometheus/prometheus.yml"
+    dest: "{{ prometheus_config_dir }}/prometheus.yml"
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_user }}"
+    mode: "0644"
+  notify: Restart Prometheus
+
+- name: Deploy Prometheus alert rules
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../monitoring/prometheus/rules/"
+    dest: "{{ prometheus_config_dir }}/rules/"
+    owner: "{{ prometheus_user }}"
+    group: "{{ prometheus_user }}"
+    mode: "0644"
+  notify: Restart Prometheus
+
+- name: Deploy Prometheus systemd service
+  ansible.builtin.template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Prometheus
+
+- name: Enable and start Prometheus
+  ansible.builtin.systemd:
+    name: prometheus
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# -----------------------------------------------------------------------------
+# Node Exporter Installation
+# -----------------------------------------------------------------------------
+- name: Create Node Exporter user
+  ansible.builtin.user:
+    name: node_exporter
+    system: true
+    shell: /bin/false
+    createhome: false
+
+- name: Check if Node Exporter is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/node_exporter
+  register: node_exporter_installed
+
+- name: Download Node Exporter
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+    dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    mode: "0644"
+  when: not node_exporter_installed.stat.exists
+
+- name: Extract Node Exporter
+  ansible.builtin.unarchive:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+    dest: "/tmp"
+    remote_src: true
+  when: not node_exporter_installed.stat.exists
+
+- name: Install Node Exporter binary
+  ansible.builtin.copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+    dest: /usr/local/bin/node_exporter
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  when: not node_exporter_installed.stat.exists
+  notify: Restart Node Exporter
+
+- name: Deploy Node Exporter systemd service
+  ansible.builtin.template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Node Exporter
+
+- name: Enable and start Node Exporter
+  ansible.builtin.systemd:
+    name: node_exporter
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# -----------------------------------------------------------------------------
+# Grafana Installation
+# -----------------------------------------------------------------------------
+- name: Install Grafana dependencies
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - software-properties-common
+    state: present
+    update_cache: true
+
+- name: Add Grafana GPG key
+  ansible.builtin.apt_key:
+    url: https://apt.grafana.com/gpg.key
+    state: present
+
+- name: Add Grafana repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://apt.grafana.com stable main"
+    state: present
+    filename: grafana
+
+- name: Install Grafana
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: true
+  notify: Restart Grafana
+
+- name: Deploy Grafana datasource configuration
+  ansible.builtin.template:
+    src: grafana-datasources.yml.j2
+    dest: /etc/grafana/provisioning/datasources/prometheus.yml
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: Restart Grafana
+
+- name: Enable and start Grafana
+  ansible.builtin.systemd:
+    name: grafana-server
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# -----------------------------------------------------------------------------
+# Verification
+# -----------------------------------------------------------------------------
+- name: Wait for Prometheus to be ready
+  ansible.builtin.uri:
+    url: "http://localhost:{{ prometheus_port }}/-/ready"
+    status_code: 200
+  register: prometheus_health
+  retries: 6
+  delay: 10
+  until: prometheus_health.status == 200
+
+- name: Wait for Grafana to be ready
+  ansible.builtin.uri:
+    url: "http://localhost:{{ grafana_port }}/api/health"
+    status_code: 200
+  register: grafana_health
+  retries: 6
+  delay: 10
+  until: grafana_health.status == 200
