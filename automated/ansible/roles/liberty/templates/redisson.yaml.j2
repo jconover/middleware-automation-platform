@@ -2,8 +2,8 @@
 # https://github.com/redisson/redisson/wiki/2.-Configuration
 
 singleServerConfig:
-{% if env_name == 'production' %}
-  # ElastiCache requires TLS (rediss://)
+{% if redis_tls_enabled | default(false) %}
+  # TLS enabled (rediss://)
   address: "rediss://{{ redis_host }}:{{ redis_port | default(6379) }}"
 {% else %}
   address: "redis://{{ redis_host }}:{{ redis_port | default(6379) }}"
@@ -20,8 +20,8 @@ singleServerConfig:
 {% if redis_database is defined %}
   database: {{ redis_database }}
 {% endif %}
-{% if env_name == 'production' %}
-  # Production SSL settings for ElastiCache
+{% if redis_tls_enabled | default(false) %}
+  # TLS SSL settings
   sslEnableEndpointIdentification: false
 {% endif %}
 
