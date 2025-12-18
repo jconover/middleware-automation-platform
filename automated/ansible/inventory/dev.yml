@@ -6,7 +6,8 @@
 all:
   vars:
     env_name: development
-    ansible_user: ubuntu
+    ansible_user: ansible
+    ansible_ssh_private_key_file: ~/.ssh/ansible_ed25519
     ansible_python_interpreter: /usr/bin/python3
     
     # Liberty settings
@@ -24,36 +25,36 @@ all:
     liberty_servers:
       hosts:
         liberty-dev-01:
-          ansible_host: 192.168.68.88
+          ansible_host: 192.168.68.86
           liberty_server_name: appServer01
           liberty_jvm_heap_max: 2g
         liberty-dev-02:
-          ansible_host: 192.168.68.83
+          ansible_host: 192.168.68.88
           liberty_server_name: appServer02
           liberty_jvm_heap_max: 2g
 
     collective_controller:
       hosts:
         liberty-controller:
-          ansible_host: 192.168.68.86
+          ansible_host: 192.168.68.82
           liberty_server_name: collectiveController
 
     database_servers:
       hosts:
         db-dev:
-          ansible_host: 192.168.68.86
+          ansible_host: 192.168.68.82
           postgresql_enabled: true
           redis_enabled: true
 
     load_balancers:
       hosts:
         lb-dev:
-          ansible_host: 192.168.68.86
+          ansible_host: 192.168.68.82
           nginx_upstream_servers:
             - { host: "192.168.68.88", port: 9080 }
-            - { host: "192.168.68.83", port: 9080 }
+            - { host: "192.168.68.86", port: 9080 }
 
     monitoring_servers:
       hosts:
         monitoring-dev:
-          ansible_host: 192.168.68.86
+          ansible_host: 192.168.68.82

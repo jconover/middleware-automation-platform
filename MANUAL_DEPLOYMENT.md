@@ -78,9 +78,9 @@ sudo hostnamectl set-hostname liberty-server-01
 
 # Configure /etc/hosts for cluster communication
 sudo bash -c 'cat >> /etc/hosts << EOF
-192.168.68.86  liberty-controller-01
-192.168.68.88  liberty-server-01
-192.168.68.83  liberty-server-02
+192.168.68.82  liberty-controller-01
+192.168.68.86  liberty-server-01
+192.168.68.88  liberty-server-02
 EOF'
 ```
 
@@ -88,7 +88,7 @@ EOF'
 
 **Expected: 10 minutes** | **Actual: ______**
 
-Repeat Task 1.1 on second server (192.168.68.83), setting hostname to `liberty-server-02`.
+Repeat Task 1.1 on second server (192.168.68.88), setting hostname to `liberty-server-02`.
 
 ### Task 1.3: Prepare Controller Server (liberty-controller-01)
 
@@ -981,7 +981,7 @@ Update dataSource in server.xml with tuned pool settings.
 
 #### Physical/VM Servers
 ```bash
-for server in 192.168.68.88 192.168.68.83; do
+for server in 192.168.68.88 192.168.68.86; do
     curl http://$server:9080/hello-liberty/api/hello
 done
 ```
@@ -1078,7 +1078,7 @@ sudo cat > /etc/nginx/conf.d/liberty-upstream.conf << 'EOF'
 upstream liberty_cluster {
     least_conn;
     server 192.168.68.88:9080 weight=1 max_fails=3 fail_timeout=30s;
-    server 192.168.68.83:9080 weight=1 max_fails=3 fail_timeout=30s;
+    server 192.168.68.86:9080 weight=1 max_fails=3 fail_timeout=30s;
     keepalive 32;
 }
 EOF
@@ -1438,7 +1438,7 @@ scrape_configs:
     static_configs:
       - targets:
           - '192.168.68.88:9080'
-          - '192.168.68.83:9080'
+          - '192.168.68.86:9080'
 EOF
 
 # Create systemd service
@@ -1784,11 +1784,11 @@ echo "Import dashboard ID 14370 for Liberty metrics"
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | Liberty Server 1 | http://192.168.68.88:9080 | - |
-| Liberty Server 2 | http://192.168.68.83:9080 | - |
-| Admin Center | https://192.168.68.86:9443/adminCenter | admin/adminpassword |
-| Load Balancer | http://192.168.68.86 | - |
-| Prometheus | http://192.168.68.86:9090 | - |
-| Grafana | http://192.168.68.86:3000 | admin/admin |
+| Liberty Server 2 | http://192.168.68.86:9080 | - |
+| Admin Center | https://192.168.68.82:9443/adminCenter | admin/adminpassword |
+| Load Balancer | http://192.168.68.82 | - |
+| Prometheus | http://192.168.68.82:9090 | - |
+| Grafana | http://192.168.68.82:3000 | admin/admin |
 
 ### Podman Demo (localhost)
 

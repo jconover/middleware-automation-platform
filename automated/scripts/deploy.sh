@@ -81,26 +81,29 @@ deploy_infrastructure() {
 deploy_liberty() {
     log_phase "Phase 2: Liberty Installation"
     start_timer "liberty"
-    
-    local args="-i ${PROJECT_ROOT}/automated/ansible/inventory/${ENVIRONMENT}.yml"
-    args+=" ${PROJECT_ROOT}/automated/ansible/playbooks/site.yml --tags liberty"
+
+    cd "${PROJECT_ROOT}/automated/ansible"
+    # Run common first to ensure prerequisites, then liberty
+    local args="-i inventory/${ENVIRONMENT}.yml playbooks/site.yml --tags common,liberty"
     [[ "$DRY_RUN" == true ]] && args+=" --check"
-    
+
     ansible-playbook $args
-    
+    cd "${PROJECT_ROOT}"
+
     stop_timer "liberty"
 }
 
 deploy_monitoring() {
     log_phase "Phase 3: Monitoring"
     start_timer "monitoring"
-    
-    local args="-i ${PROJECT_ROOT}/automated/ansible/inventory/${ENVIRONMENT}.yml"
-    args+=" ${PROJECT_ROOT}/automated/ansible/playbooks/site.yml --tags monitoring"
+
+    cd "${PROJECT_ROOT}/automated/ansible"
+    local args="-i inventory/${ENVIRONMENT}.yml playbooks/site.yml --tags monitoring"
     [[ "$DRY_RUN" == true ]] && args+=" --check"
-    
+
     ansible-playbook $args
-    
+    cd "${PROJECT_ROOT}"
+
     stop_timer "monitoring"
 }
 

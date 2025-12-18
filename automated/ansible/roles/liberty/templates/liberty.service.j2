@@ -6,9 +6,12 @@ After=network.target
 Type=forking
 User={{ liberty_user }}
 Group={{ liberty_user }}
+Environment="JAVA_HOME=/usr/lib/jvm/java-{{ liberty_java_version | default('17') }}-openjdk-amd64"
 ExecStart={{ liberty_install_dir }}/bin/server start {{ liberty_server_name }}
 ExecStop={{ liberty_install_dir }}/bin/server stop {{ liberty_server_name }}
 PIDFile={{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/workarea/.pid/{{ liberty_server_name }}.pid
+TimeoutStartSec=300
+TimeoutStopSec=60
 Restart=on-failure
 RestartSec=10
 
