@@ -10,7 +10,7 @@
 all:
   vars:
     env_name: production
-    ansible_user: ansible
+    ansible_user: ubuntu  # Use ubuntu for initial setup, then can switch to ansible
     ansible_ssh_private_key_file: ~/.ssh/ansible_ed25519
     ansible_python_interpreter: /usr/bin/python3
 
