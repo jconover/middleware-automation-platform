@@ -23,7 +23,7 @@ variable "management_instance_type" {
 variable "management_allowed_cidrs" {
   description = "CIDR blocks allowed to access management server (your IP)"
   type        = list(string)
-  default     = ["0.0.0.0/0"]  # Restrict this to your IP in production!
+  default     = ["104.55.73.102/32"]  # Restrict this to your IP in production!
 }
 
 # -----------------------------------------------------------------------------
@@ -282,24 +282,25 @@ resource "aws_instance" "management" {
     cp /etc/rancher/k3s/k3s.yaml /home/ansible/.kube/config
     chown -R ansible:ansible /home/ansible/.kube
 
-    # Install AWX Operator
-    kubectl apply -f https://raw.githubusercontent.com/ansible/awx-operator/main/deploy/awx-operator.yaml
-    sleep 60
+    # Install AWX Operator (using kustomize method)
+    kubectl apply -k "github.com/ansible/awx-operator/config/default?ref=2.19.1"
 
-    # Deploy AWX
+    # Wait for operator to be ready
+    echo "Waiting for AWX operator to be ready..."
+    sleep 120
+    kubectl wait --for=condition=Available deployment/awx-operator-controller-manager -n awx --timeout=300s || true
+
+    # Deploy AWX instance
     cat <<'AWXEOF' | kubectl apply -f -
-    apiVersion: awx.ansible.com/v1beta1
-    kind: AWX
-    metadata:
-      name: awx
-    spec:
-      service_type: NodePort
-      nodeport_port: 30080
-      admin_user: admin
-      postgres_storage_class: local-path
-      projects_persistence: true
-      projects_storage_class: local-path
-    AWXEOF
+apiVersion: awx.ansible.com/v1beta1
+kind: AWX
+metadata:
+  name: awx
+  namespace: awx
+spec:
+  service_type: NodePort
+  nodeport_port: 30080
+AWXEOF
 
     echo "=== Management Server Setup Complete ==="
     echo "AWX will be available at http://<public-ip>:30080 in ~5 minutes"

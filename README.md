@@ -262,6 +262,63 @@ terraform destroy
 
 ---
 
+## AWX Setup (Management Server)
+
+The Terraform deployment includes an AWX management server for running Ansible playbooks via web UI.
+
+### Access AWX
+
+```bash
+# Get AWX URL and SSH command
+cd automated/terraform/environments/prod-aws
+terraform output awx_url
+terraform output management_ssh_command
+
+# Get admin password (run on management server)
+sudo kubectl get secret awx-admin-password -n awx -o jsonpath='{.data.password}' | base64 -d && echo
+```
+
+- **URL:** `http://<MANAGEMENT_PUBLIC_IP>:30080`
+- **Username:** `admin`
+- **Password:** (from command above)
+
+### Configure AWX
+
+#### 1. Create SSH Credential
+1. **Resources → Credentials → Add**
+2. **Name:** `AWS SSH Key`
+3. **Credential Type:** `Machine`
+4. **Username:** `ansible`
+5. **SSH Private Key:** Paste contents of `~/.ssh/ansible_ed25519` (from your local machine)
+
+#### 2. Create Project
+1. **Resources → Projects → Add**
+2. **Name:** `Middleware Platform`
+3. **Source Control Type:** `Git`
+4. **Source Control URL:** `https://github.com/jconover/middleware-automation-platform.git`
+5. **Options:** ✓ Update Revision on Launch
+
+#### 3. Create Inventory
+1. **Resources → Inventories → Add Inventory**
+2. **Name:** `AWS Production`
+3. Save, then go to **Sources → Add**
+4. **Source:** `Sourced from a Project`
+5. **Project:** `Middleware Platform`
+6. **Inventory file:** `automated/ansible/inventory/prod-aws.yml`
+
+#### 4. Create Job Template
+1. **Resources → Templates → Add → Job Template**
+2. **Name:** `Deploy Liberty`
+3. **Inventory:** `AWS Production`
+4. **Project:** `Middleware Platform`
+5. **Playbook:** `automated/ansible/playbooks/site.yml`
+6. **Credentials:** `AWS SSH Key`
+
+#### 5. Launch Deployment
+Click **Launch** on the job template to deploy!
+
+---
+
 ## Verification & Console URLs
 
 After deployment, verify all services are running:
