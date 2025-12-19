@@ -391,6 +391,7 @@ echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:300
 | [MANUAL_DEPLOYMENT.md](./MANUAL_DEPLOYMENT.md) | Complete manual deployment guide |
 | [docs/architecture/HYBRID_ARCHITECTURE.md](./docs/architecture/HYBRID_ARCHITECTURE.md) | Hybrid architecture details |
 | [docs/timing-analysis/](./docs/timing-analysis/) | Timing comparison reports |
+| [docs/troubleshooting/terraform-aws.md](./docs/troubleshooting/terraform-aws.md) | AWS/Terraform troubleshooting guide |
 
 ---
 
