@@ -26,7 +26,7 @@ Services:                            Services:
 • Prometheus (.201)                  • CloudWatch
 • Grafana (.202)
 
-Cost: $0/month                       Cost: ~$137/month
+Cost: $0/month                       Cost: ~$152/month
 ```
 
 ## MetalLB IP Assignments
@@ -46,10 +46,11 @@ Cost: $0/month                       Cost: ~$137/month
 
 | Resource | Type | Cost |
 |----------|------|------|
-| EC2 (x2) | t3.small | ~$30 |
+| Liberty Servers (x2) | t3.small | ~$30 |
+| Management Server (AWX) | t3.medium | ~$30 |
 | RDS | db.t3.micro | ~$15 |
 | ElastiCache | cache.t3.micro | ~$12 |
 | ALB | - | ~$20 |
 | NAT Gateway | - | ~$35 |
 | Data Transfer | ~10GB | ~$10 |
-| **TOTAL** | | **~$137** |
+| **TOTAL** | | **~$152** |

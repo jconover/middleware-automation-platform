@@ -58,7 +58,7 @@ LOCAL DEVELOPMENT (Beelink Homelab)          AWS PRODUCTION
 │  • Prometheus (.201)           │          │  • CloudWatch           │
 │  • Grafana (.202)              │          │                         │
 │                                 │          │                         │
-│  Cost: $0/month                │          │  Cost: ~$137/month      │
+│  Cost: $0/month                │          │  Cost: ~$152/month      │
 └─────────────────────────────────┘          └─────────────────────────┘
 ```
 
@@ -310,7 +310,7 @@ curl http://$ALB_DNS/health/ready
 - Terraform 1.6+
 - SSH key at `~/.ssh/ansible_ed25519.pub`
 
-**Estimated Cost:** ~$137/month (see [terraform.tfvars.example](./automated/terraform/environments/prod-aws/terraform.tfvars.example))
+**Estimated Cost:** ~$152/month (see [terraform.tfvars.example](./automated/terraform/environments/prod-aws/terraform.tfvars.example))
 
 ### Teardown / Clean Reinstall
 
@@ -390,13 +390,14 @@ echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:300
 
 | Resource | Type | Monthly Cost |
 |----------|------|--------------|
-| EC2 Instances (x2) | t3.small | ~$30 |
+| Liberty Servers (x2) | t3.small | ~$30 |
+| Management Server (AWX) | t3.medium | ~$30 |
 | RDS PostgreSQL | db.t3.micro | ~$15 |
 | ElastiCache Redis | cache.t3.micro | ~$12 |
 | Application Load Balancer | - | ~$20 |
 | NAT Gateway | - | ~$35 |
 | Data Transfer | ~10GB | ~$10 |
-| **TOTAL** | | **~$137/month** |
+| **TOTAL** | | **~$152/month** |
 
 ---
 
