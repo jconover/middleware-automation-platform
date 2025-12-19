@@ -44,11 +44,11 @@ all:
       hosts:
         # Update these IPs from Terraform output: liberty_private_ips
         liberty-prod-01:
-          ansible_host: 10.10.10.60  # Update from terraform output
+          ansible_host: 10.10.10.163  # Update from terraform output
           liberty_server_name: appServer01
           liberty_jvm_heap_max: 2g
         liberty-prod-02:
-          ansible_host: 10.10.11.119
+          ansible_host: 10.10.11.39 # Update from terraform output
           liberty_server_name: appServer02
           liberty_jvm_heap_max: 2g
 
@@ -67,7 +67,7 @@ all:
     monitoring_servers:
       hosts:
         liberty-prod-01:
-          ansible_host: 10.10.10.60
+          ansible_host: 10.10.10.163
 
     # Group all AWS hosts
     aws:
