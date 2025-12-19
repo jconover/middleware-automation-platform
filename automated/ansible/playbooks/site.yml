@@ -84,12 +84,13 @@
 - name: "Phase 6: Validate Deployment"
   hosts: localhost
   gather_facts: false
+  become: false
   tags: [validate, phase6]
-  
+
   tasks:
     - name: Health check Liberty servers
       ansible.builtin.uri:
-        url: "http://{{ item }}:9080/health/ready"
+        url: "http://{{ hostvars[item]['ansible_host'] }}:9080/health/ready"
         status_code: 200
         timeout: 30
       loop: "{{ groups['liberty_servers'] }}"
