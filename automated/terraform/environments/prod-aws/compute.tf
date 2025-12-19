@@ -105,36 +105,9 @@ resource "aws_instance" "liberty" {
     http_put_response_hop_limit = 1
   }
 
-  user_data = base64encode(<<-EOF
-    #!/bin/bash
-    set -e
-
-    # Update system
-    apt-get update
-    apt-get upgrade -y
-
-    # Install prerequisites for Ansible
-    apt-get install -y python3 python3-pip
-
-    # Install AWS CLI
-    apt-get install -y awscli
-
-    # Create ansible user
-    useradd -m -s /bin/bash ansible
-    mkdir -p /home/ansible/.ssh
-    cat /home/ubuntu/.ssh/authorized_keys >> /home/ansible/.ssh/authorized_keys
-    chown -R ansible:ansible /home/ansible/.ssh
-    chmod 700 /home/ansible/.ssh
-    chmod 600 /home/ansible/.ssh/authorized_keys
-
-    # Add ansible to sudoers
-    echo "ansible ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ansible
-
-    # Tag instance as ready
-    INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-    aws ec2 create-tags --resources $INSTANCE_ID --tags Key=Status,Value=Ready --region ${var.aws_region}
-  EOF
-  )
+  user_data = base64encode(templatefile("${path.module}/templates/liberty-user-data.sh", {
+    aws_region = var.aws_region
+  }))
 
   tags = {
     Name                = "${local.name_prefix}-liberty-${count.index + 1}"
@@ -144,7 +117,7 @@ resource "aws_instance" "liberty" {
   }
 
   lifecycle {
-    ignore_changes = [ami] # Prevent recreation on AMI updates
+    ignore_changes = [ami, user_data] # Prevent recreation on AMI/user_data updates
   }
 }
 

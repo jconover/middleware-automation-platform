@@ -79,6 +79,14 @@ resource "aws_security_group" "liberty" {
     cidr_blocks = [var.vpc_cidr]
   }
 
+  ingress {
+    description = "Health checks from VPC (AWX/monitoring)"
+    from_port   = 9080
+    to_port     = 9080
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
   egress {
     description = "All outbound traffic"
     from_port   = 0
