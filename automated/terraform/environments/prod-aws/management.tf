@@ -45,20 +45,11 @@ resource "aws_security_group" "management" {
     cidr_blocks = var.management_allowed_cidrs
   }
 
-  # AWX Web UI
+  # AWX Web UI (NodePort)
   ingress {
-    description = "AWX HTTPS"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = var.management_allowed_cidrs
-  }
-
-  # AWX HTTP (redirects to HTTPS)
-  ingress {
-    description = "AWX HTTP"
-    from_port   = 80
-    to_port     = 80
+    description = "AWX NodePort"
+    from_port   = 30080
+    to_port     = 30080
     protocol    = "tcp"
     cidr_blocks = var.management_allowed_cidrs
   }

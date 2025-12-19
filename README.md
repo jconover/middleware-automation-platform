@@ -222,13 +222,18 @@ terraform plan    # Review changes
 terraform apply   # Deploy (~5-10 minutes)
 ```
 
-#### Step 3: Update Ansible Inventory
+#### Step 3: Configure Ansible Inventory
 
+**Option A: Dynamic Inventory (Recommended for AWX)**
+
+No action needed. The `prod-aws-ec2.yml` inventory uses the AWS EC2 plugin to auto-discover instances by tags. AWX uses IAM credentials from the management server.
+
+**Option B: Static Inventory (for CLI deployments)**
+
+If deploying via CLI without AWS credentials, update the static inventory with Terraform outputs:
 ```bash
 terraform output ansible_inventory
-# Update automated/ansible/inventory/prod-aws.yml with the IPs
-# Or use dynamic inventory (requires AWS credentials):
-#   ansible-inventory -i inventory/prod-aws-ec2.yml --graph
+# Copy the IPs into automated/ansible/inventory/prod-aws.yml
 ```
 
 #### Step 4: Configure AWX
@@ -269,7 +274,7 @@ sudo kubectl get secret awx-admin-password -n awx -o jsonpath='{.data.password}'
 3. Save, then go to **Sources → Add**
 4. **Source:** `Sourced from a Project`
 5. **Project:** `Middleware Platform`
-6. **Inventory file:** `automated/ansible/inventory/prod-aws.yml`
+6. **Inventory file:** `automated/ansible/inventory/prod-aws-ec2.yml` (dynamic - auto-discovers instances)
 
 **4d. Create Job Template**
 1. **Resources → Templates → Add → Job Template**
