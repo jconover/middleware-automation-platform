@@ -17,7 +17,7 @@ variable "create_monitoring_server" {
 variable "monitoring_instance_type" {
   description = "EC2 instance type for monitoring server"
   type        = string
-  default     = "t3.small"  # 2 vCPU, 2GB RAM (~$15/month)
+  default     = "t3.small" # 2 vCPU, 2GB RAM (~$15/month)
 }
 
 # -----------------------------------------------------------------------------
@@ -112,7 +112,7 @@ resource "aws_instance" "monitoring" {
   vpc_security_group_ids = [aws_security_group.monitoring[0].id]
 
   root_block_device {
-    volume_size           = 30  # Space for metrics storage
+    volume_size           = 30 # Space for metrics storage
     volume_type           = "gp3"
     encrypted             = true
     delete_on_termination = true

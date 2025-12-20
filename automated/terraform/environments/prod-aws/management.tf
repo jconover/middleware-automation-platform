@@ -17,13 +17,13 @@ variable "create_management_server" {
 variable "management_instance_type" {
   description = "EC2 instance type for management server (AWX needs 4GB+ RAM)"
   type        = string
-  default     = "t3.medium"  # 2 vCPU, 4GB RAM (~$30/month)
+  default     = "t3.medium" # 2 vCPU, 4GB RAM (~$30/month)
 }
 
 variable "management_allowed_cidrs" {
   description = "CIDR blocks allowed to access management server (your IP)"
   type        = list(string)
-  default     = ["104.55.73.102/32"]  # Restrict this to your IP in production!
+  default     = ["104.55.73.102/32"] # Restrict this to your IP in production!
 }
 
 # -----------------------------------------------------------------------------
@@ -199,7 +199,7 @@ resource "aws_instance" "management" {
   iam_instance_profile   = aws_iam_instance_profile.management[0].name
 
   root_block_device {
-    volume_size           = 50  # More storage for containers/artifacts
+    volume_size           = 50 # More storage for containers/artifacts
     volume_type           = "gp3"
     encrypted             = true
     delete_on_termination = true
@@ -218,8 +218,8 @@ resource "aws_instance" "management" {
   user_data = base64encode(file("${path.module}/templates/management-user-data.sh"))
 
   tags = {
-    Name        = "${local.name_prefix}-management"
-    Role        = "management"
+    Name         = "${local.name_prefix}-management"
+    Role         = "management"
     AnsibleGroup = "management_servers"
   }
 

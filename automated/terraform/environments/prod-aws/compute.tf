@@ -110,10 +110,10 @@ resource "aws_instance" "liberty" {
   }))
 
   tags = {
-    Name                = "${local.name_prefix}-liberty-${count.index + 1}"
-    Role                = "liberty-server"
-    LibertyServerName   = "appServer0${count.index + 1}"
-    AnsibleGroup        = "liberty_servers"
+    Name              = "${local.name_prefix}-liberty-${count.index + 1}"
+    Role              = "liberty-server"
+    LibertyServerName = "appServer0${count.index + 1}"
+    AnsibleGroup      = "liberty_servers"
   }
 
   lifecycle {

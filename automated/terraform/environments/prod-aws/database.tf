@@ -52,10 +52,10 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_db_instance" "main" {
   identifier = "${local.name_prefix}-postgres"
 
-  engine               = "postgres"
-  engine_version       = "15"
-  instance_class       = var.db_instance_class
-  allocated_storage    = var.db_allocated_storage
+  engine                = "postgres"
+  engine_version        = "15"
+  instance_class        = var.db_instance_class
+  allocated_storage     = var.db_allocated_storage
   max_allocated_storage = var.db_allocated_storage * 2 # Enable autoscaling up to 2x
 
   storage_type      = "gp3"

@@ -36,8 +36,8 @@ provider "aws" {
 # -----------------------------------------------------------------------------
 locals {
   # Short prefix for resources with name limits (ALB max 32 chars)
-  name_prefix       = "mw-prod"
-  name_prefix_long  = "${var.project_name}-${var.environment}"
+  name_prefix      = "mw-prod"
+  name_prefix_long = "${var.project_name}-${var.environment}"
 
   common_tags = {
     Project     = var.project_name
