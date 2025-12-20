@@ -19,16 +19,31 @@ job_templates:
     credential: "AWS SSH"
     job_tags: "liberty"
 
-  - name: "Deploy Monitoring"
+  - name: "Deploy Monitoring - Local"
     project: "Middleware Platform"
     playbook: "automated/ansible/playbooks/site.yml"
     inventory: "Local Development"
+    credential: "Local SSH"
     job_tags: "monitoring"
 
-  - name: "Health Check"
+  - name: "Deploy Monitoring - AWS"
+    project: "Middleware Platform"
+    playbook: "automated/ansible/playbooks/site.yml"
+    inventory: "AWS Production"
+    credential: "AWS SSH Key"
+    job_tags: "monitoring"
+
+  - name: "Health Check - Local"
     project: "Middleware Platform"
     playbook: "automated/ansible/playbooks/health-check.yml"
-    inventory: "All Environments"
+    inventory: "Local Development"
+    credential: "Local SSH"
+
+  - name: "Health Check - AWS"
+    project: "Middleware Platform"
+    playbook: "automated/ansible/playbooks/health-check.yml"
+    inventory: "AWS Production"
+    credential: "AWS SSH Key"
 
 workflow_job_templates:
   - name: "Full Deployment - Local"
@@ -37,10 +52,21 @@ workflow_job_templates:
         unified_job_template: "Deploy Liberty - Local"
         success_nodes: ["monitoring"]
       - identifier: "monitoring"
-        unified_job_template: "Deploy Monitoring"
+        unified_job_template: "Deploy Monitoring - Local"
         success_nodes: ["healthcheck"]
       - identifier: "healthcheck"
-        unified_job_template: "Health Check"
+        unified_job_template: "Health Check - Local"
+
+  - name: "Full Deployment - AWS"
+    workflow_nodes:
+      - identifier: "liberty"
+        unified_job_template: "Deploy Liberty - AWS"
+        success_nodes: ["monitoring"]
+      - identifier: "monitoring"
+        unified_job_template: "Deploy Monitoring - AWS"
+        success_nodes: ["healthcheck"]
+      - identifier: "healthcheck"
+        unified_job_template: "Health Check - AWS"
 
   - name: "Promote to Production"
     workflow_nodes:
@@ -48,4 +74,4 @@ workflow_job_templates:
         unified_job_template: "Deploy Liberty - AWS"
         success_nodes: ["verify"]
       - identifier: "verify"
-        unified_job_template: "Health Check"
+        unified_job_template: "Health Check - AWS"

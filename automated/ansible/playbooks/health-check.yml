@@ -1,0 +1,119 @@
+---
+# =============================================================================
+# Health Check Playbook
+# =============================================================================
+#
+# Validates Liberty application servers are healthy and responding.
+#
+# Usage:
+#   ansible-playbook -i inventory/prod-aws-ec2.yml playbooks/health-check.yml
+#
+# =============================================================================
+
+- name: Health Check - Liberty Servers
+  hosts: localhost
+  gather_facts: false
+  become: false
+
+  vars:
+    health_check_timeout: 30
+    health_check_retries: 3
+    health_check_delay: 10
+
+  tasks:
+    - name: Display health check start
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════════
+          Liberty Health Check
+          Timestamp: {{ lookup('pipe', 'date -Iseconds') }}
+          ═══════════════════════════════════════════════════════════════
+
+    # -------------------------------------------------------------------------
+    # Readiness Checks
+    # -------------------------------------------------------------------------
+    - name: Check Liberty readiness endpoints
+      ansible.builtin.uri:
+        url: "http://{{ hostvars[item]['ansible_host'] | default(item) }}:9080/health/ready"
+        method: GET
+        status_code: 200
+        timeout: "{{ health_check_timeout }}"
+        return_content: true
+      loop: "{{ groups['liberty_servers'] }}"
+      register: readiness_results
+      retries: "{{ health_check_retries }}"
+      delay: "{{ health_check_delay }}"
+      ignore_errors: true
+
+    - name: Display readiness results
+      ansible.builtin.debug:
+        msg: "{{ item.item }}: {{ 'UP' if item.status == 200 else 'DOWN' }} - {{ item.json.status | default('N/A') }}"
+      loop: "{{ readiness_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # -------------------------------------------------------------------------
+    # Liveness Checks
+    # -------------------------------------------------------------------------
+    - name: Check Liberty liveness endpoints
+      ansible.builtin.uri:
+        url: "http://{{ hostvars[item]['ansible_host'] | default(item) }}:9080/health/live"
+        method: GET
+        status_code: 200
+        timeout: "{{ health_check_timeout }}"
+        return_content: true
+      loop: "{{ groups['liberty_servers'] }}"
+      register: liveness_results
+      retries: "{{ health_check_retries }}"
+      delay: "{{ health_check_delay }}"
+      ignore_errors: true
+
+    - name: Display liveness results
+      ansible.builtin.debug:
+        msg: "{{ item.item }}: {{ 'UP' if item.status == 200 else 'DOWN' }} - {{ item.json.status | default('N/A') }}"
+      loop: "{{ liveness_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # -------------------------------------------------------------------------
+    # Metrics Check (Optional)
+    # -------------------------------------------------------------------------
+    - name: Check Liberty metrics endpoints
+      ansible.builtin.uri:
+        url: "http://{{ hostvars[item]['ansible_host'] | default(item) }}:9080/metrics"
+        method: GET
+        status_code: 200
+        timeout: "{{ health_check_timeout }}"
+      loop: "{{ groups['liberty_servers'] }}"
+      register: metrics_results
+      ignore_errors: true
+
+    - name: Display metrics availability
+      ansible.builtin.debug:
+        msg: "{{ item.item }}: Metrics {{ 'Available' if item.status == 200 else 'Unavailable' }}"
+      loop: "{{ metrics_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # -------------------------------------------------------------------------
+    # Summary
+    # -------------------------------------------------------------------------
+    - name: Calculate health summary
+      ansible.builtin.set_fact:
+        healthy_count: "{{ readiness_results.results | selectattr('status', 'equalto', 200) | list | length }}"
+        total_count: "{{ readiness_results.results | length }}"
+
+    - name: Display health check summary
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════════
+          HEALTH CHECK SUMMARY
+          ═══════════════════════════════════════════════════════════════
+          Healthy Servers: {{ healthy_count }} / {{ total_count }}
+          Status: {{ 'ALL HEALTHY' if healthy_count == total_count else 'DEGRADED' }}
+          ═══════════════════════════════════════════════════════════════
+
+    - name: Fail if any server is unhealthy
+      ansible.builtin.fail:
+        msg: "Health check failed: {{ healthy_count }}/{{ total_count }} servers healthy"
+      when: healthy_count != total_count

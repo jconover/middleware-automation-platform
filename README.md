@@ -328,6 +328,45 @@ curl -s -X POST -u admin:$AWX_PASS -H "Content-Type: application/json" \
 > curl -s -u admin:$AWX_PASS http://localhost:30080/api/v2/credentials/
 > ```
 
+**4f. Create Job Template - Health Check**
+
+**Option A: Via AWX Console**
+1. **Resources → Templates → Add → Job Template**
+2. **Name:** `Health Check - AWS`
+3. **Inventory:** `AWS Production`
+4. **Project:** `Middleware Platform`
+5. **Playbook:** `automated/ansible/playbooks/health-check.yml`
+6. **Credentials:** `AWS SSH Key`
+
+**Option B: Via Command Line (API)**
+
+```bash
+# Get AWX admin password
+AWX_PASS=$(kubectl get secret awx-admin-password -n awx -o jsonpath='{.data.password}' | base64 -d)
+
+# Create the job template
+curl -s -X POST -u admin:$AWX_PASS -H "Content-Type: application/json" \
+  http://localhost:30080/api/v2/job_templates/ -d '{
+    "name": "Health Check - AWS",
+    "project": 8,
+    "inventory": 2,
+    "playbook": "automated/ansible/playbooks/health-check.yml"
+  }'
+
+# Associate the SSH credential
+curl -s -X POST -u admin:$AWX_PASS -H "Content-Type: application/json" \
+  http://localhost:30080/api/v2/job_templates/<TEMPLATE_ID>/credentials/ -d '{"id": 3}'
+
+# Launch the health check
+curl -s -X POST -u admin:$AWX_PASS \
+  http://localhost:30080/api/v2/job_templates/<TEMPLATE_ID>/launch/
+```
+
+The health check playbook validates:
+- Liberty `/health/ready` endpoints (readiness)
+- Liberty `/health/live` endpoints (liveness)
+- Liberty `/metrics` endpoints (Prometheus metrics)
+
 #### Step 5: Deploy Liberty
 
 **Option A: Via AWX (Recommended)**
