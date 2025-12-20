@@ -360,6 +360,30 @@ curl -s http://192.168.68.82:9090/-/ready
 curl -s http://192.168.68.82:3000/api/health
 ```
 
+### AWS Production Health Checks
+
+Liberty servers in AWS are in private subnets. Run health checks from the management server:
+
+```bash
+cd automated/terraform/environments/prod-aws
+
+# Get Liberty server IPs
+terraform output liberty_private_ips
+
+# SSH to management server and run health checks
+MGMT_IP=$(terraform output -raw management_public_ip)
+ssh -i ~/.ssh/ansible_ed25519 ubuntu@$MGMT_IP \
+  'curl -s http://<LIBERTY_1_IP>:9080/health/ready && echo ""'
+ssh -i ~/.ssh/ansible_ed25519 ubuntu@$MGMT_IP \
+  'curl -s http://<LIBERTY_2_IP>:9080/health/ready && echo ""'
+
+# Or check liveness
+ssh -i ~/.ssh/ansible_ed25519 ubuntu@$MGMT_IP \
+  'curl -s http://<LIBERTY_1_IP>:9080/health/live && echo ""'
+```
+
+Expected response: `{"checks":[],"status":"UP"}`
+
 ### Quick Verification Script
 
 ```bash
