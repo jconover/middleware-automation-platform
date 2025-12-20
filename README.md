@@ -276,13 +276,57 @@ sudo kubectl get secret awx-admin-password -n awx -o jsonpath='{.data.password}'
 5. **Project:** `Middleware Platform`
 6. **Inventory file:** `automated/ansible/inventory/prod-aws-ec2.yml` (dynamic - auto-discovers instances)
 
-**4d. Create Job Template**
+**4d. Create Job Template - Deploy Liberty**
 1. **Resources → Templates → Add → Job Template**
 2. **Name:** `Deploy Liberty`
 3. **Inventory:** `AWS Production`
 4. **Project:** `Middleware Platform`
 5. **Playbook:** `automated/ansible/playbooks/site.yml`
 6. **Credentials:** `AWS SSH Key`
+
+**4e. Create Job Template - Deploy Monitoring**
+
+**Option A: Via AWX Console**
+1. **Resources → Templates → Add → Job Template**
+2. **Name:** `Deploy Monitoring - AWS`
+3. **Inventory:** `AWS Production`
+4. **Project:** `Middleware Platform`
+5. **Playbook:** `automated/ansible/playbooks/site.yml`
+6. **Credentials:** `AWS SSH Key`
+7. **Job Tags:** `monitoring`
+
+**Option B: Via Command Line (API)**
+
+SSH to the management server and use the AWX API:
+```bash
+# Get AWX admin password
+AWX_PASS=$(kubectl get secret awx-admin-password -n awx -o jsonpath='{.data.password}' | base64 -d)
+
+# Create the job template
+curl -s -X POST -u admin:$AWX_PASS -H "Content-Type: application/json" \
+  http://localhost:30080/api/v2/job_templates/ -d '{
+    "name": "Deploy Monitoring - AWS",
+    "project": 8,
+    "inventory": 2,
+    "playbook": "automated/ansible/playbooks/site.yml",
+    "job_tags": "monitoring"
+  }'
+
+# Associate the SSH credential (ID 3 = AWS SSH Key)
+curl -s -X POST -u admin:$AWX_PASS -H "Content-Type: application/json" \
+  http://localhost:30080/api/v2/job_templates/11/credentials/ -d '{"id": 3}'
+
+# Launch the job
+curl -s -X POST -u admin:$AWX_PASS -H "Content-Type: application/json" \
+  http://localhost:30080/api/v2/job_templates/11/launch/
+```
+
+> **Note:** Project/inventory/credential IDs may vary. List them with:
+> ```bash
+> curl -s -u admin:$AWX_PASS http://localhost:30080/api/v2/projects/
+> curl -s -u admin:$AWX_PASS http://localhost:30080/api/v2/inventories/
+> curl -s -u admin:$AWX_PASS http://localhost:30080/api/v2/credentials/
+> ```
 
 #### Step 5: Deploy Liberty
 
