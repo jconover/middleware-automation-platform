@@ -354,12 +354,43 @@ ALB_DNS=$(cd automated/terraform/environments/prod-aws && terraform output -raw 
 curl http://$ALB_DNS/health/ready
 ```
 
+#### Step 7: Deploy Monitoring Server (Optional)
+
+The monitoring server runs Prometheus and Grafana on a dedicated t3.small instance.
+
+**7a. Enable in terraform.tfvars:**
+```hcl
+create_monitoring_server = true
+monitoring_instance_type = "t3.small"  # ~$15/month
+```
+
+**7b. Deploy with Terraform:**
+```bash
+cd automated/terraform/environments/prod-aws
+terraform plan   # Review changes
+terraform apply  # Deploy (~3-5 minutes)
+```
+
+**7c. Access monitoring:**
+```bash
+# Get URLs
+terraform output prometheus_url  # Prometheus: http://<IP>:9090
+terraform output grafana_url     # Grafana: http://<IP>:3000
+
+# SSH to server
+$(terraform output -raw monitoring_ssh_command)
+```
+
+- **Grafana credentials:** admin / admin (change on first login)
+- **Prometheus** auto-configured to scrape Liberty `/metrics` endpoints
+- **Retention:** 15 days of metrics data
+
 **AWS Prerequisites:**
 - AWS CLI configured (`aws configure`)
 - Terraform 1.6+
 - SSH key at `~/.ssh/ansible_ed25519.pub`
 
-**Estimated Cost:** ~$152/month (see [terraform.tfvars.example](./automated/terraform/environments/prod-aws/terraform.tfvars.example))
+**Estimated Cost:** ~$167/month (see [terraform.tfvars.example](./automated/terraform/environments/prod-aws/terraform.tfvars.example))
 
 ### Teardown / Clean Reinstall
 
