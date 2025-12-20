@@ -1,0 +1,203 @@
+# =============================================================================
+# Monitoring Server - Prometheus & Grafana
+# =============================================================================
+# Dedicated server for monitoring Liberty application servers.
+# Runs Prometheus for metrics collection and Grafana for visualization.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Variables
+# -----------------------------------------------------------------------------
+variable "create_monitoring_server" {
+  description = "Whether to create the dedicated monitoring server"
+  type        = bool
+  default     = true
+}
+
+variable "monitoring_instance_type" {
+  description = "EC2 instance type for monitoring server"
+  type        = string
+  default     = "t3.small"  # 2 vCPU, 2GB RAM (~$15/month)
+}
+
+# -----------------------------------------------------------------------------
+# Security Group
+# -----------------------------------------------------------------------------
+resource "aws_security_group" "monitoring" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  name        = "${local.name_prefix}-monitoring-sg"
+  description = "Security group for Prometheus/Grafana monitoring server"
+  vpc_id      = aws_vpc.main.id
+
+  # SSH
+  ingress {
+    description = "SSH from allowed CIDRs"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = var.management_allowed_cidrs
+  }
+
+  # Prometheus
+  ingress {
+    description = "Prometheus from allowed CIDRs"
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    cidr_blocks = var.management_allowed_cidrs
+  }
+
+  # Grafana
+  ingress {
+    description = "Grafana from allowed CIDRs"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = var.management_allowed_cidrs
+  }
+
+  # AlertManager (optional, for future use)
+  ingress {
+    description = "AlertManager from allowed CIDRs"
+    from_port   = 9093
+    to_port     = 9093
+    protocol    = "tcp"
+    cidr_blocks = var.management_allowed_cidrs
+  }
+
+  egress {
+    description = "All outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-monitoring-sg"
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Elastic IP (stable public IP)
+# -----------------------------------------------------------------------------
+resource "aws_eip" "monitoring" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  domain = "vpc"
+
+  tags = {
+    Name = "${local.name_prefix}-monitoring-eip"
+  }
+}
+
+resource "aws_eip_association" "monitoring" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  instance_id   = aws_instance.monitoring[0].id
+  allocation_id = aws_eip.monitoring[0].id
+}
+
+# -----------------------------------------------------------------------------
+# EC2 Instance
+# -----------------------------------------------------------------------------
+resource "aws_instance" "monitoring" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.monitoring_instance_type
+  key_name               = aws_key_pair.deployer.key_name
+  subnet_id              = aws_subnet.public[0].id
+  vpc_security_group_ids = [aws_security_group.monitoring[0].id]
+
+  root_block_device {
+    volume_size           = 30  # Space for metrics storage
+    volume_type           = "gp3"
+    encrypted             = true
+    delete_on_termination = true
+
+    tags = {
+      Name = "${local.name_prefix}-monitoring-root"
+    }
+  }
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
+
+  user_data = base64encode(templatefile("${path.module}/templates/monitoring-user-data.sh", {
+    liberty1_ip = aws_instance.liberty[0].private_ip
+    liberty2_ip = length(aws_instance.liberty) > 1 ? aws_instance.liberty[1].private_ip : aws_instance.liberty[0].private_ip
+  }))
+
+  tags = {
+    Name         = "${local.name_prefix}-monitoring"
+    Role         = "monitoring"
+    AnsibleGroup = "monitoring_servers"
+  }
+
+  # Wait for Liberty instances to be created first
+  depends_on = [aws_instance.liberty]
+
+  lifecycle {
+    ignore_changes = [ami, user_data]
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Allow monitoring server to scrape Liberty metrics
+# -----------------------------------------------------------------------------
+resource "aws_security_group_rule" "liberty_metrics_from_monitoring" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  type                     = "ingress"
+  from_port                = 9080
+  to_port                  = 9080
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.liberty.id
+  source_security_group_id = aws_security_group.monitoring[0].id
+  description              = "Liberty metrics from monitoring server"
+}
+
+resource "aws_security_group_rule" "liberty_node_exporter_from_monitoring" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  type                     = "ingress"
+  from_port                = 9100
+  to_port                  = 9100
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.liberty.id
+  source_security_group_id = aws_security_group.monitoring[0].id
+  description              = "Node exporter from monitoring server"
+}
+
+# -----------------------------------------------------------------------------
+# Outputs
+# -----------------------------------------------------------------------------
+output "monitoring_public_ip" {
+  description = "Public IP of the monitoring server"
+  value       = var.create_monitoring_server ? aws_eip.monitoring[0].public_ip : null
+}
+
+output "monitoring_private_ip" {
+  description = "Private IP of the monitoring server"
+  value       = var.create_monitoring_server ? aws_instance.monitoring[0].private_ip : null
+}
+
+output "prometheus_url" {
+  description = "Prometheus Web UI URL"
+  value       = var.create_monitoring_server ? "http://${aws_eip.monitoring[0].public_ip}:9090" : null
+}
+
+output "grafana_url" {
+  description = "Grafana Web UI URL"
+  value       = var.create_monitoring_server ? "http://${aws_eip.monitoring[0].public_ip}:3000" : null
+}
+
+output "monitoring_ssh_command" {
+  description = "SSH command to connect to monitoring server"
+  value       = var.create_monitoring_server ? "ssh -i ~/.ssh/ansible_ed25519 ubuntu@${aws_eip.monitoring[0].public_ip}" : null
+}

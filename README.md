@@ -465,12 +465,13 @@ echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:300
 |----------|------|--------------|
 | Liberty Servers (x2) | t3.small | ~$30 |
 | Management Server (AWX) | t3.medium | ~$30 |
+| Monitoring Server (Prometheus/Grafana) | t3.small | ~$15 |
 | RDS PostgreSQL | db.t3.micro | ~$15 |
 | ElastiCache Redis | cache.t3.micro | ~$12 |
 | Application Load Balancer | - | ~$20 |
 | NAT Gateway | - | ~$35 |
 | Data Transfer | ~10GB | ~$10 |
-| **TOTAL** | | **~$152/month** |
+| **TOTAL** | | **~$167/month** |
 
 ---
 

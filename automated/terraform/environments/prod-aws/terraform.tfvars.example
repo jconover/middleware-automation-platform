@@ -69,6 +69,12 @@ management_instance_type = "t3.medium"  # 2 vCPU, 4GB RAM (~$30/month)
 management_allowed_cidrs = ["203.0.113.50/32"]  # Example - replace with your IP
 
 # -----------------------------------------------------------------------------
+# Monitoring Server (Prometheus/Grafana)
+# -----------------------------------------------------------------------------
+create_monitoring_server = true
+monitoring_instance_type = "t3.small"  # 2 vCPU, 2GB RAM (~$15/month)
+
+# -----------------------------------------------------------------------------
 # Additional Tags
 # -----------------------------------------------------------------------------
 additional_tags = {
