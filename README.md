@@ -424,6 +424,74 @@ $(terraform output -raw monitoring_ssh_command)
 - **Prometheus** auto-configured to scrape Liberty `/metrics` endpoints
 - **Retention:** 15 days of metrics data
 
+#### Step 8: Deploy Sample Application (Optional)
+
+Deploy the sample REST API for testing and load testing.
+
+**8a. Build the application:**
+```bash
+cd sample-app
+mvn clean package
+```
+
+**8b. Deploy via management server:**
+```bash
+# Copy WAR to management server
+MGMT_IP=$(terraform output -raw management_public_ip)
+scp -i ~/.ssh/ansible_ed25519 target/sample-app.war ubuntu@$MGMT_IP:/tmp/
+
+# SSH to management server
+ssh -i ~/.ssh/ansible_ed25519 ubuntu@$MGMT_IP
+
+# From management server, deploy to Liberty servers
+scp -i ~/.ssh/ansible_ed25519 /tmp/sample-app.war ansible@<LIBERTY_IP>:/tmp/
+ssh -i ~/.ssh/ansible_ed25519 ansible@<LIBERTY_IP> \
+  "sudo cp /tmp/sample-app.war /opt/ibm/wlp/usr/servers/appServer01/dropins/"
+```
+
+**8c. Verify deployment:**
+```bash
+curl http://<LIBERTY_IP>:9080/sample-app/api/hello
+curl http://<LIBERTY_IP>:9080/sample-app/api/info
+```
+
+**8d. Run load tests:**
+```bash
+# Install hey load testing tool (on management server)
+wget -q https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64 -O hey
+chmod +x hey && sudo mv hey /usr/local/bin/
+
+# Run load test
+hey -n 1000 -c 50 http://<LIBERTY_IP>:9080/sample-app/api/hello
+```
+
+**Sample App Endpoints:**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/hello` | GET | Simple hello response |
+| `/api/hello/{name}` | GET | Personalized hello |
+| `/api/info` | GET | Server info (hostname, memory, uptime) |
+| `/api/stats` | GET | Request statistics |
+| `/api/slow?delay=1000` | GET | Simulated latency (ms) |
+| `/api/compute?iterations=N` | GET | CPU load test |
+| `/api/echo` | POST | Echo request body |
+
+#### Liberty Admin Console
+
+Access the Open Liberty Admin Center for each server:
+
+```bash
+# Get Liberty server IPs
+terraform output liberty_private_ips
+
+# Access via SSH tunnel (from your local machine)
+ssh -i ~/.ssh/ansible_ed25519 -L 9443:<LIBERTY_IP>:9443 ubuntu@$MGMT_IP
+# Then open: https://localhost:9443/adminCenter
+```
+
+- **URL:** `https://<LIBERTY_IP>:9443/adminCenter`
+- **Credentials:** admin / admin
+
 **AWS Prerequisites:**
 - AWS CLI configured (`aws configure`)
 - Terraform 1.6+

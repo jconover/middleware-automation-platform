@@ -1,0 +1,100 @@
+---
+# =============================================================================
+# Deploy Sample Application to Liberty Servers
+# =============================================================================
+#
+# Deploys the sample-app.war to Liberty dropins directory.
+#
+# Usage:
+#   ansible-playbook -i inventory/prod-aws-ec2.yml playbooks/deploy-sample-app.yml
+#
+# =============================================================================
+
+- name: Deploy Sample Application
+  hosts: liberty_servers
+  become: true
+
+  vars:
+    liberty_home: /opt/ibm/wlp
+    liberty_server_name: defaultServer
+    app_name: sample-app
+    app_war: sample-app.war
+    local_war_path: ../../../sample-app/target/sample-app.war
+
+  tasks:
+    - name: Display deployment start
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════════
+          Deploying {{ app_name }} to {{ inventory_hostname }}
+          ═══════════════════════════════════════════════════════════════
+
+    - name: Ensure dropins directory exists
+      ansible.builtin.file:
+        path: "{{ liberty_home }}/usr/servers/{{ liberty_server_name }}/dropins"
+        state: directory
+        owner: liberty
+        group: liberty
+        mode: '0755'
+
+    - name: Copy WAR file to Liberty dropins
+      ansible.builtin.copy:
+        src: "{{ local_war_path }}"
+        dest: "{{ liberty_home }}/usr/servers/{{ liberty_server_name }}/dropins/{{ app_war }}"
+        owner: liberty
+        group: liberty
+        mode: '0644'
+      register: deploy_result
+
+    - name: Wait for application to start
+      ansible.builtin.wait_for:
+        timeout: 30
+      when: deploy_result.changed
+
+    - name: Verify application is responding
+      ansible.builtin.uri:
+        url: "http://localhost:9080/sample-app/api/hello"
+        method: GET
+        status_code: 200
+        timeout: 30
+      register: health_check
+      retries: 5
+      delay: 5
+
+    - name: Display deployment result
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════════
+          Deployment Complete: {{ inventory_hostname }}
+          Application URL: http://{{ ansible_host }}:9080/sample-app/api/hello
+          Response: {{ health_check.json | default('N/A') }}
+          ═══════════════════════════════════════════════════════════════
+
+- name: Deployment Summary
+  hosts: localhost
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Display API endpoints
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════════
+          SAMPLE APP DEPLOYED SUCCESSFULLY
+          ═══════════════════════════════════════════════════════════════
+
+          Available Endpoints:
+          {% for host in groups['liberty_servers'] %}
+
+          Server: {{ hostvars[host]['ansible_host'] | default(host) }}
+            - GET  /api/hello           - Simple hello
+            - GET  /api/hello/{name}    - Hello with name
+            - GET  /api/info            - Server info
+            - POST /api/echo            - Echo request body
+            - GET  /api/slow?delay=ms   - Simulated latency
+            - GET  /api/compute?iterations=n - CPU load
+            - GET  /api/stats           - Request statistics
+            - POST /api/stats/reset     - Reset statistics
+          {% endfor %}
+
+          ═══════════════════════════════════════════════════════════════
