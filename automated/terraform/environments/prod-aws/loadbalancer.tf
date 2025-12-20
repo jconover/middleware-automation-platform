@@ -130,6 +130,46 @@ resource "aws_lb_target_group_attachment" "liberty" {
 }
 
 # -----------------------------------------------------------------------------
+# Target Group - Liberty Admin Console (HTTPS 9443)
+# -----------------------------------------------------------------------------
+resource "aws_lb_target_group" "liberty_admin" {
+  name     = "${local.name_prefix}-liberty-admin-tg"
+  port     = 9443
+  protocol = "HTTPS"
+  vpc_id   = aws_vpc.main.id
+
+  health_check {
+    enabled             = true
+    path                = "/adminCenter/"
+    port                = "traffic-port"
+    protocol            = "HTTPS"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+    matcher             = "200-399"
+  }
+
+  stickiness {
+    type            = "lb_cookie"
+    cookie_duration = 86400
+    enabled         = true
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-liberty-admin-tg"
+  }
+}
+
+resource "aws_lb_target_group_attachment" "liberty_admin" {
+  count = var.liberty_instance_count
+
+  target_group_arn = aws_lb_target_group.liberty_admin.arn
+  target_id        = aws_instance.liberty[count.index].id
+  port             = 9443
+}
+
+# -----------------------------------------------------------------------------
 # HTTP Listener (Redirect to HTTPS if cert exists, otherwise forward)
 # -----------------------------------------------------------------------------
 resource "aws_lb_listener" "http" {
@@ -174,6 +214,22 @@ resource "aws_lb_listener" "https" {
 }
 
 # -----------------------------------------------------------------------------
+# Liberty Admin Console Listener (Port 9443 - Restricted to allowed CIDRs)
+# -----------------------------------------------------------------------------
+resource "aws_lb_listener" "admin_console" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 9443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = local.admin_certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.liberty_admin.arn
+  }
+}
+
+# -----------------------------------------------------------------------------
 # Locals for Certificate Logic
 # -----------------------------------------------------------------------------
 locals {
@@ -183,4 +239,51 @@ locals {
   )
 
   has_certificate = local.certificate_arn != ""
+
+  # For admin console, use provided cert or fall back to a self-signed approach
+  # ALB requires a certificate for HTTPS - use the main cert if available
+  admin_certificate_arn = local.certificate_arn != "" ? local.certificate_arn : (
+    length(aws_acm_certificate.admin_self_signed) > 0 ? aws_acm_certificate.admin_self_signed[0].arn : ""
+  )
+}
+
+# -----------------------------------------------------------------------------
+# Self-signed Certificate for Admin Console (if no other cert available)
+# -----------------------------------------------------------------------------
+resource "tls_private_key" "admin" {
+  count     = local.certificate_arn == "" ? 1 : 0
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "tls_self_signed_cert" "admin" {
+  count           = local.certificate_arn == "" ? 1 : 0
+  private_key_pem = tls_private_key.admin[0].private_key_pem
+
+  subject {
+    common_name  = "liberty-admin.local"
+    organization = "Middleware Platform"
+  }
+
+  validity_period_hours = 8760 # 1 year
+
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
+}
+
+resource "aws_acm_certificate" "admin_self_signed" {
+  count            = local.certificate_arn == "" ? 1 : 0
+  private_key      = tls_private_key.admin[0].private_key_pem
+  certificate_body = tls_self_signed_cert.admin[0].cert_pem
+
+  tags = {
+    Name = "${local.name_prefix}-admin-cert"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }

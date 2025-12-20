@@ -26,6 +26,14 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description = "Liberty Admin Console from allowed CIDRs"
+    from_port   = 9443
+    to_port     = 9443
+    protocol    = "tcp"
+    cidr_blocks = var.management_allowed_cidrs
+  }
+
   egress {
     description = "All outbound traffic"
     from_port   = 0
@@ -85,6 +93,14 @@ resource "aws_security_group" "liberty" {
     to_port     = 9080
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
+  }
+
+  ingress {
+    description = "Liberty Admin Console from allowed CIDRs"
+    from_port   = 9443
+    to_port     = 9443
+    protocol    = "tcp"
+    cidr_blocks = var.management_allowed_cidrs
   }
 
   egress {
