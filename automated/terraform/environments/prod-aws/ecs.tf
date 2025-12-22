@@ -192,7 +192,7 @@ resource "aws_ecs_service" "liberty" {
     Name = "${local.name_prefix}-liberty-service"
   }
 
-  depends_on = [aws_lb_listener.http]
+  depends_on = [aws_lb_listener_rule.ecs_liberty]
 }
 
 # -----------------------------------------------------------------------------
@@ -287,5 +287,33 @@ resource "aws_lb_target_group" "liberty_ecs" {
 
   tags = {
     Name = "${local.name_prefix}-liberty-ecs-tg"
+  }
+}
+
+# -----------------------------------------------------------------------------
+# ALB Listener Rule for ECS (routes /ecs/* to ECS for testing)
+# After validation, update main listener to point to ECS target group
+# -----------------------------------------------------------------------------
+resource "aws_lb_listener_rule" "ecs_liberty" {
+  count = var.ecs_enabled ? 1 : 0
+
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 10
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.liberty_ecs[0].arn
+  }
+
+  # Route based on header for testing (X-Target: ecs)
+  condition {
+    http_header {
+      http_header_name = "X-Target"
+      values           = ["ecs"]
+    }
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-ecs-rule"
   }
 }
