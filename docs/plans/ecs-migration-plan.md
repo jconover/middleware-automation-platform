@@ -277,7 +277,7 @@ stage('Deploy to ECS') {
 
 - [x] Create ECR repository
 - [x] Update Containerfile with sample-app
-- [ ] Build and push initial image
+- [x] Build and push initial image
 - [x] Create ECS cluster
 - [x] Create IAM roles (execution + task)
 - [x] Create CloudWatch log group

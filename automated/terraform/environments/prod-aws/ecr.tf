@@ -46,10 +46,9 @@ resource "aws_ecr_lifecycle_policy" "liberty" {
         rulePriority = 2
         description  = "Keep last 10 tagged images"
         selection = {
-          tagStatus     = "tagged"
-          tagPrefixList = ["v", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-          countType     = "imageCountMoreThan"
-          countNumber   = 10
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
         }
         action = {
           type = "expire"
