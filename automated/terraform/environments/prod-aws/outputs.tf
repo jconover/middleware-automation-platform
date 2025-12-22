@@ -162,6 +162,30 @@ output "ecr_push_commands" {
 }
 
 # -----------------------------------------------------------------------------
+# ECS Outputs
+# -----------------------------------------------------------------------------
+output "ecs_cluster_name" {
+  description = "Name of the ECS cluster"
+  value       = var.ecs_enabled ? aws_ecs_cluster.main[0].name : null
+}
+
+output "ecs_service_name" {
+  description = "Name of the ECS service"
+  value       = var.ecs_enabled ? aws_ecs_service.liberty[0].name : null
+}
+
+output "ecs_scaling_config" {
+  description = "ECS auto-scaling configuration"
+  value = var.ecs_enabled ? {
+    min_capacity        = var.ecs_min_capacity
+    max_capacity        = var.ecs_max_capacity
+    cpu_target          = var.ecs_cpu_target
+    memory_target       = var.ecs_memory_target
+    requests_per_target = var.ecs_requests_per_target
+  } : null
+}
+
+# -----------------------------------------------------------------------------
 # Ansible Inventory Helper
 # -----------------------------------------------------------------------------
 output "ansible_inventory" {
