@@ -275,8 +275,8 @@ stage('Deploy to ECS') {
 
 ## Migration Checklist
 
-- [ ] Create ECR repository
-- [ ] Update Containerfile with sample-app
+- [x] Create ECR repository
+- [x] Update Containerfile with sample-app
 - [ ] Build and push initial image
 - [ ] Create ECS cluster
 - [ ] Create IAM roles (execution + task)

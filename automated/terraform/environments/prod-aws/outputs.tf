@@ -129,6 +129,39 @@ output "ssh_key_name" {
 }
 
 # -----------------------------------------------------------------------------
+# ECR Outputs
+# -----------------------------------------------------------------------------
+output "ecr_repository_url" {
+  description = "URL of the ECR repository for Liberty images"
+  value       = aws_ecr_repository.liberty.repository_url
+}
+
+output "ecr_repository_arn" {
+  description = "ARN of the ECR repository"
+  value       = aws_ecr_repository.liberty.arn
+}
+
+output "ecr_push_commands" {
+  description = "Commands to build and push Liberty image to ECR"
+  value       = <<-EOT
+
+    # Login to ECR
+    aws ecr get-login-password --region ${data.aws_region.current.name} | \
+      podman login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com
+
+    # Build the image (from repo root)
+    mvn -f sample-app/pom.xml clean package
+    cp sample-app/target/*.war containers/liberty/apps/
+    podman build -t liberty-app:latest containers/liberty/
+
+    # Tag and push
+    podman tag liberty-app:latest ${aws_ecr_repository.liberty.repository_url}:latest
+    podman push ${aws_ecr_repository.liberty.repository_url}:latest
+
+  EOT
+}
+
+# -----------------------------------------------------------------------------
 # Ansible Inventory Helper
 # -----------------------------------------------------------------------------
 output "ansible_inventory" {

@@ -199,7 +199,28 @@ cat README.md
 # Continue through each phase...
 ```
 
-### Option 3: AWS Production Deployment
+### Option 3: Local Container Build (Podman)
+
+Build and run Liberty with the sample app in a container:
+
+```bash
+# Build the sample app
+mvn -f sample-app/pom.xml clean package
+
+# Copy WAR to container build directory
+cp sample-app/target/*.war containers/liberty/apps/
+
+# Build and run the container
+cd containers/liberty
+podman build -t liberty-app:1.0.0 -f Containerfile .
+podman run -d -p 9080:9080 -p 9443:9443 --name liberty liberty-app:1.0.0
+
+# Verify
+curl http://localhost:9080/health/ready
+curl http://localhost:9080/sample-app/api/hello
+```
+
+### Option 4: AWS Production Deployment
 
 #### Step 1: Bootstrap Terraform State Backend (one-time)
 

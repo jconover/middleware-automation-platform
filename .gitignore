@@ -72,6 +72,8 @@ secrets/
 credentials/
 **/secrets.yml
 **/vault.yml
+.claude*
+CLAUDE*
 
 # Logs
 logs/
