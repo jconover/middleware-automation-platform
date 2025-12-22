@@ -278,12 +278,12 @@ stage('Deploy to ECS') {
 - [x] Create ECR repository
 - [x] Update Containerfile with sample-app
 - [ ] Build and push initial image
-- [ ] Create ECS cluster
-- [ ] Create IAM roles (execution + task)
-- [ ] Create CloudWatch log group
-- [ ] Create task definition
-- [ ] Create ECS target group
-- [ ] Create ECS service
+- [x] Create ECS cluster
+- [x] Create IAM roles (execution + task)
+- [x] Create CloudWatch log group
+- [x] Create task definition
+- [x] Create ECS target group
+- [x] Create ECS service
 - [ ] Test traffic through ALB
 - [ ] Set up auto-scaling
 - [ ] Update CI/CD pipeline
