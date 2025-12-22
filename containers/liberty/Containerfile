@@ -8,6 +8,11 @@ LABEL maintainer="Justin" \
       version="1.0.0" \
       description="Open Liberty Application Server"
 
+# Install curl for health checks (run as root, then switch back)
+USER root
+RUN yum install -y curl && yum clean all
+USER 1001
+
 # Copy server configuration
 COPY --chown=1001:0 server.xml /config/server.xml
 COPY --chown=1001:0 jvm.options /config/jvm.options

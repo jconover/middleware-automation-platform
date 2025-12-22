@@ -284,7 +284,7 @@ stage('Deploy to ECS') {
 - [x] Create task definition
 - [x] Create ECS target group
 - [x] Create ECS service
-- [ ] Test traffic through ALB
+- [x] Test traffic through ALB
 - [ ] Set up auto-scaling
 - [ ] Update CI/CD pipeline
 - [ ] Update monitoring
