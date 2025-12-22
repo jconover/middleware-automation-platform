@@ -32,6 +32,12 @@ spec:
         APP_NAME = 'middleware-platform'
         REGISTRY = 'registry.local'
         DEPLOY_START_TIME = ''
+
+        // AWS ECS Configuration (prod-aws)
+        AWS_REGION = 'us-east-1'
+        ECR_REPO = ''  // Set dynamically based on AWS account
+        ECS_CLUSTER = 'mw-prod-cluster'
+        ECS_SERVICE = 'mw-prod-liberty'
     }
 
     parameters {
@@ -78,8 +84,58 @@ spec:
                         sh '''
                             mkdir -p apps
                             cp ../../sample-app/target/*.war apps/ 2>/dev/null || true
-                            podman build -t ${REGISTRY}/${APP_NAME}:${BUILD_NUMBER} -f Containerfile .
-                            podman push ${REGISTRY}/${APP_NAME}:${BUILD_NUMBER}
+                            podman build -t liberty-app:${BUILD_NUMBER} -f Containerfile .
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Push to Local Registry') {
+            when {
+                allOf {
+                    expression { params.DEPLOY_TYPE != 'infrastructure-only' }
+                    expression { params.ENVIRONMENT != 'prod-aws' }
+                }
+            }
+            steps {
+                container('podman') {
+                    sh '''
+                        podman tag liberty-app:${BUILD_NUMBER} ${REGISTRY}/${APP_NAME}:${BUILD_NUMBER}
+                        podman tag liberty-app:${BUILD_NUMBER} ${REGISTRY}/${APP_NAME}:latest
+                        podman push ${REGISTRY}/${APP_NAME}:${BUILD_NUMBER}
+                        podman push ${REGISTRY}/${APP_NAME}:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Push to ECR') {
+            when {
+                allOf {
+                    expression { params.DEPLOY_TYPE != 'infrastructure-only' }
+                    expression { params.ENVIRONMENT == 'prod-aws' }
+                }
+            }
+            steps {
+                container('podman') {
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod']]) {
+                        sh '''
+                            # Get AWS account ID and set ECR repository URL
+                            AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+                            ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/mw-prod-liberty"
+
+                            # Login to ECR
+                            aws ecr get-login-password --region ${AWS_REGION} | \
+                                podman login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+                            # Tag and push to ECR
+                            podman tag liberty-app:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
+                            podman tag liberty-app:${BUILD_NUMBER} ${ECR_REPO}:latest
+                            podman push ${ECR_REPO}:${BUILD_NUMBER}
+                            podman push ${ECR_REPO}:latest
+
+                            echo "Pushed image to ECR: ${ECR_REPO}:${BUILD_NUMBER}"
                         '''
                     }
                 }
@@ -87,6 +143,7 @@ spec:
         }
 
         stage('Deploy with Ansible') {
+            when { expression { params.ENVIRONMENT != 'prod-aws' } }
             steps {
                 container('ansible') {
                     dir('automated/ansible') {
@@ -94,12 +151,45 @@ spec:
                             ANSIBLE_ARGS="-i inventory/${ENVIRONMENT}.yml playbooks/site.yml"
                             ANSIBLE_ARGS="${ANSIBLE_ARGS} -e app_version=${BUILD_NUMBER}"
                             ANSIBLE_ARGS="${ANSIBLE_ARGS} -e liberty_version=${LIBERTY_VERSION}"
-                            
+
                             if [ "${DRY_RUN}" = "true" ]; then
                                 ANSIBLE_ARGS="${ANSIBLE_ARGS} --check"
                             fi
-                            
+
                             ansible-playbook ${ANSIBLE_ARGS}
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to ECS') {
+            when {
+                allOf {
+                    expression { params.ENVIRONMENT == 'prod-aws' }
+                    expression { !params.DRY_RUN }
+                }
+            }
+            steps {
+                container('podman') {
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod']]) {
+                        sh '''
+                            echo "Deploying to ECS..."
+
+                            # Force new deployment with the latest image
+                            aws ecs update-service \
+                                --cluster ${ECS_CLUSTER} \
+                                --service ${ECS_SERVICE} \
+                                --force-new-deployment \
+                                --region ${AWS_REGION}
+
+                            echo "Waiting for ECS service to stabilize..."
+                            aws ecs wait services-stable \
+                                --cluster ${ECS_CLUSTER} \
+                                --services ${ECS_SERVICE} \
+                                --region ${AWS_REGION}
+
+                            echo "ECS deployment complete!"
                         '''
                     }
                 }
@@ -109,10 +199,35 @@ spec:
         stage('Health Check') {
             when { expression { !params.DRY_RUN } }
             steps {
-                sh '''
-                    sleep 30
-                    curl -sf http://liberty.${ENVIRONMENT}.local/health/ready || exit 1
-                '''
+                script {
+                    if (params.ENVIRONMENT == 'prod-aws') {
+                        container('podman') {
+                            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod']]) {
+                                sh '''
+                                    echo "Checking ECS service health..."
+
+                                    # Get ALB DNS name from Terraform outputs or AWS
+                                    ALB_DNS=$(aws elbv2 describe-load-balancers \
+                                        --names mw-prod-alb \
+                                        --query 'LoadBalancers[0].DNSName' \
+                                        --output text \
+                                        --region ${AWS_REGION})
+
+                                    # Health check with ECS routing header
+                                    sleep 30
+                                    curl -sf -H "X-Target: ecs" "http://${ALB_DNS}/health/ready" || exit 1
+
+                                    echo "Health check passed!"
+                                '''
+                            }
+                        }
+                    } else {
+                        sh '''
+                            sleep 30
+                            curl -sf http://liberty.${ENVIRONMENT}.local/health/ready || exit 1
+                        '''
+                    }
+                }
             }
         }
     }

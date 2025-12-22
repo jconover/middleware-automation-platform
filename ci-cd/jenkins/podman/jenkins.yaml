@@ -1,0 +1,144 @@
+# =============================================================================
+# Jenkins Configuration as Code (JCasC) - Podman Standalone
+# =============================================================================
+# This file is mounted into the Jenkins container at /var/jenkins_home/casc_configs/
+# =============================================================================
+
+jenkins:
+  systemMessage: "Middleware Automation Platform - Jenkins CI/CD (Standalone)"
+
+  # Security settings
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "${JENKINS_ADMIN_PASSWORD:-JenkinsAdmin2024!}"
+          properties:
+            - mailer:
+                emailAddress: "admin@localhost"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  # Global settings
+  numExecutors: 4
+  mode: NORMAL
+  scmCheckoutRetryCount: 3
+
+  # Agent settings (local executors for standalone mode)
+  labelString: "standalone"
+
+# Security configuration
+security:
+  scriptApproval:
+    approvedSignatures:
+      - "method groovy.lang.GString getBytes"
+      - "staticMethod java.lang.System getenv java.lang.String"
+
+# Tool installations
+tool:
+  git:
+    installations:
+      - name: "Default"
+        home: "git"
+
+  maven:
+    installations:
+      - name: "Maven 3.9"
+        properties:
+          - installSource:
+              installers:
+                - maven:
+                    id: "3.9.6"
+
+  jdk:
+    installations:
+      - name: "JDK 17"
+        properties:
+          - installSource:
+              installers:
+                - adoptOpenJdkInstaller:
+                    id: "jdk-17.0.9+9"
+
+# Unclassified settings
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+    adminAddress: "admin@localhost"
+
+  # Git configuration
+  gitSCM:
+    globalConfigName: "Jenkins"
+    globalConfigEmail: "jenkins@localhost"
+
+# Credentials (placeholders - configure via UI or environment variables)
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          # AWS credentials - add your keys here or via Jenkins UI
+          # - aws:
+          #     scope: GLOBAL
+          #     id: "aws-prod"
+          #     accessKey: "${AWS_ACCESS_KEY_ID}"
+          #     secretKey: "${AWS_SECRET_ACCESS_KEY}"
+          #     description: "AWS Production Credentials"
+
+          # Git credentials placeholder
+          - usernamePassword:
+              scope: GLOBAL
+              id: "github-token"
+              username: "${GITHUB_USERNAME:-your-username}"
+              password: "${GITHUB_TOKEN:-your-token}"
+              description: "GitHub Access Token"
+
+          # Local registry
+          - string:
+              scope: GLOBAL
+              id: "registry-local"
+              secret: "registry.local"
+              description: "Local container registry"
+
+# Job DSL seed job (optional)
+jobs:
+  - script: |
+      pipelineJob('middleware-platform') {
+        description('Enterprise Middleware Platform CI/CD Pipeline')
+        definition {
+          cps {
+            script('''
+              // Simplified pipeline for standalone mode
+              pipeline {
+                agent any
+
+                parameters {
+                  choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod-aws'], description: 'Target environment')
+                  choice(name: 'DEPLOY_TYPE', choices: ['full', 'application-only'], description: 'Deployment type')
+                  booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Dry run mode')
+                }
+
+                stages {
+                  stage('Checkout') {
+                    steps {
+                      checkout scm
+                    }
+                  }
+                  stage('Build') {
+                    steps {
+                      sh 'echo "Build stage - configure for your needs"'
+                    }
+                  }
+                  stage('Test') {
+                    steps {
+                      sh 'echo "Test stage - configure for your needs"'
+                    }
+                  }
+                }
+              }
+            '''.stripIndent())
+            sandbox(true)
+          }
+        }
+      }

@@ -1,0 +1,186 @@
+# =============================================================================
+# Jenkins Configuration as Code (JCasC) - AWS Production
+# =============================================================================
+# Managed by Ansible - Do not edit manually
+# =============================================================================
+
+jenkins:
+  systemMessage: "Middleware Automation Platform - Jenkins CI/CD (AWS Production)"
+
+  # Security settings
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "{{ jenkins_admin_password }}"
+          properties:
+            - mailer:
+                emailAddress: "admin@localhost"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  # Global settings
+  numExecutors: 2
+  mode: NORMAL
+  scmCheckoutRetryCount: 3
+  labelString: "aws-management"
+
+# Security configuration
+security:
+  scriptApproval:
+    approvedSignatures:
+      - "method groovy.lang.GString getBytes"
+      - "staticMethod java.lang.System getenv java.lang.String"
+
+# Tool installations
+tool:
+  git:
+    installations:
+      - name: "Default"
+        home: "git"
+
+  maven:
+    installations:
+      - name: "Maven 3.9"
+        properties:
+          - installSource:
+              installers:
+                - maven:
+                    id: "3.9.6"
+
+# Unclassified settings
+unclassified:
+  location:
+    url: "http://{{ ansible_host }}:{{ jenkins_port }}/"
+    adminAddress: "admin@localhost"
+
+  gitSCM:
+    globalConfigName: "Jenkins"
+    globalConfigEmail: "jenkins@localhost"
+
+  # AWS configuration for ECS/ECR
+  awsCredentialsProvider:
+    cache:
+      enabled: true
+
+# Credentials
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          # Registry placeholder
+          - string:
+              scope: GLOBAL
+              id: "ecr-repository"
+              secret: "{{ ecr_repository }}"
+              description: "ECR Repository Name"
+
+          - string:
+              scope: GLOBAL
+              id: "ecs-cluster"
+              secret: "{{ ecs_cluster }}"
+              description: "ECS Cluster Name"
+
+          - string:
+              scope: GLOBAL
+              id: "ecs-service"
+              secret: "{{ ecs_service }}"
+              description: "ECS Service Name"
+
+          - string:
+              scope: GLOBAL
+              id: "aws-region"
+              secret: "{{ aws_region }}"
+              description: "AWS Region"
+
+# Jobs
+jobs:
+  - script: |
+      pipelineJob('middleware-platform') {
+        description('Enterprise Middleware Platform CI/CD Pipeline')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/YOUR_ORG/middleware-automation-platform.git')
+                  credentials('github-token')
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('ci-cd/Jenkinsfile')
+          }
+        }
+        parameters {
+          choiceParam('ENVIRONMENT', ['dev', 'staging', 'prod-aws'], 'Target environment')
+          choiceParam('DEPLOY_TYPE', ['full', 'application-only'], 'Deployment type')
+          booleanParam('DRY_RUN', false, 'Dry run mode')
+          stringParam('LIBERTY_VERSION', '24.0.0.1', 'Liberty version')
+        }
+        triggers {
+          // Uncomment to enable polling
+          // scm('H/5 * * * *')
+        }
+      }
+
+      pipelineJob('ecs-deploy') {
+        description('Deploy to ECS (triggered by ECR push)')
+        definition {
+          cps {
+            script('''
+              pipeline {
+                agent any
+
+                environment {
+                  AWS_REGION = '{{ aws_region }}'
+                  ECS_CLUSTER = '{{ ecs_cluster }}'
+                  ECS_SERVICE = '{{ ecs_service }}'
+                }
+
+                stages {
+                  stage('Deploy to ECS') {
+                    steps {
+                      sh """
+                        aws ecs update-service \\
+                          --cluster \\${ECS_CLUSTER} \\
+                          --service \\${ECS_SERVICE} \\
+                          --force-new-deployment \\
+                          --region \\${AWS_REGION}
+                      """
+                    }
+                  }
+                  stage('Wait for Deployment') {
+                    steps {
+                      sh """
+                        aws ecs wait services-stable \\
+                          --cluster \\${ECS_CLUSTER} \\
+                          --services \\${ECS_SERVICE} \\
+                          --region \\${AWS_REGION}
+                      """
+                    }
+                  }
+                  stage('Health Check') {
+                    steps {
+                      sh """
+                        ALB_DNS=\\$(aws elbv2 describe-load-balancers \\
+                          --names mw-prod-alb \\
+                          --query 'LoadBalancers[0].DNSName' \\
+                          --output text \\
+                          --region \\${AWS_REGION})
+
+                        sleep 30
+                        curl -sf -H "X-Target: ecs" "http://\\${ALB_DNS}/health/ready"
+                      """
+                    }
+                  }
+                }
+              }
+            '''.stripIndent())
+            sandbox(true)
+          }
+        }
+      }

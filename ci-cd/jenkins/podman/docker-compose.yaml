@@ -1,0 +1,67 @@
+# =============================================================================
+# Jenkins Standalone Deployment - Podman/Docker Compose
+# =============================================================================
+# Run with: podman-compose up -d
+# Or:       docker-compose up -d
+# =============================================================================
+
+services:
+  jenkins:
+    image: jenkins/jenkins:lts-jdk17
+    container_name: jenkins
+    user: root
+    privileged: true
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    environment:
+      - JAVA_OPTS=-Xms1g -Xmx2g -Djenkins.install.runSetupWizard=false
+      - CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
+    volumes:
+      # Jenkins home for persistence
+      - jenkins_home:/var/jenkins_home
+      # JCasC configuration
+      - ./jenkins.yaml:/var/jenkins_home/casc_configs/jenkins.yaml:ro
+      # Podman socket for container builds (rootless)
+      - /run/user/1000/podman/podman.sock:/var/run/docker.sock
+      # Or use root podman socket
+      # - /run/podman/podman.sock:/var/run/docker.sock
+    networks:
+      - jenkins-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # Optional: DinD for container builds without host socket
+  # Uncomment if you prefer Docker-in-Docker over socket mounting
+  # docker:
+  #   image: docker:dind
+  #   container_name: jenkins-docker
+  #   privileged: true
+  #   restart: unless-stopped
+  #   environment:
+  #     - DOCKER_TLS_CERTDIR=/certs
+  #   volumes:
+  #     - docker-certs-ca:/certs/ca
+  #     - docker-certs-client:/certs/client
+  #     - jenkins_home:/var/jenkins_home
+  #   networks:
+  #     jenkins-net:
+  #       aliases:
+  #         - docker
+
+volumes:
+  jenkins_home:
+    driver: local
+  # docker-certs-ca:
+  #   driver: local
+  # docker-certs-client:
+  #   driver: local
+
+networks:
+  jenkins-net:
+    driver: bridge

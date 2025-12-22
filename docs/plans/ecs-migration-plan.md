@@ -286,7 +286,7 @@ stage('Deploy to ECS') {
 - [x] Create ECS service
 - [x] Test traffic through ALB
 - [x] Set up auto-scaling
-- [ ] Update CI/CD pipeline
+- [x] Update CI/CD pipeline
 - [ ] Update monitoring
 - [ ] Decommission EC2 instances
 

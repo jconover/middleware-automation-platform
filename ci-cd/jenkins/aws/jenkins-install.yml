@@ -1,0 +1,227 @@
+---
+# =============================================================================
+# Jenkins Installation Playbook - AWS Management Server
+# =============================================================================
+# Run: ansible-playbook -i inventory jenkins-install.yml
+# Target: AWS management server (mw-prod-management)
+# =============================================================================
+
+- name: Install and Configure Jenkins on AWS
+  hosts: management
+  become: true
+  vars:
+    jenkins_version: "latest"
+    jenkins_port: 8080
+    jenkins_home: /var/lib/jenkins
+    jenkins_admin_password: "{{ lookup('env', 'JENKINS_ADMIN_PASSWORD') | default('JenkinsAdmin2024!', true) }}"
+    java_version: "17"
+
+    # AWS configuration
+    aws_region: "us-east-1"
+    ecr_repository: "mw-prod-liberty"
+    ecs_cluster: "mw-prod-cluster"
+    ecs_service: "mw-prod-liberty"
+
+    # Jenkins plugins to install
+    jenkins_plugins:
+      - kubernetes
+      - workflow-aggregator
+      - git
+      - configuration-as-code
+      - credentials-binding
+      - aws-credentials
+      - amazon-ecr
+      - pipeline-stage-view
+      - blueocean
+      - job-dsl
+      - pipeline-utility-steps
+      - timestamper
+      - ws-cleanup
+      - antisamy-markup-formatter
+      - docker-workflow
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # Java Installation
+    # -------------------------------------------------------------------------
+    - name: Install Amazon Corretto 17
+      block:
+        - name: Import Corretto GPG key
+          rpm_key:
+            state: present
+            key: https://yum.corretto.aws/corretto.key
+
+        - name: Add Corretto repository
+          yum_repository:
+            name: corretto
+            description: Amazon Corretto
+            baseurl: https://yum.corretto.aws/corretto.repo
+            gpgcheck: yes
+            gpgkey: https://yum.corretto.aws/corretto.key
+            enabled: yes
+
+        - name: Install Java 17
+          yum:
+            name: java-17-amazon-corretto-devel
+            state: present
+
+    # -------------------------------------------------------------------------
+    # Jenkins Installation
+    # -------------------------------------------------------------------------
+    - name: Import Jenkins GPG key
+      rpm_key:
+        state: present
+        key: https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+
+    - name: Add Jenkins repository
+      yum_repository:
+        name: jenkins
+        description: Jenkins Stable
+        baseurl: https://pkg.jenkins.io/redhat-stable/
+        gpgcheck: yes
+        gpgkey: https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+        enabled: yes
+
+    - name: Install Jenkins
+      yum:
+        name: jenkins
+        state: present
+      notify: Restart Jenkins
+
+    - name: Install required packages
+      yum:
+        name:
+          - git
+          - podman
+          - awscli
+          - jq
+        state: present
+
+    # -------------------------------------------------------------------------
+    # Jenkins Configuration
+    # -------------------------------------------------------------------------
+    - name: Create Jenkins JAVA_OPTS
+      lineinfile:
+        path: /etc/sysconfig/jenkins
+        regexp: '^JENKINS_JAVA_OPTIONS='
+        line: 'JENKINS_JAVA_OPTIONS="-Djava.awt.headless=true -Djenkins.install.runSetupWizard=false -Xms1g -Xmx2g"'
+        create: yes
+      notify: Restart Jenkins
+
+    - name: Create JCasC directory
+      file:
+        path: "{{ jenkins_home }}/casc_configs"
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: '0755'
+
+    - name: Deploy JCasC configuration
+      template:
+        src: jenkins.yaml.j2
+        dest: "{{ jenkins_home }}/casc_configs/jenkins.yaml"
+        owner: jenkins
+        group: jenkins
+        mode: '0644'
+      notify: Restart Jenkins
+
+    - name: Set CASC_JENKINS_CONFIG environment variable
+      lineinfile:
+        path: /etc/sysconfig/jenkins
+        regexp: '^CASC_JENKINS_CONFIG='
+        line: 'CASC_JENKINS_CONFIG={{ jenkins_home }}/casc_configs'
+        create: yes
+      notify: Restart Jenkins
+
+    - name: Enable and start Jenkins
+      systemd:
+        name: jenkins
+        enabled: yes
+        state: started
+
+    - name: Wait for Jenkins to start
+      uri:
+        url: "http://localhost:{{ jenkins_port }}/login"
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 30
+      delay: 10
+
+    # -------------------------------------------------------------------------
+    # Plugin Installation
+    # -------------------------------------------------------------------------
+    - name: Download Jenkins CLI
+      get_url:
+        url: "http://localhost:{{ jenkins_port }}/jnlpJars/jenkins-cli.jar"
+        dest: /tmp/jenkins-cli.jar
+        mode: '0644'
+
+    - name: Install Jenkins plugins
+      command: >
+        java -jar /tmp/jenkins-cli.jar
+        -s http://localhost:{{ jenkins_port }}/
+        -auth admin:{{ jenkins_admin_password }}
+        install-plugin {{ item }}
+      loop: "{{ jenkins_plugins }}"
+      register: plugin_result
+      failed_when: false
+      changed_when: "'already installed' not in plugin_result.stdout"
+
+    - name: Restart Jenkins after plugin installation
+      systemd:
+        name: jenkins
+        state: restarted
+      when: plugin_result.changed
+
+    - name: Wait for Jenkins to restart
+      uri:
+        url: "http://localhost:{{ jenkins_port }}/login"
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 30
+      delay: 10
+      when: plugin_result.changed
+
+    # -------------------------------------------------------------------------
+    # Firewall Configuration
+    # -------------------------------------------------------------------------
+    - name: Check if firewalld is running
+      systemd:
+        name: firewalld
+      register: firewalld_status
+      failed_when: false
+
+    - name: Open Jenkins port in firewall
+      firewalld:
+        port: "{{ jenkins_port }}/tcp"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      when: firewalld_status.status.ActiveState == "active"
+
+    # -------------------------------------------------------------------------
+    # Output
+    # -------------------------------------------------------------------------
+    - name: Display Jenkins URL
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════════════════
+          Jenkins Installation Complete!
+          ═══════════════════════════════════════════════════════════
+          URL:      http://{{ ansible_host }}:{{ jenkins_port }}
+          Username: admin
+          Password: {{ jenkins_admin_password }}
+
+          Next Steps:
+          1. Configure AWS credentials in Jenkins (ID: aws-prod)
+          2. Configure Git credentials
+          3. Create pipeline job pointing to Jenkinsfile
+          ═══════════════════════════════════════════════════════════
+
+  handlers:
+    - name: Restart Jenkins
+      systemd:
+        name: jenkins
+        state: restarted

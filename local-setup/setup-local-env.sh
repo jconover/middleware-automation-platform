@@ -73,20 +73,34 @@ setup_monitoring() {
 
 setup_jenkins() {
     log_step "Setting up Jenkins"
-    
+
     helm repo add jenkins https://charts.jenkins.io
     helm repo update
-    
-    helm upgrade --install jenkins jenkins/jenkins \
-        --namespace jenkins \
-        --set controller.adminPassword="JenkinsAdmin2024!" \
-        --set controller.serviceType=LoadBalancer \
-        --set controller.loadBalancerIP=${JENKINS_IP} \
-        --set persistence.enabled=true \
-        --set persistence.storageClass=longhorn \
-        --wait --timeout 10m
-    
+
+    # Use the comprehensive values file with pod templates and plugins
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    VALUES_FILE="${SCRIPT_DIR}/../ci-cd/jenkins/kubernetes/values.yaml"
+
+    if [[ -f "${VALUES_FILE}" ]]; then
+        log_info "Using values file: ${VALUES_FILE}"
+        helm upgrade --install jenkins jenkins/jenkins \
+            --namespace jenkins \
+            -f "${VALUES_FILE}" \
+            --wait --timeout 15m
+    else
+        log_info "Values file not found, using defaults"
+        helm upgrade --install jenkins jenkins/jenkins \
+            --namespace jenkins \
+            --set controller.adminPassword="JenkinsAdmin2024!" \
+            --set controller.serviceType=LoadBalancer \
+            --set controller.loadBalancerIP=${JENKINS_IP} \
+            --set persistence.enabled=true \
+            --set persistence.storageClass=longhorn \
+            --wait --timeout 10m
+    fi
+
     log_info "Jenkins: http://${JENKINS_IP}:8080 (admin/JenkinsAdmin2024!)"
+    log_info "See ci-cd/jenkins/kubernetes/README.md for post-installation setup"
 }
 
 setup_awx() {

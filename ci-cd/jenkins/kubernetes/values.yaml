@@ -1,0 +1,193 @@
+# =============================================================================
+# Jenkins Helm Chart Values - Local Kubernetes Deployment
+# =============================================================================
+# For use with: helm upgrade --install jenkins jenkins/jenkins -f values.yaml
+# MetalLB IP: 192.168.68.206
+# =============================================================================
+
+controller:
+  # Admin credentials
+  adminUser: "admin"
+  adminPassword: "JenkinsAdmin2024!"
+
+  # Service configuration - LoadBalancer with MetalLB
+  serviceType: LoadBalancer
+  loadBalancerIP: "192.168.68.206"
+  servicePort: 8080
+
+  # Resource limits for homelab
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+
+  # Java options
+  javaOpts: "-Xms1g -Xmx1g -Djenkins.install.runSetupWizard=false"
+
+  # Required plugins
+  installPlugins:
+    - kubernetes:4285.v8bf293746978
+    - workflow-aggregator:600.vb_57cdd26fdd7
+    - git:5.6.0
+    - configuration-as-code:1850.va_a_8c31d3158b_
+    - credentials-binding:681.vf91669a_32e45
+    - aws-credentials:231.v08a_59f17d742
+    - amazon-ecr:1.114.veb_c576f42b_7c
+    - pipeline-stage-view:2.34
+    - blueocean:1.27.16
+    - job-dsl:1.89
+    - pipeline-utility-steps:2.18.0
+    - timestamper:1.28
+    - ws-cleanup:0.46
+    - antisamy-markup-formatter:162.v0e6ec0fcfcf6
+
+  # Disable plugin installation retries to speed up startup
+  installLatestPlugins: false
+  installLatestSpecifiedPlugins: true
+
+  # Jenkins Configuration as Code
+  JCasC:
+    defaultConfig: true
+    configScripts:
+      welcome-message: |
+        jenkins:
+          systemMessage: "Middleware Automation Platform - Jenkins CI/CD"
+
+      security-config: |
+        security:
+          scriptApproval:
+            approvedSignatures:
+              - "method groovy.lang.GString getBytes"
+              - "staticMethod java.lang.System getenv java.lang.String"
+
+      credentials-config: |
+        credentials:
+          system:
+            domainCredentials:
+              - credentials:
+                  - string:
+                      scope: GLOBAL
+                      id: "registry-local"
+                      secret: "registry.local"
+                      description: "Local container registry"
+
+      cloud-config: |
+        jenkins:
+          clouds:
+            - kubernetes:
+                name: "kubernetes"
+                serverUrl: "https://kubernetes.default.svc.cluster.local"
+                namespace: "jenkins"
+                jenkinsUrl: "http://jenkins.jenkins.svc.cluster.local:8080"
+                jenkinsTunnel: "jenkins-agent.jenkins.svc.cluster.local:50000"
+                containerCapStr: "10"
+                podRetention: "never"
+                templates:
+                  - name: "middleware-agent"
+                    label: "middleware"
+                    nodeUsageMode: NORMAL
+                    containers:
+                      - name: "maven"
+                        image: "maven:3.9-eclipse-temurin-17"
+                        command: "cat"
+                        ttyEnabled: true
+                        resourceRequestCpu: "500m"
+                        resourceRequestMemory: "512Mi"
+                        resourceLimitCpu: "1000m"
+                        resourceLimitMemory: "1Gi"
+                      - name: "podman"
+                        image: "quay.io/podman/stable:latest"
+                        command: "cat"
+                        ttyEnabled: true
+                        privileged: true
+                        resourceRequestCpu: "500m"
+                        resourceRequestMemory: "512Mi"
+                        resourceLimitCpu: "2000m"
+                        resourceLimitMemory: "2Gi"
+                      - name: "ansible"
+                        image: "cytopia/ansible:latest"
+                        command: "cat"
+                        ttyEnabled: true
+                        resourceRequestCpu: "250m"
+                        resourceRequestMemory: "256Mi"
+                        resourceLimitCpu: "500m"
+                        resourceLimitMemory: "512Mi"
+                    volumes:
+                      - emptyDirVolume:
+                          mountPath: "/home/jenkins/agent"
+                          memory: false
+                    yaml: |
+                      spec:
+                        securityContext:
+                          runAsUser: 0
+                          runAsGroup: 0
+                        tolerations:
+                          - key: "node.kubernetes.io/not-ready"
+                            operator: "Exists"
+                            effect: "NoExecute"
+                            tolerationSeconds: 300
+
+      jobs-config: |
+        jobs:
+          - script: |
+              pipelineJob('middleware-platform') {
+                description('Enterprise Middleware Platform CI/CD Pipeline')
+                definition {
+                  cpsScm {
+                    scm {
+                      git {
+                        remote {
+                          url('https://github.com/YOUR_ORG/middleware-automation-platform.git')
+                          credentials('github-token')
+                        }
+                        branch('*/main')
+                      }
+                    }
+                    scriptPath('ci-cd/Jenkinsfile')
+                  }
+                }
+                parameters {
+                  choiceParam('ENVIRONMENT', ['dev', 'staging', 'prod-aws'], 'Target environment')
+                  choiceParam('DEPLOY_TYPE', ['full', 'application-only'], 'Deployment type')
+                  booleanParam('DRY_RUN', false, 'Dry run mode')
+                  stringParam('LIBERTY_VERSION', '24.0.0.1', 'Liberty version')
+                }
+              }
+
+  # Ingress (disabled - using LoadBalancer)
+  ingress:
+    enabled: false
+
+# Agent configuration
+agent:
+  enabled: true
+  image:
+    repository: "jenkins/inbound-agent"
+    tag: "latest"
+  resources:
+    requests:
+      cpu: "256m"
+      memory: "256Mi"
+    limits:
+      cpu: "512m"
+      memory: "512Mi"
+
+# Persistence configuration
+persistence:
+  enabled: true
+  storageClass: "longhorn"
+  size: "20Gi"
+  accessMode: "ReadWriteOnce"
+
+# Service account
+serviceAccount:
+  create: true
+  name: "jenkins"
+
+# RBAC
+rbac:
+  create: true
+  readSecrets: true
