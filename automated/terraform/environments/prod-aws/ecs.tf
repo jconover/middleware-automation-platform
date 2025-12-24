@@ -306,8 +306,8 @@ resource "aws_lb_target_group" "liberty_ecs" {
 }
 
 # -----------------------------------------------------------------------------
-# ALB Listener Rule for ECS (routes /ecs/* to ECS for testing)
-# After validation, update main listener to point to ECS target group
+# ALB Listener Rule for EC2 Rollback (routes to EC2 when X-Target: ec2 header)
+# Default traffic now goes to ECS. Use this header to test EC2 instances.
 # -----------------------------------------------------------------------------
 resource "aws_lb_listener_rule" "ecs_liberty" {
   count = var.ecs_enabled ? 1 : 0
@@ -317,18 +317,18 @@ resource "aws_lb_listener_rule" "ecs_liberty" {
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.liberty_ecs[0].arn
+    target_group_arn = aws_lb_target_group.liberty.arn
   }
 
-  # Route based on header for testing (X-Target: ecs)
+  # Route to EC2 when header X-Target: ec2 is present (for rollback/testing)
   condition {
     http_header {
       http_header_name = "X-Target"
-      values           = ["ecs"]
+      values           = ["ec2"]
     }
   }
 
   tags = {
-    Name = "${local.name_prefix}-ecs-rule"
+    Name = "${local.name_prefix}-ec2-rollback-rule"
   }
 }

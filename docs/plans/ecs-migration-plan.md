@@ -376,7 +376,7 @@ curl -X POST "$GRAFANA_URL/api/dashboards/db" \
 - [x] Set up auto-scaling
 - [x] Update CI/CD pipeline
 - [x] Update monitoring (file_sd + discovery script + Grafana dashboard)
-- [ ] Decommission EC2 instances
+- [x] Decommission EC2 instances
 
 ---
 
@@ -399,6 +399,131 @@ If issues occur:
 1. Keep EC2 instances running during migration
 2. ALB can switch back to EC2 target group
 3. Terraform state preserved for both
+
+---
+
+## Phase 7: Decommission EC2 Liberty Instances
+
+### Prerequisites
+Before decommissioning, verify ECS is fully operational:
+
+```bash
+# 1. Check ECS service health
+aws ecs describe-services --cluster mw-prod-cluster --services mw-prod-liberty \
+  --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
+
+# 2. Verify ECS target group has healthy targets
+aws elbv2 describe-target-health \
+  --target-group-arn $(aws elbv2 describe-target-groups --names mw-prod-liberty-ecs-tg \
+    --query 'TargetGroups[0].TargetGroupArn' --output text) \
+  --query 'TargetHealthDescriptions[*].{Target:Target.Id,Health:TargetHealth.State}'
+
+# 3. Test ECS endpoints via ALB
+curl -s http://<alb-dns>/health/ready -H "X-Route-To: ecs"
+curl -s http://<alb-dns>/api/info -H "X-Route-To: ecs"
+
+# 4. Verify Prometheus is scraping ECS tasks
+curl -s http://<monitoring-ip>:9090/api/v1/targets | jq '.data.activeTargets[] | select(.labels.job=="ecs-liberty")'
+```
+
+### 7.1 Switch ALB Default Route to ECS
+
+Update `loadbalancer.tf` to make ECS the default target (remove header requirement):
+
+```hcl
+# Change the default action to forward to ECS target group
+resource "aws_lb_listener" "http" {
+  # ... existing config ...
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.liberty_ecs[0].arn  # Changed from liberty
+  }
+}
+```
+
+Or keep both and use weighted routing during transition:
+```hcl
+default_action {
+  type = "forward"
+  forward {
+    target_group {
+      arn    = aws_lb_target_group.liberty_ecs[0].arn
+      weight = 100  # All traffic to ECS
+    }
+    target_group {
+      arn    = aws_lb_target_group.liberty.arn
+      weight = 0    # No traffic to EC2
+    }
+  }
+}
+```
+
+### 7.2 Remove EC2 Liberty Instances
+
+**Option A: Set instance count to 0 (reversible)**
+```hcl
+# In terraform.tfvars
+liberty_instance_count = 0
+```
+
+**Option B: Remove EC2 resources entirely**
+1. Remove from `compute.tf`:
+   - `aws_instance.liberty`
+   - `aws_lb_target_group_attachment.liberty`
+   - `aws_lb_target_group_attachment.liberty_admin`
+
+2. Remove from `loadbalancer.tf`:
+   - `aws_lb_target_group.liberty` (EC2 target group)
+   - Any listener rules routing to EC2
+
+3. Update `security.tf`:
+   - Remove `aws_security_group.liberty` if no longer needed
+   - Remove EC2-specific security group rules
+
+4. Clean up `monitoring.tf`:
+   - Remove EC2 Liberty targets from Prometheus config
+   - Keep only ECS discovery
+
+### 7.3 Update Prometheus Configuration
+
+After EC2 removal, update monitoring to remove EC2 targets:
+
+```yaml
+# Remove this job from prometheus.yml
+# - job_name: 'ec2-liberty'
+#   static_configs:
+#     - targets: ['${liberty1_ip}:9080', '${liberty2_ip}:9080']
+```
+
+### 7.4 Apply Changes
+
+```bash
+cd automated/terraform/environments/prod-aws
+
+# Preview changes
+terraform plan
+
+# Apply (this will terminate EC2 instances)
+terraform apply
+
+# Verify ECS is still healthy after changes
+aws ecs describe-services --cluster mw-prod-cluster --services mw-prod-liberty
+```
+
+### 7.5 Post-Decommission Verification
+
+```bash
+# Confirm no EC2 Liberty instances running
+aws ec2 describe-instances --filters "Name=tag:Name,Values=*liberty*" \
+  --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name}'
+
+# Confirm ALB routes to ECS
+curl -s http://<alb-dns>/health/ready
+
+# Confirm monitoring only shows ECS targets
+curl -s http://<monitoring-ip>:9090/api/v1/targets | \
+  jq '[.data.activeTargets[] | select(.labels.job | contains("liberty"))]'
+```
 
 ---
 

@@ -71,22 +71,6 @@ scrape_configs:
       - files:
           - /etc/prometheus/targets/ecs-liberty.json
         refresh_interval: 30s
-
-  # EC2 Liberty instances (kept for rollback/comparison)
-  - job_name: 'ec2-liberty'
-    metrics_path: '/metrics'
-    static_configs:
-      - targets: ['${liberty1_ip}:9080', '${liberty2_ip}:9080']
-        labels:
-          environment: 'production'
-          deployment_type: 'ec2'
-
-  # Node exporter on EC2 instances
-  - job_name: 'node'
-    static_configs:
-      - targets: ['${liberty1_ip}:9100', '${liberty2_ip}:9100']
-        labels:
-          environment: 'production'
 PROMEOF
 
 # Create ECS service discovery script

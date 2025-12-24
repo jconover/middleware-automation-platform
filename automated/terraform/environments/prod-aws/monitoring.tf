@@ -198,8 +198,8 @@ resource "aws_instance" "monitoring" {
   }
 
   user_data = base64encode(templatefile("${path.module}/templates/monitoring-user-data.sh", {
-    liberty1_ip      = aws_instance.liberty[0].private_ip
-    liberty2_ip      = length(aws_instance.liberty) > 1 ? aws_instance.liberty[1].private_ip : aws_instance.liberty[0].private_ip
+    liberty1_ip      = length(aws_instance.liberty) > 0 ? aws_instance.liberty[0].private_ip : ""
+    liberty2_ip      = length(aws_instance.liberty) > 1 ? aws_instance.liberty[1].private_ip : (length(aws_instance.liberty) > 0 ? aws_instance.liberty[0].private_ip : "")
     aws_region       = var.aws_region
     ecs_enabled      = var.ecs_enabled
     ecs_cluster_name = var.ecs_enabled ? aws_ecs_cluster.main[0].name : ""
@@ -210,9 +210,6 @@ resource "aws_instance" "monitoring" {
     Role         = "monitoring"
     AnsibleGroup = "monitoring_servers"
   }
-
-  # Wait for Liberty instances to be created first
-  depends_on = [aws_instance.liberty]
 
   lifecycle {
     ignore_changes = [ami, user_data]

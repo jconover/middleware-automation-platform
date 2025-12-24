@@ -190,8 +190,11 @@ resource "aws_lb_listener" "http" {
       }
     }
 
-    # Forward to target group if no certificate
-    target_group_arn = local.has_certificate ? null : aws_lb_target_group.liberty.arn
+    # Forward to ECS target group (primary) if no certificate
+    # EC2 target group kept for rollback but not used as default
+    target_group_arn = local.has_certificate ? null : (
+      var.ecs_enabled ? aws_lb_target_group.liberty_ecs[0].arn : aws_lb_target_group.liberty.arn
+    )
   }
 }
 
