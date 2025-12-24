@@ -1,7 +1,7 @@
 # Manual Deployment Guide
 
 > **Purpose**: Complete step-by-step manual deployment with timing checkpoints.  
-> **Target**:  Senior Middleware Application Server Engineer demonstration.  
+> **Target**: Senior Middleware Application Server Engineer demonstration.  
 > **Estimated Total Time**: ~5 hours (301 minutes)
 
 ---
@@ -9,6 +9,7 @@
 ## Timing Protocol
 
 Before starting each phase:
+
 1. **Start a stopwatch/timer**
 2. **Record your start time** in the checkpoint boxes
 3. **Log actual completion time** at the end of each task
@@ -25,6 +26,7 @@ This creates documented evidence of manual effort for ROI comparison.
 - Internet access for package downloads
 - sudo/root access
 - **Maven 3.6+** (for building sample application in Phase 3)
+
   ```bash
   # Ubuntu/Debian
   sudo apt install maven -y
@@ -48,11 +50,11 @@ This creates documented evidence of manual effort for ROI comparison.
 
 ## Option A: Physical/VM Servers
 
-*Skip to Option B if using Podman for demo.*
+_Skip to Option B if using Podman for demo._
 
 ### Task 1.1: Prepare Server 1 (liberty-server-01)
 
-**Expected: 10 minutes** | **Actual: ______** | **Start Time: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\***\* | **Start Time: **\_\_\*\***
 
 ```bash
 # Connect to server
@@ -86,19 +88,19 @@ EOF'
 
 ### Task 1.2: Prepare Server 2 (liberty-server-02)
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 Repeat Task 1.1 on second server (192.168.68.88), setting hostname to `liberty-server-02`.
 
 ### Task 1.3: Prepare Controller Server (liberty-controller-01)
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 Repeat Task 1.1 on controller server (192.168.68.86), setting hostname to `liberty-controller-01`.
 
 ### Task 1.4: Create Liberty User on All Servers
 
-**Expected: 15 minutes (7 per server)** | **Actual: ______**
+**Expected: 15 minutes (7 per server)** | **Actual: **\_\_\*\*\*\*
 
 Run on **each server**:
 
@@ -110,7 +112,7 @@ sudo chown -R liberty:liberty /opt/ibm /var/log/liberty /var/liberty
 
 ### Task 1.5: Configure Firewall Rules
 
-**Expected: 8 minutes** | **Actual: ______**
+**Expected: 8 minutes** | **Actual: **\_\_\*\*\*\*
 
 ```bash
 sudo ufw enable
@@ -121,13 +123,13 @@ sudo ufw allow 9060/tcp
 sudo ufw status
 ```
 
-**Checkpoint Option A:** _______ minutes total | **Now skip to Phase 2**
+**Checkpoint Option A:** **\_\_\_** minutes total | **Now skip to Phase 2**
 
 ---
 
 ## Option B: Podman Demo Environment (Single Machine)
 
-*This option lets you demo the entire setup on one machine using containers.*
+_This option lets you demo the entire setup on one machine using containers._
 
 ### Task 1.1-P: Install Podman and Create Network
 
@@ -148,7 +150,7 @@ podman network ls
 
 ### Task 1.2-P: Create and Configure Controller Container
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 ```bash
 # Create controller container
@@ -187,17 +189,18 @@ exit
 ```
 
 **Checkpoint 1.2-P:**
+
 - [ ] Container running
 - [ ] Java installed
 - [ ] liberty user created
 - [ ] Directories created
-- **Actual time: _______ minutes**
+- **Actual time: **\_\_\_** minutes**
 
 ---
 
 ### Task 1.3-P: Create and Configure Server 1 Container
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 ```bash
 # Create server 1 container
@@ -229,16 +232,17 @@ exit
 ```
 
 **Checkpoint 1.3-P:**
+
 - [ ] Container running
 - [ ] Java installed
 - [ ] liberty user created
-- **Actual time: _______ minutes**
+- **Actual time: **\_\_\_** minutes**
 
 ---
 
 ### Task 1.4-P: Create and Configure Server 2 Container
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 ```bash
 # Create server 2 container
@@ -270,16 +274,17 @@ exit
 ```
 
 **Checkpoint 1.4-P:**
+
 - [ ] Container running
-- [ ] Java installed  
+- [ ] Java installed
 - [ ] liberty user created
-- **Actual time: _______ minutes**
+- **Actual time: **\_\_\_** minutes**
 
 ---
 
 ### Task 1.5-P: Verify All Containers
 
-**Expected: 2 minutes** | **Actual: ______**
+**Expected: 2 minutes** | **Actual: **\_\_\*\*\*\*
 
 ```bash
 # List all running containers
@@ -303,10 +308,11 @@ podman exec liberty-server-02 java -version
 ```
 
 **Checkpoint Option B Complete:**
+
 - [ ] 3 containers running
 - [ ] All containers can resolve each other by hostname
 - [ ] Java working in all containers
-- **Total Phase 1 time: _______ minutes**
+- **Total Phase 1 time: **\_\_\_** minutes**
 
 ---
 
@@ -345,6 +351,7 @@ podman exec liberty-server-01 /opt/ibm/wlp/bin/server status appServer
 **Expected Time: 60 minutes**
 
 > **Podman Users**: For each task below, enter the appropriate container first:
+>
 > ```bash
 > podman exec -it liberty-server-01 bash   # For server tasks
 > podman exec -it liberty-controller bash  # For controller tasks
@@ -354,13 +361,13 @@ podman exec liberty-server-01 /opt/ibm/wlp/bin/server status appServer
 
 If you're familiar with traditional WebSphere Application Server (WAS), here are the key differences:
 
-| Aspect | Traditional WAS | Open Liberty |
-|--------|-----------------|--------------|
-| Configuration | XML + Admin Console | server.xml (single file) |
-| Startup Time | 60-120 seconds | 2-5 seconds |
-| Memory Footprint | 512MB-2GB+ | 50-300MB |
-| Features | All loaded | Only what you need |
-| Deployment Model | Cells/Nodes/Clusters | Collectives (optional) |
+| Aspect           | Traditional WAS      | Open Liberty             |
+| ---------------- | -------------------- | ------------------------ |
+| Configuration    | XML + Admin Console  | server.xml (single file) |
+| Startup Time     | 60-120 seconds       | 2-5 seconds              |
+| Memory Footprint | 512MB-2GB+           | 50-300MB                 |
+| Features         | All loaded           | Only what you need       |
+| Deployment Model | Cells/Nodes/Clusters | Collectives (optional)   |
 
 Liberty uses a **feature-based model** - you only enable what you need.
 
@@ -368,7 +375,7 @@ Liberty uses a **feature-based model** - you only enable what you need.
 
 ### Task 2.1: Download Open Liberty
 
-**Expected: 7 minutes per server (22 total)** | **Actual: ______**
+**Expected: 7 minutes per server (22 total)** | **Actual: **\_\_\*\*\*\*
 
 **Run on: liberty-server-01, liberty-server-02, AND liberty-controller**
 
@@ -402,6 +409,7 @@ exit
 ```
 
 **Podman Shortcut** - Run on all containers without entering each one:
+
 ```bash
 # Download and extract Liberty on all three containers
 for container in liberty-controller liberty-server-01 liberty-server-02; do
@@ -418,16 +426,17 @@ done
 ```
 
 **Checkpoint 2.1:**
+
 - [ ] Liberty downloaded on all servers/containers
 - [ ] Extracted to /opt/ibm/wlp
 - [ ] `server version` returns 24.0.0.1
-- **Actual time: _______ minutes**
+- **Actual time: **\_\_\_** minutes**
 
 ---
 
 ### Task 2.2: Create Server Instance
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 **Run on: liberty-server-01 and liberty-server-02** (NOT controller yet)
 
@@ -458,6 +467,7 @@ exit
 ```
 
 **Podman Shortcut:**
+
 ```bash
 # Create appServer on both application servers
 for container in liberty-server-01 liberty-server-02; do
@@ -467,15 +477,16 @@ done
 ```
 
 **Checkpoint 2.2:**
+
 - [ ] appServer created on liberty-server-01
 - [ ] appServer created on liberty-server-02
-- **Actual time: _______ minutes**
+- **Actual time: **\_\_\_** minutes**
 
 ---
 
 ### Task 2.3: Configure server.xml
 
-**Expected: 15 minutes** | **Actual: ______**
+**Expected: 15 minutes** | **Actual: **\_\_\*\*\*\*
 
 **Run on: liberty-server-01** (then copy to liberty-server-02)
 
@@ -579,13 +590,15 @@ mkdir -p /opt/ibm/wlp/usr/servers/appServer/resources/security
 ```
 
 **Checkpoint 2.3:**
+
 - [ ] server.xml configured
 - [ ] server.env created
 - [ ] jvm.options created
 - [ ] Replicated to server-02
-- **Actual time: _______ minutes**
+- **Actual time: **\_\_\_** minutes**
 
 **Podman: Copy config to server-02:**
+
 ```bash
 # Copy from server-01 to server-02
 podman exec liberty-server-01 cat /opt/ibm/wlp/usr/servers/appServer/server.xml | \
@@ -605,7 +618,7 @@ podman exec liberty-server-02 su - liberty -c 'mkdir -p /opt/ibm/wlp/usr/servers
 
 ### Task 2.4: Generate SSL Certificates
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 **Run on: liberty-server-01 and liberty-server-02**
 
@@ -644,6 +657,7 @@ exit
 ```
 
 **Podman Shortcut** - Generate certs on both servers:
+
 ```bash
 for container in liberty-server-01 liberty-server-02; do
     echo "=== Generating SSL certs on $container ==="
@@ -665,15 +679,16 @@ done
 ```
 
 **Checkpoint 2.4:**
+
 - [ ] key.p12 created
 - [ ] trust.p12 created
-- **Actual time: _______ minutes**
+- **Actual time: **\_\_\_** minutes**
 
 ---
 
 ### Task 2.5: Configure Liberty Collective
 
-**Expected: 12 minutes** | **Actual: ______**
+**Expected: 12 minutes** | **Actual: **\_\_\*\*\*\*
 
 A **Liberty Collective** provides centralized management (similar to WAS ND Cell but lighter).
 
@@ -696,7 +711,7 @@ su - liberty
 cat > /opt/ibm/wlp/usr/servers/collectiveController/server.xml << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <server description="Liberty Collective Controller">
-    
+
     <featureManager>
         <feature>collectiveController-1.0</feature>
         <feature>ssl-1.0</feature>
@@ -707,7 +722,7 @@ cat > /opt/ibm/wlp/usr/servers/collectiveController/server.xml << 'EOF'
     <administrator-role>
         <user>admin</user>
     </administrator-role>
-    
+
     <basicRegistry id="basic" realm="BasicRealm">
         <user name="admin" password="adminpassword"/>
     </basicRegistry>
@@ -722,7 +737,7 @@ cat > /opt/ibm/wlp/usr/servers/collectiveController/server.xml << 'EOF'
     </collectiveController>
 
     <ssl id="defaultSSLConfig" keyStoreRef="defaultKeyStore" />
-    
+
     <keyStore id="defaultKeyStore"
               location="${server.config.dir}/resources/security/key.p12"
               password="controllerkeys" type="PKCS12" />
@@ -780,21 +795,23 @@ exit
 ```
 
 **Admin Center Access:**
+
 - Physical servers: https://liberty-controller-01:9443/adminCenter
 - Podman: https://localhost:9443/adminCenter
 - Credentials: admin / adminpassword
 
 **Checkpoint 2.5:**
+
 - [ ] Controller created and running
 - [ ] Members joined collective
 - [ ] Admin Center accessible
-- **Actual time: _______ minutes**
+- **Actual time: **\_\_\_** minutes**
 
 ---
 
 ### Task 2.6: Verify Liberty Servers
 
-**Expected: 5 minutes** | **Actual: ______**
+**Expected: 5 minutes** | **Actual: **\_\_\*\*\*\*
 
 ```bash
 # ============================================================
@@ -823,13 +840,14 @@ podman exec liberty-server-01 curl -s http://localhost:9080/metrics | head -20
 ```
 
 **Checkpoint Phase 2 Complete:**
+
 - [ ] Liberty installed on all 3 containers/servers
 - [ ] appServer created on server-01 and server-02
 - [ ] collectiveController created on controller
 - [ ] SSL certificates generated
 - [ ] Collective members joined
 - [ ] All servers running and healthy
-- **Total Phase 2 time: _______ minutes**
+- **Total Phase 2 time: **\_\_\_** minutes**
 
 ---
 
@@ -842,9 +860,9 @@ podman exec liberty-server-01 curl -s http://localhost:9080/metrics | head -20
 
 ### Task 3.1: Download JDBC Driver (Optional)
 
-**Expected: 5 minutes** | **Actual: ______**
+**Expected: 5 minutes** | **Actual: **\_\_\*\*\*\*
 
-*Skip this task if not using a database. The sample app doesn't require it.*
+_Skip this task if not using a database. The sample app doesn't require it._
 
 ```bash
 # On physical servers only (not needed for Podman demo)
@@ -858,7 +876,7 @@ wget https://jdbc.postgresql.org/download/postgresql-42.7.1.jar
 
 ### Task 3.2: Build Sample Application
 
-**Expected: 7 minutes** | **Actual: ______**
+**Expected: 7 minutes** | **Actual: **\_\_\*\*\*\*
 
 > **Run on host machine** - requires Maven (see Prerequisites)
 
@@ -929,7 +947,7 @@ mvn clean package
 
 ### Task 3.3: Deploy Application
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 #### Option A: Physical/VM Servers
 
@@ -969,7 +987,7 @@ podman exec liberty-server-02 curl -s http://localhost:9080/hello-liberty/api/he
 
 ### Task 3.4: Configure Connection Pool
 
-**Expected: 7 minutes** | **Actual: ______**
+**Expected: 7 minutes** | **Actual: **\_\_\*\*\*\*
 
 Update dataSource in server.xml with tuned pool settings.
 
@@ -977,9 +995,10 @@ Update dataSource in server.xml with tuned pool settings.
 
 ### Task 3.5: Verify on Both Servers
 
-**Expected: 7 minutes** | **Actual: ______**
+**Expected: 7 minutes** | **Actual: **\_\_\*\*\*\*
 
 #### Physical/VM Servers
+
 ```bash
 for server in 192.168.68.88 192.168.68.86; do
     curl http://$server:9080/hello-liberty/api/hello
@@ -987,6 +1006,7 @@ done
 ```
 
 #### Podman Containers
+
 ```bash
 # From inside containers
 podman exec liberty-server-01 curl -s http://localhost:9080/hello-liberty/api/hello
@@ -997,7 +1017,7 @@ curl -s http://localhost:9080/hello-liberty/api/hello   # Server 01
 curl -s http://localhost:9180/hello-liberty/api/hello   # Server 02
 ```
 
-**Checkpoint Phase 3:** _______ minutes
+**Checkpoint Phase 3:** **\_\_\_** minutes
 
 ---
 
@@ -1009,7 +1029,7 @@ curl -s http://localhost:9180/hello-liberty/api/hello   # Server 02
 
 ### Task 4.1: Install NGINX
 
-**Expected: 5 minutes** | **Actual: ______**
+**Expected: 5 minutes** | **Actual: **\_\_\*\*\*\*
 
 #### Option A: Physical/VM Servers
 
@@ -1069,7 +1089,7 @@ podman ps | grep nginx
 
 ### Task 4.2: Configure Load Balancer
 
-**Expected: 12 minutes** | **Actual: ______**
+**Expected: 12 minutes** | **Actual: **\_\_\*\*\*\*
 
 #### Option A: Physical/VM Servers
 
@@ -1107,13 +1127,13 @@ sudo rm -f /etc/nginx/sites-enabled/default
 
 #### Option B: Podman Container
 
-*Configuration was created in Task 4.1. Skip to Task 4.4 to test.*
+_Configuration was created in Task 4.1. Skip to Task 4.4 to test._
 
 ---
 
 ### Task 4.3: SSL Certificates
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 #### Option A: Physical/VM Servers
 
@@ -1127,13 +1147,13 @@ sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 
 #### Option B: Podman Container
 
-*Optional for demo - skip to Task 4.4 to test HTTP load balancing.*
+_Optional for demo - skip to Task 4.4 to test HTTP load balancing._
 
 ---
 
 ### Task 4.4: Test Load Balancer
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 #### Option A: Physical/VM Servers
 
@@ -1167,7 +1187,7 @@ for i in {1..6}; do
 done
 ```
 
-**Checkpoint Phase 4:** _______ minutes
+**Checkpoint Phase 4:** **\_\_\_** minutes
 
 ---
 
@@ -1179,7 +1199,7 @@ done
 
 ### Task 5.1: Liberty Security
 
-**Expected: 15 minutes** | **Actual: ______**
+**Expected: 15 minutes** | **Actual: **\_\_\*\*\*\*
 
 Configure basic authentication and secure the admin center.
 
@@ -1235,7 +1255,7 @@ done
 
 ### Task 5.2: SSL Hardening
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 Generate proper SSL certificates and configure TLS.
 
@@ -1293,7 +1313,7 @@ curl -k https://localhost:9543/health   # Server 02
 
 ### Task 5.3: Audit Logging
 
-**Expected: 7 minutes** | **Actual: ______**
+**Expected: 7 minutes** | **Actual: **\_\_\*\*\*\*
 
 Enable audit logging for security events.
 
@@ -1343,7 +1363,7 @@ podman exec liberty-server-01 ls -la /opt/ibm/wlp/usr/servers/appServer/logs/
 
 ### Task 5.4: Systemd Service
 
-**Expected: 7 minutes** | **Actual: ______**
+**Expected: 7 minutes** | **Actual: **\_\_\*\*\*\*
 
 #### Option A: Physical/VM Servers
 
@@ -1377,7 +1397,7 @@ sudo systemctl status liberty-appServer
 
 #### Option B: Podman Containers
 
-*Systemd is not used for containers. Instead, use Podman's restart policy or generate systemd units for containers:*
+_Systemd is not used for containers. Instead, use Podman's restart policy or generate systemd units for containers:_
 
 ```bash
 # Option 1: Restart policy (already running containers)
@@ -1395,7 +1415,7 @@ systemctl --user daemon-reload
 systemctl --user enable liberty-server-01 liberty-server-02 liberty-nginx
 ```
 
-**Checkpoint Phase 5:** _______ minutes
+**Checkpoint Phase 5:** **\_\_\_** minutes
 
 ---
 
@@ -1407,12 +1427,12 @@ systemctl --user enable liberty-server-01 liberty-server-02 liberty-nginx
 
 ### Task 6.1: Install Prometheus
 
-**Expected: 12 minutes** | **Actual: ______**
+**Expected: 12 minutes** | **Actual: **\_\_\*\*\*\*
 
 #### Option A: Physical/VM Servers
 
 ```bash
-PROM_VERSION="2.48.0"
+PROM_VERSION="2.54.1"
 wget https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz
 tar xzf prometheus-*.tar.gz
 sudo cp prometheus-*/prometheus /usr/local/bin/
@@ -1505,7 +1525,7 @@ echo "Prometheus UI: http://localhost:9090"
 
 ### Task 6.2: Install Grafana
 
-**Expected: 12 minutes** | **Actual: ______**
+**Expected: 12 minutes** | **Actual: **\_\_\*\*\*\*
 
 #### Option A: Physical/VM Servers
 
@@ -1540,7 +1560,7 @@ echo "Grafana UI: http://localhost:3000 (admin/admin123)"
 
 ### Task 6.3: Create Alert Rules
 
-**Expected: 10 minutes** | **Actual: ______**
+**Expected: 10 minutes** | **Actual: **\_\_\*\*\*\*
 
 #### Option A: Physical/VM Servers
 
@@ -1646,7 +1666,7 @@ podman run -d --name prometheus \
 
 ### Task 6.4: Node Exporter
 
-**Expected: 7 minutes** | **Actual: ______**
+**Expected: 7 minutes** | **Actual: **\_\_\*\*\*\*
 
 Export host system metrics (CPU, memory, disk).
 
@@ -1709,13 +1729,14 @@ curl -s http://localhost:9100/metrics | head -20
 
 ### Task 6.5: Import Dashboards
 
-**Expected: 7 minutes** | **Actual: ______**
+**Expected: 7 minutes** | **Actual: **\_\_\*\*\*\*
 
 Configure Grafana with Prometheus datasource and import dashboards.
 
 #### Both Options (via Grafana UI)
 
 1. **Add Prometheus Data Source:**
+
    - Open Grafana: http://localhost:3000
    - Login (admin/admin or admin/admin123)
    - Go to: Configuration → Data Sources → Add data source
@@ -1726,6 +1747,7 @@ Configure Grafana with Prometheus datasource and import dashboards.
    - Click: Save & Test
 
 2. **Import Liberty Dashboard:**
+
    - Go to: Dashboards → Import
    - Dashboard ID: `14370` (Open Liberty MicroProfile Metrics)
    - Or ID: `1860` (Node Exporter Full)
@@ -1759,7 +1781,7 @@ echo "Grafana configured! Open http://localhost:3000"
 echo "Import dashboard ID 14370 for Liberty metrics"
 ```
 
-**Checkpoint Phase 6:** _______ minutes
+**Checkpoint Phase 6:** **\_\_\_** minutes
 
 ---
 
@@ -1767,42 +1789,42 @@ echo "Import dashboard ID 14370 for Liberty metrics"
 
 ## Time Recording
 
-| Phase | Expected | Actual | Variance |
-|-------|----------|--------|----------|
-| 1. Infrastructure | 67 min | _______ | _______ |
-| 2. Liberty Install | 70 min | _______ | _______ |
-| 3. Application | 37 min | _______ | _______ |
-| 4. Load Balancer | 37 min | _______ | _______ |
-| 5. Security | 40 min | _______ | _______ |
-| 6. Monitoring | 50 min | _______ | _______ |
-| **TOTAL** | **301 min** | _______ | _______ |
+| Phase              | Expected    | Actual     | Variance   |
+| ------------------ | ----------- | ---------- | ---------- |
+| 1. Infrastructure  | 67 min      | **\_\_\_** | **\_\_\_** |
+| 2. Liberty Install | 70 min      | **\_\_\_** | **\_\_\_** |
+| 3. Application     | 37 min      | **\_\_\_** | **\_\_\_** |
+| 4. Load Balancer   | 37 min      | **\_\_\_** | **\_\_\_** |
+| 5. Security        | 40 min      | **\_\_\_** | **\_\_\_** |
+| 6. Monitoring      | 50 min      | **\_\_\_** | **\_\_\_** |
+| **TOTAL**          | **301 min** | **\_\_\_** | **\_\_\_** |
 
 ## Access URLs
 
 ### Physical/VM Servers
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| Liberty Server 1 | http://192.168.68.88:9080 | - |
-| Liberty Server 2 | http://192.168.68.86:9080 | - |
-| Admin Center | https://192.168.68.82:9443/adminCenter | admin/adminpassword |
-| Load Balancer | http://192.168.68.82 | - |
-| Prometheus | http://192.168.68.82:9090 | - |
-| Grafana | http://192.168.68.82:3000 | admin/admin |
+| Service          | URL                                    | Credentials         |
+| ---------------- | -------------------------------------- | ------------------- |
+| Liberty Server 1 | http://192.168.68.88:9080              | -                   |
+| Liberty Server 2 | http://192.168.68.86:9080              | -                   |
+| Admin Center     | https://192.168.68.82:9443/adminCenter | admin/adminpassword |
+| Load Balancer    | http://192.168.68.82                   | -                   |
+| Prometheus       | http://192.168.68.82:9090              | -                   |
+| Grafana          | http://192.168.68.82:3000              | admin/admin         |
 
 ### Podman Demo (localhost)
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| Liberty Server 1 | http://localhost:9080 | - |
-| Liberty Server 2 | http://localhost:9180 | - |
-| NGINX Load Balancer | http://localhost:8080 | - |
-| Health Check S1 | http://localhost:9080/health | - |
-| Health Check S2 | http://localhost:9180/health | - |
-| Metrics S1 | http://localhost:9080/metrics | - |
-| Prometheus | http://localhost:9090 | - |
-| Grafana | http://localhost:3000 | admin/admin123 |
-| Node Exporter | http://localhost:9100/metrics | - |
+| Service             | URL                           | Credentials    |
+| ------------------- | ----------------------------- | -------------- |
+| Liberty Server 1    | http://localhost:9080         | -              |
+| Liberty Server 2    | http://localhost:9180         | -              |
+| NGINX Load Balancer | http://localhost:8080         | -              |
+| Health Check S1     | http://localhost:9080/health  | -              |
+| Health Check S2     | http://localhost:9180/health  | -              |
+| Metrics S1          | http://localhost:9080/metrics | -              |
+| Prometheus          | http://localhost:9090         | -              |
+| Grafana             | http://localhost:3000         | admin/admin123 |
+| Node Exporter       | http://localhost:9100/metrics | -              |
 
 ## Podman Cleanup
 
