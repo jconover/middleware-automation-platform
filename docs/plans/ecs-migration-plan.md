@@ -418,9 +418,9 @@ aws elbv2 describe-target-health \
     --query 'TargetGroups[0].TargetGroupArn' --output text) \
   --query 'TargetHealthDescriptions[*].{Target:Target.Id,Health:TargetHealth.State}'
 
-# 3. Test ECS endpoints via ALB
-curl -s http://<alb-dns>/health/ready -H "X-Route-To: ecs"
-curl -s http://<alb-dns>/api/info -H "X-Route-To: ecs"
+# 3. Test ECS endpoints via ALB (default route, no header needed after migration)
+curl -s http://<alb-dns>/health/ready
+curl -s http://<alb-dns>/api/info
 
 # 4. Verify Prometheus is scraping ECS tasks
 curl -s http://<monitoring-ip>:9090/api/v1/targets | jq '.data.activeTargets[] | select(.labels.job=="ecs-liberty")'
@@ -483,6 +483,14 @@ liberty_instance_count = 0
 4. Clean up `monitoring.tf`:
    - Remove EC2 Liberty targets from Prometheus config
    - Keep only ECS discovery
+   - **Important:** Update user_data template variables to handle empty EC2 list:
+     ```hcl
+     user_data = base64encode(templatefile("...", {
+       liberty1_ip = length(aws_instance.liberty) > 0 ? aws_instance.liberty[0].private_ip : ""
+       liberty2_ip = length(aws_instance.liberty) > 1 ? aws_instance.liberty[1].private_ip : (length(aws_instance.liberty) > 0 ? aws_instance.liberty[0].private_ip : "")
+       # ... other vars
+     }))
+     ```
 
 ### 7.3 Update Prometheus Configuration
 
