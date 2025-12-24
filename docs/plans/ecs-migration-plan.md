@@ -261,20 +261,29 @@ stage('Deploy to ECS') {
 
 ## Phase 6: Monitoring Updates
 
-### 6.1 Prometheus ECS Service Discovery (Implemented)
+### 6.1 File-Based ECS Service Discovery (Implemented)
 
-The monitoring server uses Prometheus native ECS service discovery to dynamically find and scrape Liberty containers.
+The monitoring server uses file-based service discovery with a custom script that queries the ECS API.
+
+**Why file_sd instead of ecs_sd:**
+- Official Prometheus binaries don't include `ecs_sd_configs` (requires building from source)
+- File-based discovery is reliable and well-supported
+- Discovery script runs via cron every minute
+
+**Components:**
+1. **Discovery Script** (`/usr/local/bin/ecs-discovery.sh`): Queries ECS API for running tasks
+2. **Targets File** (`/etc/prometheus/targets/ecs-liberty.json`): Updated by script
+3. **Cron Job** (`/etc/cron.d/ecs-discovery`): Runs script every minute
+
+**Dependencies (installed via user-data):**
+- AWS CLI v2 (for ECS API calls)
+- jq (for JSON processing)
 
 **IAM Permissions Required:**
 ```hcl
 # Added to monitoring.tf
-- ecs:ListClusters
 - ecs:ListTasks
 - ecs:DescribeTasks
-- ecs:DescribeServices
-- ecs:DescribeContainerInstances
-- ecs:DescribeTaskDefinition
-- ec2:DescribeInstances
 - ec2:DescribeNetworkInterfaces
 ```
 
@@ -282,25 +291,31 @@ The monitoring server uses Prometheus native ECS service discovery to dynamicall
 ```yaml
 - job_name: 'ecs-liberty'
   metrics_path: '/metrics'
-  ecs_sd_configs:
-    - region: 'us-east-1'
-      cluster: 'mw-prod-cluster'
-      port: 9080
+  file_sd_configs:
+    - files:
+        - /etc/prometheus/targets/ecs-liberty.json
       refresh_interval: 30s
-  relabel_configs:
-    - source_labels: [__meta_ecs_task_desired_status]
-      regex: RUNNING
-      action: keep
-    - source_labels: [__meta_ecs_task_arn]
-      regex: '.*/(.+)$'
-      target_label: ecs_task_id
-    - source_labels: [__meta_ecs_container_name]
-      target_label: container_name
-    - source_labels: [__meta_ecs_cluster_name]
-      target_label: ecs_cluster
-    - source_labels: [__meta_ecs_service_name]
-      target_label: ecs_service
 ```
+
+**Discovery Script Output (ecs-liberty.json):**
+```json
+[
+  {
+    "targets": ["10.10.10.140:9080"],
+    "labels": {
+      "job": "ecs-liberty",
+      "ecs_cluster": "mw-prod-cluster",
+      "ecs_task_id": "abc123...",
+      "container_name": "liberty",
+      "environment": "production",
+      "deployment_type": "ecs"
+    }
+  }
+]
+```
+
+**Security Group Requirements:**
+- Monitoring server security group must have access to ECS task security group on port 9080
 
 ### 6.2 ECS Alert Rules
 
@@ -340,7 +355,7 @@ Pre-provisioned "ECS Liberty Monitoring" dashboard with:
 - [x] Test traffic through ALB
 - [x] Set up auto-scaling
 - [x] Update CI/CD pipeline
-- [x] Update monitoring (Prometheus ECS SD + Grafana dashboard)
+- [x] Update monitoring (file_sd + discovery script + Grafana dashboard)
 - [ ] Decommission EC2 instances
 
 ---

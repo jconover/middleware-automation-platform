@@ -13,17 +13,27 @@ apt-get install -y \
   python3 python3-pip \
   curl wget unzip \
   apt-transport-https ca-certificates \
-  gnupg lsb-release
+  gnupg lsb-release \
+  jq
+
+# Install AWS CLI v2 (required for ECS service discovery)
+cd /tmp
+curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+unzip -q awscliv2.zip
+./aws/install
+rm -rf aws awscliv2.zip
 
 # Create prometheus user
 useradd --no-create-home --shell /bin/false prometheus
 
 # Create directories
-mkdir -p /etc/prometheus /var/lib/prometheus
+mkdir -p /etc/prometheus /var/lib/prometheus /etc/prometheus/targets
 chown prometheus:prometheus /var/lib/prometheus
 
 # Download and install Prometheus
-PROM_VERSION="2.48.0"
+# Note: Using 2.54.1 - official binaries don't include ecs_sd_configs,
+# so we use file_sd_configs with a discovery script instead
+PROM_VERSION="2.54.1"
 cd /tmp
 wget -q https://github.com/prometheus/prometheus/releases/download/v$${PROM_VERSION}/prometheus-$${PROM_VERSION}.linux-amd64.tar.gz
 tar xzf prometheus-$${PROM_VERSION}.linux-amd64.tar.gz
@@ -53,38 +63,14 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # ECS Liberty containers (dynamic discovery)
+  # ECS Liberty containers (file-based service discovery)
+  # Targets file updated by /usr/local/bin/ecs-discovery.sh via cron
   - job_name: 'ecs-liberty'
     metrics_path: '/metrics'
-    ecs_sd_configs:
-      - region: '${aws_region}'
-        cluster: '${ecs_cluster_name}'
-        port: 9080
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/ecs-liberty.json
         refresh_interval: 30s
-    relabel_configs:
-      # Only keep running tasks
-      - source_labels: [__meta_ecs_task_desired_status]
-        regex: RUNNING
-        action: keep
-      # Add task ID as label
-      - source_labels: [__meta_ecs_task_arn]
-        regex: '.*/(.+)$'
-        target_label: ecs_task_id
-      # Add container name
-      - source_labels: [__meta_ecs_container_name]
-        target_label: container_name
-      # Add cluster name
-      - source_labels: [__meta_ecs_cluster_name]
-        target_label: ecs_cluster
-      # Add service name
-      - source_labels: [__meta_ecs_service_name]
-        target_label: ecs_service
-      # Set environment label
-      - target_label: environment
-        replacement: 'production'
-      # Set deployment type
-      - target_label: deployment_type
-        replacement: 'ecs'
 
   # EC2 Liberty instances (kept for rollback/comparison)
   - job_name: 'ec2-liberty'
@@ -102,6 +88,56 @@ scrape_configs:
         labels:
           environment: 'production'
 PROMEOF
+
+# Create ECS service discovery script
+cat <<'DISCOVERYEOF' > /usr/local/bin/ecs-discovery.sh
+#!/bin/bash
+# ECS Service Discovery Script
+# Queries ECS for running tasks and creates Prometheus file_sd target file
+
+CLUSTER="${ecs_cluster_name}"
+REGION="${aws_region}"
+OUTPUT_FILE="/etc/prometheus/targets/ecs-liberty.json"
+
+# Get list of running tasks
+TASK_ARNS=$(/usr/local/bin/aws ecs list-tasks --cluster $CLUSTER --service-name mw-prod-liberty --desired-status RUNNING --region $REGION --query "taskArns[]" --output text 2>/dev/null)
+
+if [ -z "$TASK_ARNS" ]; then
+    echo "[]" > $OUTPUT_FILE
+    exit 0
+fi
+
+# Describe tasks to get network info
+TASKS=$(/usr/local/bin/aws ecs describe-tasks --cluster $CLUSTER --tasks $TASK_ARNS --region $REGION 2>/dev/null)
+
+# Extract private IPs and build targets JSON
+TARGETS=$(echo "$TASKS" | jq '
+[.tasks[] |
+  select(.lastStatus == "RUNNING") |
+  {
+    targets: [(.containers[0].networkInterfaces[0].privateIpv4Address + ":9080")],
+    labels: {
+      job: "ecs-liberty",
+      ecs_cluster: (.clusterArn | split("/")[-1]),
+      ecs_task_id: (.taskArn | split("/")[-1]),
+      container_name: .containers[0].name,
+      environment: "production",
+      deployment_type: "ecs"
+    }
+  }
+]')
+
+echo "$TARGETS" > $OUTPUT_FILE
+DISCOVERYEOF
+chmod +x /usr/local/bin/ecs-discovery.sh
+
+# Run initial discovery
+/usr/local/bin/ecs-discovery.sh || echo "[]" > /etc/prometheus/targets/ecs-liberty.json
+
+# Set up cron job to run discovery every minute
+echo "* * * * * root /usr/local/bin/ecs-discovery.sh" > /etc/cron.d/ecs-discovery
+chmod 644 /etc/cron.d/ecs-discovery
+
 %{ else }
 cat <<'PROMEOF' > /etc/prometheus/prometheus.yml
 global:
@@ -321,5 +357,6 @@ echo "ansible ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ansible
 echo "=== Monitoring Server Setup Complete ==="
 echo "Prometheus: http://<public-ip>:9090"
 echo "Grafana: http://<public-ip>:3000 (admin/admin)"
-echo ""
-echo "NOTE: Update /etc/prometheus/prometheus.yml with Liberty server IPs"
+%{ if ecs_enabled }
+echo "ECS Discovery: Running via cron every minute"
+%{ endif }
