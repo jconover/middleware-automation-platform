@@ -52,9 +52,10 @@ check_aws_cli() {
 }
 
 stop_ec2_instances() {
-    log_step "Stopping EC2 instances..."
+    log_step "Stopping EC2 instances (management/monitoring)..."
 
-    # Find all instances with our name prefix
+    # Find all instances with our name prefix (management, monitoring servers)
+    # Note: Liberty EC2 instances have been decommissioned in favor of ECS
     INSTANCE_IDS=$(aws ec2 describe-instances \
         --region "$AWS_REGION" \
         --filters "Name=tag:Name,Values=${NAME_PREFIX}-*" "Name=instance-state-name,Values=running" \
@@ -183,14 +184,14 @@ print_restart_instructions() {
     echo "  ./aws-start.sh"
     echo ""
     echo "Or manually:"
-    echo "  # Start EC2 instances"
-    echo "  aws ec2 start-instances --instance-ids <IDS>"
+    echo "  # Start RDS (do this first, takes ~5-10 min)"
+    echo "  aws rds start-db-instance --db-instance-identifier ${NAME_PREFIX}-postgres"
     echo ""
-    echo "  # Scale up ECS"
+    echo "  # Scale up ECS (primary application)"
     echo "  aws ecs update-service --cluster ${NAME_PREFIX}-cluster --service ${NAME_PREFIX}-liberty --desired-count 2"
     echo ""
-    echo "  # Start RDS"
-    echo "  aws rds start-db-instance --db-instance-identifier ${NAME_PREFIX}-postgres"
+    echo "  # Start EC2 instances (management/monitoring)"
+    echo "  aws ec2 start-instances --instance-ids <IDS>"
     echo ""
 }
 

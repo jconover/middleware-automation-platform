@@ -37,30 +37,45 @@ This project demonstrates the transformation of manual middleware deployment pro
 
 ```
 LOCAL DEVELOPMENT (Beelink Homelab)          AWS PRODUCTION
-════════════════════════════════════         ═══════════════════════════
+════════════════════════════════════         ═══════════════════════════════════
 
-┌─────────────────────────────────┐          ┌─────────────────────────┐
-│   Kubernetes Cluster            │          │      AWS VPC            │
-│   192.168.68.0/24               │          │    10.10.0.0/16          │
-│                                 │          │                         │
-│  ┌─────────┐  ┌─────────┐      │   ────►  │  ┌────────┐ ┌────────┐ │
-│  │ Master  │  │ Worker  │      │  Promote │  │  EC2   │ │  EC2   │ │
-│  │  .86    │  │  .88    │      │          │  │t3.small│ │t3.small│ │
-│  └─────────┘  └─────────┘      │          │  └────────┘ └────────┘ │
-│       ┌─────────┐              │          │                         │
-│       │ Worker  │              │          │  ┌────────┐ ┌────────┐ │
-│       │  .83    │              │          │  │  RDS   │ │ Redis  │ │
-│       └─────────┘              │          │  │Postgres│ │ Cache  │ │
-│                                 │          │  └────────┘ └────────┘ │
-│  Services:                     │          │                         │
-│  • AWX (.205)                  │          │  • ALB Load Balancer    │
-│  • Jenkins (.206)              │          │  • ACM Certificates     │
-│  • Prometheus (.201)           │          │  • CloudWatch           │
-│  • Grafana (.202)              │          │                         │
-│                                 │          │                         │
-│  Cost: $0/month                │          │  Cost: ~$152/month      │
-└─────────────────────────────────┘          └─────────────────────────┘
+┌─────────────────────────────────┐          ┌───────────────────────────────┐
+│   Kubernetes Cluster            │          │         AWS VPC               │
+│   192.168.68.0/24               │          │       10.10.0.0/16            │
+│                                 │          │                               │
+│  ┌─────────┐  ┌─────────┐      │          │  COMPUTE OPTIONS:             │
+│  │ Master  │  │ Worker  │      │   ────►  │  ┌─────────────────────────┐  │
+│  │  .86    │  │  .88    │      │  Promote │  │ ECS Fargate (default)   │  │
+│  └─────────┘  └─────────┘      │          │  │ • Auto-scaling 2-6      │  │
+│       ┌─────────┐              │          │  │ • Serverless containers │  │
+│       │ Worker  │              │          │  └─────────────────────────┘  │
+│       │  .83    │              │          │          -- OR --             │
+│       └─────────┘              │          │  ┌─────────────────────────┐  │
+│                                 │          │  │ EC2 Instances           │  │
+│  Services:                     │          │  │ • t3.small x2           │  │
+│  • AWX (.205)                  │          │  │ • Ansible-managed       │  │
+│  • Jenkins (.206)              │          │  └─────────────────────────┘  │
+│  • Prometheus (.201)           │          │                               │
+│  • Grafana (.202)              │          │  ┌────────┐ ┌────────┐       │
+│                                 │          │  │  RDS   │ │ Redis  │       │
+│                                 │          │  │Postgres│ │ Cache  │       │
+│                                 │          │  └────────┘ └────────┘       │
+│                                 │          │                               │
+│                                 │          │  • ALB Load Balancer         │
+│                                 │          │  • Prometheus/Grafana        │
+│  Cost: $0/month                │          │  Cost: ~$120-170/month        │
+└─────────────────────────────────┘          └───────────────────────────────┘
 ```
+
+### AWS Compute Options
+
+Configure in `terraform.tfvars`:
+
+| Option | Settings | Use Case |
+|--------|----------|----------|
+| **ECS Fargate** | `ecs_enabled=true`, `liberty_instance_count=0` | Production, auto-scaling, low ops overhead |
+| **EC2 Instances** | `ecs_enabled=false`, `liberty_instance_count=2` | Traditional, full control, Ansible-managed |
+| **Both** | `ecs_enabled=true`, `liberty_instance_count=2` | Migration, A/B testing, comparison |
 
 ---
 
@@ -230,34 +245,66 @@ terraform init
 terraform apply
 ```
 
-#### Step 2: Deploy AWS Infrastructure
+#### Step 2: Choose Compute Model
 
-This deploys EC2 instances, RDS, ElastiCache, ALB, and the AWX management server.
+Edit `terraform.tfvars` to select your compute model:
+
+```hcl
+# Option A: ECS Fargate (recommended for production)
+ecs_enabled = true
+liberty_instance_count = 0
+
+# Option B: EC2 Instances (traditional)
+ecs_enabled = false
+liberty_instance_count = 2
+
+# Option C: Both (for migration/comparison)
+ecs_enabled = true
+liberty_instance_count = 2
+```
+
+#### Step 3: Deploy AWS Infrastructure
 
 ```bash
-cd ../environments/prod-aws
+cd automated/terraform/environments/prod-aws
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your settings (domain, instance types, etc.)
+# Edit terraform.tfvars with your settings
 terraform init
 terraform plan    # Review changes
 terraform apply   # Deploy (~5-10 minutes)
 ```
 
-#### Step 3: Configure Ansible Inventory
+#### Step 4: Deploy Application
 
-**Option A: Dynamic Inventory (Recommended for AWX)**
-
-No action needed. The `prod-aws-ec2.yml` inventory uses the AWS EC2 plugin to auto-discover instances by tags. AWX uses IAM credentials from the management server.
-
-**Option B: Static Inventory (for CLI deployments)**
-
-If deploying via CLI without AWS credentials, update the static inventory with Terraform outputs:
+**For ECS Fargate:**
 ```bash
-terraform output ansible_inventory
-# Copy the IPs into automated/ansible/inventory/prod-aws.yml
+# Build and push container to ECR
+mvn -f sample-app/pom.xml clean package
+cp sample-app/target/*.war containers/liberty/apps/
+cd containers/liberty
+podman build -t liberty-app:latest -f Containerfile .
+
+# Get ECR push commands
+cd ../../automated/terraform/environments/prod-aws
+terraform output ecr_push_commands
+# Follow the output commands to push to ECR
+
+# Force ECS to pull the new image
+aws ecs update-service --cluster mw-prod-cluster --service mw-prod-liberty --force-new-deployment
 ```
 
-#### Step 4: Configure AWX
+**For EC2 Instances:**
+
+Configure Ansible inventory:
+- **Dynamic Inventory (AWX):** No action needed - auto-discovers via AWS EC2 plugin
+- **Static Inventory (CLI):** `terraform output ansible_inventory`
+
+Then deploy via AWX or CLI:
+```bash
+ansible-playbook -i automated/ansible/inventory/prod-aws-ec2.yml automated/ansible/playbooks/site.yml
+```
+
+#### Step 5: Configure AWX (Optional)
 
 Access the AWX web UI to set up credentials, project, and job templates.
 
@@ -388,7 +435,7 @@ The health check playbook validates:
 - Liberty `/health/live` endpoints (liveness)
 - Liberty `/metrics` endpoints (Prometheus metrics)
 
-#### Step 5: Deploy Liberty
+#### Step 6: Deploy Liberty (EC2 - via AWX)
 
 **Option A: Via AWX (Recommended)**
 
@@ -407,14 +454,14 @@ ansible-playbook -i inventory/prod-aws-ec2.yml playbooks/site.yml
 ```
 > **Note:** Requires VPN or bastion access to private subnets
 
-#### Step 6: Verify Deployment
+#### Step 7: Verify Deployment
 
 ```bash
 ALB_DNS=$(cd automated/terraform/environments/prod-aws && terraform output -raw alb_dns_name)
 curl http://$ALB_DNS/health/ready
 ```
 
-#### Step 7: Deploy Monitoring Server (Optional)
+#### Step 8: Deploy Monitoring Server (Optional)
 
 The monitoring server runs Prometheus and Grafana on a dedicated t3.small instance.
 
@@ -445,7 +492,7 @@ $(terraform output -raw monitoring_ssh_command)
 - **Prometheus** auto-configured to scrape Liberty `/metrics` endpoints
 - **Retention:** 15 days of metrics data
 
-#### Step 8: Deploy Sample Application (Optional)
+#### Step 9: Deploy Sample Application (Optional)
 
 Deploy the sample REST API for testing and load testing.
 
@@ -620,17 +667,39 @@ echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:300
 
 ## AWS Cost Estimate (Production)
 
+### ECS Fargate (Default)
+
 | Resource | Type | Monthly Cost |
 |----------|------|--------------|
-| Liberty Servers (x2) | t3.small | ~$30 |
+| ECS Fargate (2 tasks) | 0.5 vCPU, 1GB | ~$40-50 |
 | Management Server (AWX) | t3.medium | ~$30 |
-| Monitoring Server (Prometheus/Grafana) | t3.small | ~$15 |
+| Monitoring Server | t3.small | ~$15 |
 | RDS PostgreSQL | db.t3.micro | ~$15 |
 | ElastiCache Redis | cache.t3.micro | ~$12 |
 | Application Load Balancer | - | ~$20 |
 | NAT Gateway | - | ~$35 |
-| Data Transfer | ~10GB | ~$10 |
-| **TOTAL** | | **~$167/month** |
+| **TOTAL** | | **~$170/month** |
+
+### EC2 Instances (Traditional)
+
+| Resource | Type | Monthly Cost |
+|----------|------|--------------|
+| Liberty Servers (x2) | t3.small | ~$30 |
+| Management Server (AWX) | t3.medium | ~$30 |
+| Monitoring Server | t3.small | ~$15 |
+| RDS PostgreSQL | db.t3.micro | ~$15 |
+| ElastiCache Redis | cache.t3.micro | ~$12 |
+| Application Load Balancer | - | ~$20 |
+| NAT Gateway | - | ~$35 |
+| **TOTAL** | | **~$157/month** |
+
+### Cost Saving Scripts
+
+Stop services when not in use:
+```bash
+./automated/scripts/aws-stop.sh   # Stops ECS, RDS, EC2
+./automated/scripts/aws-start.sh  # Starts everything back up
+```
 
 ---
 
@@ -641,6 +710,7 @@ echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:300
 | [CONFIGURATION.md](./CONFIGURATION.md) | IP addresses and environment setup (local) |
 | [terraform.tfvars.example](./automated/terraform/environments/prod-aws/terraform.tfvars.example) | AWS production configuration |
 | [MANUAL_DEPLOYMENT.md](./MANUAL_DEPLOYMENT.md) | Complete manual deployment guide |
+| [docs/plans/ecs-migration-plan.md](./docs/plans/ecs-migration-plan.md) | ECS Fargate migration plan and checklist |
 | [docs/architecture/HYBRID_ARCHITECTURE.md](./docs/architecture/HYBRID_ARCHITECTURE.md) | Hybrid architecture details |
 | [docs/timing-analysis/](./docs/timing-analysis/) | Timing comparison reports |
 | [docs/troubleshooting/terraform-aws.md](./docs/troubleshooting/terraform-aws.md) | AWS/Terraform troubleshooting guide |

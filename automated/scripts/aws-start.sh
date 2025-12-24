@@ -85,9 +85,10 @@ start_rds() {
 }
 
 start_ec2_instances() {
-    log_step "Starting EC2 instances..."
+    log_step "Starting EC2 instances (management/monitoring)..."
 
-    # Find all stopped instances with our name prefix
+    # Find all stopped instances with our name prefix (management, monitoring)
+    # Note: Liberty EC2 instances have been decommissioned in favor of ECS
     INSTANCE_IDS=$(aws ec2 describe-instances \
         --region "$AWS_REGION" \
         --filters "Name=tag:Name,Values=${NAME_PREFIX}-*" "Name=instance-state-name,Values=stopped" \
@@ -151,21 +152,29 @@ check_health() {
     if [[ -n "$ALB_DNS" && "$ALB_DNS" != "None" ]]; then
         log_info "ALB DNS: $ALB_DNS"
 
-        # Check ECS health
+        # Check ECS health (default route)
         log_info "Checking ECS target health..."
         sleep 10
-        if curl -sf -H "X-Target: ecs" "http://${ALB_DNS}/health/ready" > /dev/null 2>&1; then
+        if curl -sf "http://${ALB_DNS}/health/ready" > /dev/null 2>&1; then
             log_info "✓ ECS targets healthy"
         else
             log_warn "ECS targets not yet healthy (may need more time)"
         fi
 
-        # Check EC2 health
-        log_info "Checking EC2 target health..."
-        if curl -sf "http://${ALB_DNS}/health/ready" > /dev/null 2>&1; then
-            log_info "✓ EC2 targets healthy"
-        else
-            log_warn "EC2 targets not yet healthy (may need more time)"
+        # Check ECS target group health via AWS API
+        ECS_TG_ARN=$(aws elbv2 describe-target-groups \
+            --region "$AWS_REGION" \
+            --names "${NAME_PREFIX}-liberty-ecs-tg" \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text 2>/dev/null || echo "")
+
+        if [[ -n "$ECS_TG_ARN" && "$ECS_TG_ARN" != "None" ]]; then
+            HEALTHY_COUNT=$(aws elbv2 describe-target-health \
+                --region "$AWS_REGION" \
+                --target-group-arn "$ECS_TG_ARN" \
+                --query 'length(TargetHealthDescriptions[?TargetHealth.State==`healthy`])' \
+                --output text 2>/dev/null || echo "0")
+            log_info "ECS healthy targets: $HEALTHY_COUNT"
         fi
     else
         log_warn "ALB not found. Infrastructure may need to be recreated."
@@ -193,9 +202,19 @@ print_summary() {
         --query 'Reservations[0].Instances[0].PublicIpAddress' \
         --output text 2>/dev/null || echo "N/A")
 
+    # Get monitoring server IP
+    MON_IP=$(aws ec2 describe-instances \
+        --region "$AWS_REGION" \
+        --filters "Name=tag:Name,Values=${NAME_PREFIX}-monitoring" "Name=instance-state-name,Values=running" \
+        --query 'Reservations[0].Instances[0].PublicIpAddress' \
+        --output text 2>/dev/null || echo "N/A")
+
     echo "Application URL:  http://${ALB_DNS}"
-    echo "ECS (via header): curl -H 'X-Target: ecs' http://${ALB_DNS}/health/ready"
-    echo "Management SSH:   ssh ec2-user@${MGMT_IP}"
+    echo "Health Check:     curl http://${ALB_DNS}/health/ready"
+    echo ""
+    echo "Management SSH:   ssh -i ~/.ssh/ansible_ed25519 ubuntu@${MGMT_IP}"
+    echo "Prometheus:       http://${MON_IP}:9090"
+    echo "Grafana:          http://${MON_IP}:3000 (admin/admin)"
     echo ""
     echo "Note: Services may take a few more minutes to fully initialize."
     echo ""
