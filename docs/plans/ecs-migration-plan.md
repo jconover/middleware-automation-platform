@@ -327,7 +327,27 @@ New alerts in `/etc/prometheus/rules/ecs-alerts.yml`:
 
 ### 6.3 Grafana Dashboard
 
-Pre-provisioned "ECS Liberty Monitoring" dashboard with:
+**Manual Import Required** (dashboard JSON exceeds EC2 user-data 16KB limit):
+
+1. Access Grafana at `http://<monitoring-ip>:3000` (admin/admin)
+2. Go to **Dashboards → New → Import**
+3. Copy contents from `monitoring/grafana/dashboards/ecs-liberty.json`
+4. Paste into the "Import via dashboard JSON model" text area
+5. Click **Load**, then **Import**
+
+**Alternative - using curl:**
+```bash
+# From a machine with access to the monitoring server
+GRAFANA_URL="http://<monitoring-ip>:3000"
+DASHBOARD_FILE="monitoring/grafana/dashboards/ecs-liberty.json"
+
+curl -X POST "$GRAFANA_URL/api/dashboards/db" \
+  -H "Content-Type: application/json" \
+  -u admin:admin \
+  -d "{\"dashboard\": $(cat $DASHBOARD_FILE), \"overwrite\": true}"
+```
+
+**Dashboard includes:**
 - Healthy/unhealthy task counts
 - Task up/down status timeline
 - Request rate and error rates

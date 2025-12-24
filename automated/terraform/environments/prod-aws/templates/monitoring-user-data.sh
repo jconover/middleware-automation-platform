@@ -284,9 +284,12 @@ datasources:
 DSEOF
 
 %{ if ecs_enabled }
-# Note: Grafana dashboard can be imported from monitoring/grafana/dashboards/ecs-liberty.json
-# Dashboard is too large for user-data (16KB limit), import manually or via Ansible
-echo "Import ECS dashboard from: monitoring/grafana/dashboards/ecs-liberty.json"
+# Note: Grafana ECS dashboard must be imported manually (exceeds 16KB user-data limit)
+# Dashboard JSON: monitoring/grafana/dashboards/ecs-liberty.json
+# Import instructions: docs/plans/ecs-migration-plan.md (Section 6.3)
+echo "=== Manual Step Required ==="
+echo "Import ECS Grafana dashboard from: monitoring/grafana/dashboards/ecs-liberty.json"
+echo "See docs/plans/ecs-migration-plan.md Section 6.3 for instructions"
 %{ endif }
 
 systemctl daemon-reload
