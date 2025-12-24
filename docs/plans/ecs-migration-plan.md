@@ -261,12 +261,65 @@ stage('Deploy to ECS') {
 
 ## Phase 6: Monitoring Updates
 
-### 6.1 Update Prometheus Targets
-- ECS tasks have dynamic IPs
-- Use ECS service discovery or CloudMap
-- Or scrape via CloudWatch Container Insights
+### 6.1 Prometheus ECS Service Discovery (Implemented)
 
-### 6.2 CloudWatch Container Insights
+The monitoring server uses Prometheus native ECS service discovery to dynamically find and scrape Liberty containers.
+
+**IAM Permissions Required:**
+```hcl
+# Added to monitoring.tf
+- ecs:ListClusters
+- ecs:ListTasks
+- ecs:DescribeTasks
+- ecs:DescribeServices
+- ecs:DescribeContainerInstances
+- ecs:DescribeTaskDefinition
+- ec2:DescribeInstances
+- ec2:DescribeNetworkInterfaces
+```
+
+**Prometheus Configuration:**
+```yaml
+- job_name: 'ecs-liberty'
+  metrics_path: '/metrics'
+  ecs_sd_configs:
+    - region: 'us-east-1'
+      cluster: 'mw-prod-cluster'
+      port: 9080
+      refresh_interval: 30s
+  relabel_configs:
+    - source_labels: [__meta_ecs_task_desired_status]
+      regex: RUNNING
+      action: keep
+    - source_labels: [__meta_ecs_task_arn]
+      regex: '.*/(.+)$'
+      target_label: ecs_task_id
+    - source_labels: [__meta_ecs_container_name]
+      target_label: container_name
+    - source_labels: [__meta_ecs_cluster_name]
+      target_label: ecs_cluster
+    - source_labels: [__meta_ecs_service_name]
+      target_label: ecs_service
+```
+
+### 6.2 ECS Alert Rules
+
+New alerts in `/etc/prometheus/rules/ecs-alerts.yml`:
+- **ECSLibertyTaskDown**: Task not responding (critical)
+- **ECSLibertyNoTasks**: No tasks running (critical)
+- **ECSLibertyHighHeapUsage**: Heap > 85% (warning)
+- **ECSLibertyHighErrorRate**: 5xx > 5% (warning)
+
+### 6.3 Grafana Dashboard
+
+Pre-provisioned "ECS Liberty Monitoring" dashboard with:
+- Healthy/unhealthy task counts
+- Task up/down status timeline
+- Request rate and error rates
+- JVM heap usage per task
+- ECS vs EC2 comparison panels (during migration)
+
+### 6.4 CloudWatch Container Insights
 - Already enabled via cluster setting
 - Provides CPU, memory, network metrics
 - Log aggregation in CloudWatch Logs
@@ -287,7 +340,7 @@ stage('Deploy to ECS') {
 - [x] Test traffic through ALB
 - [x] Set up auto-scaling
 - [x] Update CI/CD pipeline
-- [ ] Update monitoring
+- [x] Update monitoring (Prometheus ECS SD + Grafana dashboard)
 - [ ] Decommission EC2 instances
 
 ---

@@ -256,6 +256,21 @@ resource "aws_security_group_rule" "cache_from_ecs" {
 }
 
 # -----------------------------------------------------------------------------
+# Allow monitoring server to scrape ECS task metrics
+# -----------------------------------------------------------------------------
+resource "aws_security_group_rule" "ecs_metrics_from_monitoring" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  type                     = "ingress"
+  from_port                = 9080
+  to_port                  = 9080
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs_liberty.id
+  source_security_group_id = aws_security_group.monitoring[0].id
+  description              = "Liberty metrics from monitoring server (Prometheus ECS SD)"
+}
+
+# -----------------------------------------------------------------------------
 # ECS Target Group (for ALB)
 # -----------------------------------------------------------------------------
 resource "aws_lb_target_group" "liberty_ecs" {

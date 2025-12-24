@@ -21,6 +21,74 @@ variable "monitoring_instance_type" {
 }
 
 # -----------------------------------------------------------------------------
+# IAM Role for Monitoring Server (ECS Service Discovery)
+# -----------------------------------------------------------------------------
+resource "aws_iam_role" "monitoring" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  name = "${local.name_prefix}-monitoring-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${local.name_prefix}-monitoring-role"
+  }
+}
+
+resource "aws_iam_role_policy" "monitoring_ecs_discovery" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  name = "${local.name_prefix}-ecs-discovery"
+  role = aws_iam_role.monitoring[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ECSServiceDiscovery"
+        Effect = "Allow"
+        Action = [
+          "ecs:ListClusters",
+          "ecs:ListTasks",
+          "ecs:DescribeTasks",
+          "ecs:DescribeServices",
+          "ecs:DescribeContainerInstances",
+          "ecs:DescribeTaskDefinition"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "EC2DescribeForECS"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:DescribeNetworkInterfaces"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "monitoring" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  name = "${local.name_prefix}-monitoring-profile"
+  role = aws_iam_role.monitoring[0].name
+}
+
+# -----------------------------------------------------------------------------
 # Security Group
 # -----------------------------------------------------------------------------
 resource "aws_security_group" "monitoring" {
@@ -110,6 +178,7 @@ resource "aws_instance" "monitoring" {
   key_name               = aws_key_pair.deployer.key_name
   subnet_id              = aws_subnet.public[0].id
   vpc_security_group_ids = [aws_security_group.monitoring[0].id]
+  iam_instance_profile   = aws_iam_instance_profile.monitoring[0].name
 
   root_block_device {
     volume_size           = 30 # Space for metrics storage
@@ -129,8 +198,11 @@ resource "aws_instance" "monitoring" {
   }
 
   user_data = base64encode(templatefile("${path.module}/templates/monitoring-user-data.sh", {
-    liberty1_ip = aws_instance.liberty[0].private_ip
-    liberty2_ip = length(aws_instance.liberty) > 1 ? aws_instance.liberty[1].private_ip : aws_instance.liberty[0].private_ip
+    liberty1_ip      = aws_instance.liberty[0].private_ip
+    liberty2_ip      = length(aws_instance.liberty) > 1 ? aws_instance.liberty[1].private_ip : aws_instance.liberty[0].private_ip
+    aws_region       = var.aws_region
+    ecs_enabled      = var.ecs_enabled
+    ecs_cluster_name = var.ecs_enabled ? aws_ecs_cluster.main[0].name : ""
   }))
 
   tags = {
