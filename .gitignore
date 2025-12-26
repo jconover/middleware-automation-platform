@@ -74,6 +74,8 @@ credentials/
 **/vault.yml
 .claude*
 CLAUDE*
+GEMINI*
+.gemini*
 
 # Logs
 logs/

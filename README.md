@@ -729,6 +729,7 @@ Stop services when not in use:
 | Document | Description |
 |----------|-------------|
 | [docs/CREDENTIAL_SETUP.md](./docs/CREDENTIAL_SETUP.md) | **Required:** Credential configuration for all services |
+| [docs/LOCAL_KUBERNETES_DEPLOYMENT.md](./docs/LOCAL_KUBERNETES_DEPLOYMENT.md) | 3-node bare-metal Kubernetes deployment (Beelink homelab cluster) |
 | [CONFIGURATION.md](./CONFIGURATION.md) | IP addresses and environment setup (local) |
 | [terraform.tfvars.example](./automated/terraform/environments/prod-aws/terraform.tfvars.example) | AWS production configuration |
 | [MANUAL_DEPLOYMENT.md](./MANUAL_DEPLOYMENT.md) | Complete manual deployment guide |
