@@ -238,20 +238,42 @@ echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://apt.grafana.com st
 apt-get update
 apt-get install -y grafana
 
-# Configure Grafana
-cat <<'GRAFEOF' >> /etc/grafana/grafana.ini
+# Fetch Grafana admin credentials from Secrets Manager
+echo "Fetching Grafana credentials from Secrets Manager..."
+GRAFANA_SECRET_ID="${grafana_credentials_secret_id}"
+GRAFANA_CREDENTIALS=$(/usr/local/bin/aws secretsmanager get-secret-value \
+  --secret-id "$GRAFANA_SECRET_ID" \
+  --region "${aws_region}" \
+  --query SecretString \
+  --output text)
+
+GRAFANA_ADMIN_USER=$(echo "$GRAFANA_CREDENTIALS" | jq -r '.admin_user')
+GRAFANA_ADMIN_PASSWORD=$(echo "$GRAFANA_CREDENTIALS" | jq -r '.admin_password')
+
+if [ -z "$GRAFANA_ADMIN_PASSWORD" ] || [ "$GRAFANA_ADMIN_PASSWORD" = "null" ]; then
+  echo "ERROR: Failed to retrieve Grafana admin password from Secrets Manager"
+  exit 1
+fi
+
+echo "Successfully retrieved Grafana credentials from Secrets Manager"
+
+# Configure Grafana with credentials from Secrets Manager
+cat <<GRAFEOF >> /etc/grafana/grafana.ini
 
 [server]
 http_addr = 0.0.0.0
 http_port = 3000
 
 [security]
-admin_user = admin
-admin_password = admin
+admin_user = $GRAFANA_ADMIN_USER
+admin_password = $GRAFANA_ADMIN_PASSWORD
 
 [users]
 allow_sign_up = false
 GRAFEOF
+
+# Clear sensitive variables from environment
+unset GRAFANA_CREDENTIALS GRAFANA_ADMIN_PASSWORD
 
 # Add Prometheus as default datasource
 mkdir -p /etc/grafana/provisioning/datasources
@@ -291,7 +313,8 @@ echo "ansible ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ansible
 
 echo "=== Monitoring Server Setup Complete ==="
 echo "Prometheus: http://<public-ip>:9090"
-echo "Grafana: http://<public-ip>:3000 (admin/admin)"
+echo "Grafana: http://<public-ip>:3000 (credentials stored in Secrets Manager)"
+echo "Retrieve password: aws secretsmanager get-secret-value --secret-id $GRAFANA_SECRET_ID --query SecretString --output text | jq -r .admin_password"
 %{ if ecs_enabled }
 echo "ECS Discovery: Running via cron every minute"
 %{ endif }

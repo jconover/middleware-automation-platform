@@ -7,8 +7,15 @@
 
 controller:
   # Admin credentials
+  # SECURITY: The admin password MUST be provided via a Kubernetes secret.
+  # Create the secret before installing Jenkins:
+  #   kubectl create secret generic jenkins-admin-secret \
+  #     --namespace jenkins \
+  #     --from-literal=jenkins-admin-password='YOUR_SECURE_PASSWORD'
   adminUser: "admin"
-  adminPassword: "JenkinsAdmin2024!"
+  admin:
+    existingSecret: "jenkins-admin-secret"
+    passwordKey: "jenkins-admin-password"
 
   # Service configuration - LoadBalancer with MetalLB
   serviceType: LoadBalancer

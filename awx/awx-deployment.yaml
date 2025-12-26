@@ -33,15 +33,41 @@ spec:
   admin_user: admin
   admin_password_secret: awx-admin-password
 
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: awx-admin-password
-  namespace: awx
-type: Opaque
-stringData:
-  password: MiddlewareAdmin2024!
+# =============================================================================
+# SECURITY NOTE: AWX Admin Password Secret
+# =============================================================================
+# The awx-admin-password secret MUST be created separately before deploying AWX.
+# DO NOT store passwords in version control.
+#
+# Option 1: Create secret directly with kubectl
+#   kubectl create secret generic awx-admin-password \
+#     --namespace=awx \
+#     --from-literal=password='YOUR_SECURE_PASSWORD_HERE'
+#
+# Option 2: Use Sealed Secrets (recommended for GitOps)
+#   kubeseal --format=yaml < awx-admin-password-secret.yaml > awx-admin-password-sealed.yaml
+#
+# Option 3: Use External Secrets Operator with AWS Secrets Manager/HashiCorp Vault
+#   apiVersion: external-secrets.io/v1beta1
+#   kind: ExternalSecret
+#   metadata:
+#     name: awx-admin-password
+#     namespace: awx
+#   spec:
+#     refreshInterval: 1h
+#     secretStoreRef:
+#       name: vault-backend
+#       kind: ClusterSecretStore
+#     target:
+#       name: awx-admin-password
+#     data:
+#       - secretKey: password
+#         remoteRef:
+#           key: awx/admin
+#           property: password
+#
+# The secret must contain a 'password' key with the admin password value.
+# =============================================================================
 
 ---
 apiVersion: v1

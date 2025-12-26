@@ -19,6 +19,34 @@ liberty_java_version: "17"
 liberty_jvm_heap_min: 512m
 liberty_jvm_heap_max: 1536m
 
+# =============================================================================
+# SECURITY-CRITICAL VARIABLES (REQUIRED FOR AWS/PRODUCTION)
+# =============================================================================
+# These passwords MUST be defined via Ansible Vault. The playbook will fail
+# with a security error if these variables are missing or use weak values.
+#
+# Requirements:
+#   - liberty_keystore_password: minimum 16 characters
+#   - liberty_admin_password: minimum 12 characters
+#   - Neither may use common defaults (changeit, admin, password, etc.)
+#
+# To create encrypted values:
+#   ansible-vault encrypt_string 'YourSecureKeystorePassword!' --name 'liberty_keystore_password'
+#   ansible-vault encrypt_string 'YourSecureAdminPass!' --name 'liberty_admin_password'
+#
+# Store the encrypted output in: group_vars/aws/vault.yml
+# =============================================================================
+# liberty_keystore_password: !vault |
+#   $ANSIBLE_VAULT;1.1;AES256
+#   [your encrypted keystore password here]
+#
+# liberty_admin_password: !vault |
+#   $ANSIBLE_VAULT;1.1;AES256
+#   [your encrypted admin password here]
+#
+# liberty_admin_user: admin
+# =============================================================================
+
 # AWS-specific Liberty features
 liberty_features:
   - restfulWS-3.1

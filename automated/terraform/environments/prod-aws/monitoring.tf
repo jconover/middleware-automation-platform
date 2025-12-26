@@ -21,6 +21,39 @@ variable "monitoring_instance_type" {
 }
 
 # -----------------------------------------------------------------------------
+# Grafana Admin Credentials (Secrets Manager)
+# -----------------------------------------------------------------------------
+resource "random_password" "grafana_admin" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  length           = 24
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}:?"
+}
+
+resource "aws_secretsmanager_secret" "grafana_credentials" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  name        = "${local.name_prefix}/monitoring/grafana-credentials"
+  description = "Grafana admin credentials for ${local.name_prefix} monitoring server"
+
+  tags = {
+    Name = "${local.name_prefix}-grafana-credentials"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "grafana_credentials" {
+  count = var.create_monitoring_server ? 1 : 0
+
+  secret_id = aws_secretsmanager_secret.grafana_credentials[0].id
+
+  secret_string = jsonencode({
+    admin_user     = "admin"
+    admin_password = random_password.grafana_admin[0].result
+  })
+}
+
+# -----------------------------------------------------------------------------
 # IAM Role for Monitoring Server (ECS Service Discovery)
 # -----------------------------------------------------------------------------
 resource "aws_iam_role" "monitoring" {
@@ -76,6 +109,14 @@ resource "aws_iam_role_policy" "monitoring_ecs_discovery" {
           "ec2:DescribeNetworkInterfaces"
         ]
         Resource = "*"
+      },
+      {
+        Sid    = "ReadGrafanaCredentials"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = aws_secretsmanager_secret.grafana_credentials[0].arn
       }
     ]
   })
@@ -198,11 +239,12 @@ resource "aws_instance" "monitoring" {
   }
 
   user_data = base64encode(templatefile("${path.module}/templates/monitoring-user-data.sh", {
-    liberty1_ip      = length(aws_instance.liberty) > 0 ? aws_instance.liberty[0].private_ip : ""
-    liberty2_ip      = length(aws_instance.liberty) > 1 ? aws_instance.liberty[1].private_ip : (length(aws_instance.liberty) > 0 ? aws_instance.liberty[0].private_ip : "")
-    aws_region       = var.aws_region
-    ecs_enabled      = var.ecs_enabled
-    ecs_cluster_name = var.ecs_enabled ? aws_ecs_cluster.main[0].name : ""
+    liberty1_ip                   = length(aws_instance.liberty) > 0 ? aws_instance.liberty[0].private_ip : ""
+    liberty2_ip                   = length(aws_instance.liberty) > 1 ? aws_instance.liberty[1].private_ip : (length(aws_instance.liberty) > 0 ? aws_instance.liberty[0].private_ip : "")
+    aws_region                    = var.aws_region
+    ecs_enabled                   = var.ecs_enabled
+    ecs_cluster_name              = var.ecs_enabled ? aws_ecs_cluster.main[0].name : ""
+    grafana_credentials_secret_id = aws_secretsmanager_secret.grafana_credentials[0].id
   }))
 
   tags = {
@@ -269,4 +311,14 @@ output "grafana_url" {
 output "monitoring_ssh_command" {
   description = "SSH command to connect to monitoring server"
   value       = var.create_monitoring_server ? "ssh -i ~/.ssh/ansible_ed25519 ubuntu@${aws_eip.monitoring[0].public_ip}" : null
+}
+
+output "grafana_credentials_secret_arn" {
+  description = "ARN of the Secrets Manager secret containing Grafana admin credentials"
+  value       = var.create_monitoring_server ? aws_secretsmanager_secret.grafana_credentials[0].arn : null
+}
+
+output "grafana_admin_password_command" {
+  description = "AWS CLI command to retrieve Grafana admin password"
+  value       = var.create_monitoring_server ? "aws secretsmanager get-secret-value --secret-id ${aws_secretsmanager_secret.grafana_credentials[0].id} --query SecretString --output text | jq -r .admin_password" : null
 }

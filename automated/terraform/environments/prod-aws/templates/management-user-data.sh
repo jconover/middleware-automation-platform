@@ -77,4 +77,5 @@ AWXEOF
 
 echo "=== Management Server Setup Complete ==="
 echo "AWX will be available at http://<public-ip>:30080 in ~5 minutes"
-echo "Get AWX admin password: kubectl get secret awx-admin-password -o jsonpath='{.data.password}' | base64 -d"
+echo "AWX admin user: admin"
+echo "Retrieve AWX admin password: kubectl get secret awx-admin-password -n awx -o jsonpath='{.data.password}' | base64 -d"

@@ -10,6 +10,40 @@
       - liberty_install_dir is defined
     fail_msg: "Required Liberty variables not defined"
 
+# =============================================================================
+# SECURITY: Validate security-critical variables
+# These variables MUST be set via Ansible Vault - never use insecure defaults
+# =============================================================================
+- name: Validate keystore password is defined and secure
+  ansible.builtin.assert:
+    that:
+      - liberty_keystore_password is defined
+      - liberty_keystore_password | length >= 16
+      - liberty_keystore_password != 'changeit'
+      - liberty_keystore_password != 'password'
+      - liberty_keystore_password != 'changeme'
+      - liberty_keystore_password != 'liberty'
+    fail_msg: >
+      SECURITY ERROR: liberty_keystore_password must be defined with a strong password
+      (minimum 16 characters). This value should be stored in Ansible Vault.
+      Never use default passwords like 'changeit' in production.
+      Example: ansible-vault encrypt_string 'YourStr0ng!P@ssw0rd#2024' --name 'liberty_keystore_password'
+
+- name: Validate admin password is defined and secure
+  ansible.builtin.assert:
+    that:
+      - liberty_admin_password is defined
+      - liberty_admin_password | length >= 12
+      - liberty_admin_password != 'admin'
+      - liberty_admin_password != 'password'
+      - liberty_admin_password != 'changeme'
+      - liberty_admin_password != 'liberty'
+    fail_msg: >
+      SECURITY ERROR: liberty_admin_password must be defined with a strong password
+      (minimum 12 characters). This value should be stored in Ansible Vault.
+      Never use default passwords like 'admin' in production.
+      Example: ansible-vault encrypt_string 'SecureAdm1n#2024' --name 'liberty_admin_password'
+
 # Fetch database credentials from AWS Secrets Manager (optional)
 # If AWS CLI is available and password not set, fetch from Secrets Manager
 - name: Check if AWS CLI is available
@@ -44,6 +78,7 @@
       changed_when: false
       delegate_to: localhost
       become: false
+      no_log: true
 
     - name: Parse database credentials
       ansible.builtin.set_fact:
@@ -211,11 +246,12 @@
     cmd: >
       {{ liberty_install_dir }}/bin/securityUtility createSSLCertificate
       --server={{ liberty_server_name }}
-      --password={{ liberty_keystore_password | default('changeit') }}
+      --password={{ liberty_keystore_password }}
       --validity=365
     creates: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/resources/security/key.p12"
   become: true
   become_user: "{{ liberty_user }}"
+  no_log: true
 
 # Systemd Service
 - name: Deploy systemd service

@@ -192,6 +192,9 @@ middleware-automation-platform/
 - Helm 3
 ```
 
+> **Important:** Before deploying, you must configure credentials for all services.
+> See **[docs/CREDENTIAL_SETUP.md](./docs/CREDENTIAL_SETUP.md)** for complete instructions.
+
 ### Option 1: Automated Deployment
 
 ```bash
@@ -245,7 +248,26 @@ terraform init
 terraform apply
 ```
 
-#### Step 2: Choose Compute Model
+#### Step 2: Configure Credentials
+
+**Review the [Credential Setup Guide](./docs/CREDENTIAL_SETUP.md)** for all required credentials.
+
+**Minimum before `terraform apply`:**
+```bash
+# Get your public IP
+curl -s ifconfig.me
+
+# Edit terraform.tfvars
+cd automated/terraform/environments/prod-aws
+cp terraform.tfvars.example terraform.tfvars
+```
+
+Set your IP in `terraform.tfvars`:
+```hcl
+management_allowed_cidrs = ["YOUR_PUBLIC_IP/32"]  # Required for access
+```
+
+#### Step 3: Choose Compute Model
 
 Edit `terraform.tfvars` to select your compute model:
 
@@ -263,18 +285,17 @@ ecs_enabled = true
 liberty_instance_count = 2
 ```
 
-#### Step 3: Deploy AWS Infrastructure
+#### Step 4: Deploy AWS Infrastructure
 
 ```bash
 cd automated/terraform/environments/prod-aws
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your settings
+# terraform.tfvars already created in Step 2
 terraform init
 terraform plan    # Review changes
 terraform apply   # Deploy (~5-10 minutes)
 ```
 
-#### Step 4: Deploy Application
+#### Step 5: Deploy Application
 
 **For ECS Fargate:**
 ```bash
@@ -304,7 +325,7 @@ Then deploy via AWX or CLI:
 ansible-playbook -i automated/ansible/inventory/prod-aws-ec2.yml automated/ansible/playbooks/site.yml
 ```
 
-#### Step 5: Configure AWX (Optional)
+#### Step 6: Configure AWX (Optional)
 
 Access the AWX web UI to set up credentials, project, and job templates.
 
@@ -322,21 +343,21 @@ sudo kubectl get secret awx-admin-password -n awx -o jsonpath='{.data.password}'
 - **Username:** `admin`
 - **Password:** (from command above)
 
-**4a. Create SSH Credential**
+**6a. Create SSH Credential**
 1. **Resources → Credentials → Add**
 2. **Name:** `AWS SSH Key`
 3. **Credential Type:** `Machine`
 4. **Username:** `ansible`
 5. **SSH Private Key:** Paste contents of `~/.ssh/ansible_ed25519` (from your local machine)
 
-**4b. Create Project**
+**6b. Create Project**
 1. **Resources → Projects → Add**
 2. **Name:** `Middleware Platform`
 3. **Source Control Type:** `Git`
 4. **Source Control URL:** `https://github.com/jconover/middleware-automation-platform.git`
 5. **Options:** ✓ Update Revision on Launch
 
-**4c. Create Inventory**
+**6c. Create Inventory**
 1. **Resources → Inventories → Add Inventory**
 2. **Name:** `AWS Production`
 3. Save, then go to **Sources → Add**
@@ -344,7 +365,7 @@ sudo kubectl get secret awx-admin-password -n awx -o jsonpath='{.data.password}'
 5. **Project:** `Middleware Platform`
 6. **Inventory file:** `automated/ansible/inventory/prod-aws-ec2.yml` (dynamic - auto-discovers instances)
 
-**4d. Create Job Template - Deploy Liberty**
+**6d. Create Job Template - Deploy Liberty**
 1. **Resources → Templates → Add → Job Template**
 2. **Name:** `Deploy Liberty`
 3. **Inventory:** `AWS Production`
@@ -352,7 +373,7 @@ sudo kubectl get secret awx-admin-password -n awx -o jsonpath='{.data.password}'
 5. **Playbook:** `automated/ansible/playbooks/site.yml`
 6. **Credentials:** `AWS SSH Key`
 
-**4e. Create Job Template - Deploy Monitoring**
+**6e. Create Job Template - Deploy Monitoring**
 
 **Option A: Via AWX Console**
 1. **Resources → Templates → Add → Job Template**
@@ -396,7 +417,7 @@ curl -s -X POST -u admin:$AWX_PASS -H "Content-Type: application/json" \
 > curl -s -u admin:$AWX_PASS http://localhost:30080/api/v2/credentials/
 > ```
 
-**4f. Create Job Template - Health Check**
+**6f. Create Job Template - Health Check**
 
 **Option A: Via AWX Console**
 1. **Resources → Templates → Add → Job Template**
@@ -435,7 +456,7 @@ The health check playbook validates:
 - Liberty `/health/live` endpoints (liveness)
 - Liberty `/metrics` endpoints (Prometheus metrics)
 
-#### Step 6: Deploy Liberty (EC2 - via AWX)
+#### Step 7: Deploy Liberty (EC2 - via AWX)
 
 **Option A: Via AWX (Recommended)**
 
@@ -454,31 +475,31 @@ ansible-playbook -i inventory/prod-aws-ec2.yml playbooks/site.yml
 ```
 > **Note:** Requires VPN or bastion access to private subnets
 
-#### Step 7: Verify Deployment
+#### Step 8: Verify Deployment
 
 ```bash
 ALB_DNS=$(cd automated/terraform/environments/prod-aws && terraform output -raw alb_dns_name)
 curl http://$ALB_DNS/health/ready
 ```
 
-#### Step 8: Deploy Monitoring Server (Optional)
+#### Step 9: Deploy Monitoring Server (Optional)
 
 The monitoring server runs Prometheus and Grafana on a dedicated t3.small instance.
 
-**7a. Enable in terraform.tfvars:**
+**9a. Enable in terraform.tfvars:**
 ```hcl
 create_monitoring_server = true
 monitoring_instance_type = "t3.small"  # ~$15/month
 ```
 
-**7b. Deploy with Terraform:**
+**9b. Deploy with Terraform:**
 ```bash
 cd automated/terraform/environments/prod-aws
 terraform plan   # Review changes
 terraform apply  # Deploy (~3-5 minutes)
 ```
 
-**7c. Access monitoring:**
+**9c. Access monitoring:**
 ```bash
 # Get URLs
 terraform output prometheus_url  # Prometheus: http://<IP>:9090
@@ -488,21 +509,21 @@ terraform output grafana_url     # Grafana: http://<IP>:3000
 $(terraform output -raw monitoring_ssh_command)
 ```
 
-- **Grafana credentials:** admin / admin (change on first login)
+- **Grafana credentials:** Stored in AWS Secrets Manager (see [Credential Setup](./docs/CREDENTIAL_SETUP.md#11-grafana-credentials-automatic))
 - **Prometheus** auto-configured to scrape Liberty `/metrics` endpoints
 - **Retention:** 15 days of metrics data
 
-#### Step 9: Deploy Sample Application (Optional)
+#### Step 10: Deploy Sample Application (Optional)
 
 Deploy the sample REST API for testing and load testing.
 
-**8a. Build the application:**
+**10a. Build the application:**
 ```bash
 cd sample-app
 mvn clean package
 ```
 
-**8b. Deploy via management server:**
+**10b. Deploy via management server:**
 ```bash
 # Copy WAR to management server
 MGMT_IP=$(terraform output -raw management_public_ip)
@@ -517,13 +538,13 @@ ssh -i ~/.ssh/ansible_ed25519 ansible@<LIBERTY_IP> \
   "sudo cp /tmp/sample-app.war /opt/ibm/wlp/usr/servers/appServer01/dropins/"
 ```
 
-**8c. Verify deployment:**
+**10c. Verify deployment:**
 ```bash
 curl http://<LIBERTY_IP>:9080/sample-app/api/hello
 curl http://<LIBERTY_IP>:9080/sample-app/api/info
 ```
 
-**8d. Run load tests:**
+**10d. Run load tests:**
 ```bash
 # Install hey load testing tool (on management server)
 wget -q https://hey-release.s3.us-east-2.amazonaws.com/hey_linux_amd64 -O hey
@@ -558,7 +579,7 @@ ssh -i ~/.ssh/ansible_ed25519 -L 9443:<LIBERTY_IP>:9443 ubuntu@$MGMT_IP
 ```
 
 - **URL:** `https://<LIBERTY_IP>:9443/adminCenter`
-- **Credentials:** admin / admin
+- **Credentials:** Set via Ansible Vault (see [Credential Setup](./docs/CREDENTIAL_SETUP.md#2-liberty-server-credentials-ansible))
 
 **AWS Prerequisites:**
 - AWS CLI configured (`aws configure`)
@@ -657,7 +678,7 @@ echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:300
 | **Liberty Health** | http://192.168.68.86:9080/health/ready | - |
 | **Liberty Metrics** | http://192.168.68.86:9080/metrics | - |
 | **Prometheus** | http://192.168.68.82:9090 | - |
-| **Grafana** | http://192.168.68.82:3000 | admin / admin |
+| **Grafana** | http://192.168.68.82:3000 | See [Credential Setup](./docs/CREDENTIAL_SETUP.md) |
 | **AWX** | http://192.168.68.205 | (configured separately) |
 | **Jenkins** | http://192.168.68.206:8080 | (configured separately) |
 
@@ -707,6 +728,7 @@ Stop services when not in use:
 
 | Document | Description |
 |----------|-------------|
+| [docs/CREDENTIAL_SETUP.md](./docs/CREDENTIAL_SETUP.md) | **Required:** Credential configuration for all services |
 | [CONFIGURATION.md](./CONFIGURATION.md) | IP addresses and environment setup (local) |
 | [terraform.tfvars.example](./automated/terraform/environments/prod-aws/terraform.tfvars.example) | AWS production configuration |
 | [MANUAL_DEPLOYMENT.md](./MANUAL_DEPLOYMENT.md) | Complete manual deployment guide |

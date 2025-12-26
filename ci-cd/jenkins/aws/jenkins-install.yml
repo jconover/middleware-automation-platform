@@ -13,7 +13,7 @@
     jenkins_version: "latest"
     jenkins_port: 8080
     jenkins_home: /var/lib/jenkins
-    jenkins_admin_password: "{{ lookup('env', 'JENKINS_ADMIN_PASSWORD') | default('JenkinsAdmin2024!', true) }}"
+    jenkins_admin_password: "{{ lookup('env', 'JENKINS_ADMIN_PASSWORD') }}"
     java_version: "17"
 
     # AWS configuration
@@ -41,6 +41,18 @@
       - docker-workflow
 
   tasks:
+    # -------------------------------------------------------------------------
+    # Pre-flight Checks
+    # -------------------------------------------------------------------------
+    - name: Validate required environment variables
+      assert:
+        that:
+          - jenkins_admin_password | length > 0
+        fail_msg: |
+          JENKINS_ADMIN_PASSWORD environment variable must be set.
+          Example: JENKINS_ADMIN_PASSWORD='YourSecurePassword' ansible-playbook jenkins-install.yml
+        success_msg: "Required environment variables validated"
+
     # -------------------------------------------------------------------------
     # Java Installation
     # -------------------------------------------------------------------------
@@ -157,16 +169,30 @@
         dest: /tmp/jenkins-cli.jar
         mode: '0644'
 
+    - name: Create Jenkins CLI authentication file
+      copy:
+        content: "admin:{{ jenkins_admin_password }}"
+        dest: "{{ jenkins_home }}/.jenkins-cli-auth"
+        owner: jenkins
+        group: jenkins
+        mode: '0600'
+      no_log: true
+
     - name: Install Jenkins plugins
       command: >
         java -jar /tmp/jenkins-cli.jar
         -s http://localhost:{{ jenkins_port }}/
-        -auth admin:{{ jenkins_admin_password }}
+        -auth @{{ jenkins_home }}/.jenkins-cli-auth
         install-plugin {{ item }}
       loop: "{{ jenkins_plugins }}"
       register: plugin_result
       failed_when: false
       changed_when: "'already installed' not in plugin_result.stdout"
+
+    - name: Remove Jenkins CLI authentication file
+      file:
+        path: "{{ jenkins_home }}/.jenkins-cli-auth"
+        state: absent
 
     - name: Restart Jenkins after plugin installation
       systemd:
@@ -212,7 +238,7 @@
           ═══════════════════════════════════════════════════════════
           URL:      http://{{ ansible_host }}:{{ jenkins_port }}
           Username: admin
-          Password: {{ jenkins_admin_password }}
+          Password: Configured via JENKINS_ADMIN_PASSWORD environment variable
 
           Next Steps:
           1. Configure AWS credentials in Jenkins (ID: aws-prod)

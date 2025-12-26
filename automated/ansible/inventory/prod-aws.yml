@@ -22,6 +22,29 @@ all:
     liberty_https_port: 9443
     liberty_java_version: "17"
 
+    # =========================================================================
+    # SECURITY-CRITICAL VARIABLES (REQUIRED)
+    # =========================================================================
+    # These passwords MUST be set via Ansible Vault for production.
+    # The playbook will FAIL if these are not defined or use weak values.
+    #
+    # To create encrypted values:
+    #   ansible-vault encrypt_string 'YourSecurePassword123!' --name 'liberty_keystore_password'
+    #   ansible-vault encrypt_string 'AdminSecure456!' --name 'liberty_admin_password'
+    #
+    # Store encrypted values in group_vars/aws/vault.yml (create if needed)
+    # =========================================================================
+    # liberty_keystore_password: !vault |
+    #   $ANSIBLE_VAULT;1.1;AES256
+    #   [encrypted content - minimum 16 characters, no weak passwords]
+    #
+    # liberty_admin_password: !vault |
+    #   $ANSIBLE_VAULT;1.1;AES256
+    #   [encrypted content - minimum 12 characters, no weak passwords]
+    #
+    # liberty_admin_user: admin
+    # =========================================================================
+
     # Database - RDS PostgreSQL
     postgresql_host: mw-prod-postgres.chuo6gkeifxo.us-east-1.rds.amazonaws.com
     postgresql_port: 5432

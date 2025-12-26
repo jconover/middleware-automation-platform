@@ -46,12 +46,14 @@
     <!-- ===================================================================== -->
     <!-- SSL Configuration                                                     -->
     <!-- ===================================================================== -->
+    <!-- SECURITY: liberty_keystore_password MUST be set in inventory or vault -->
+    <!-- Example: ansible-vault encrypt_string 'your-secure-password' --name 'liberty_keystore_password' -->
     <ssl id="defaultSSLConfig"
          keyStoreRef="defaultKeyStore" />
 
     <keyStore id="defaultKeyStore"
               location="${server.config.dir}/resources/security/key.p12"
-              password="{{ liberty_keystore_password | default('changeit') }}"
+              password="{{ liberty_keystore_password | mandatory }}"
               type="PKCS12" />
 
     <!-- ===================================================================== -->
@@ -133,13 +135,16 @@
     <!-- ===================================================================== -->
     <!-- Admin Center Configuration                                            -->
     <!-- ===================================================================== -->
+    <!-- SECURITY: liberty_admin_user and liberty_admin_password MUST be set   -->
+    <!-- in inventory or vault. Never use default credentials in production.   -->
+    <!-- Example: ansible-vault encrypt_string 'secure-password' --name 'liberty_admin_password' -->
     <basicRegistry id="basic" realm="BasicRealm">
-        <user name="{{ liberty_admin_user | default('admin') }}"
-              password="{{ liberty_admin_password | default('admin') }}" />
+        <user name="{{ liberty_admin_user | mandatory }}"
+              password="{{ liberty_admin_password | mandatory }}" />
     </basicRegistry>
 
     <administrator-role>
-        <user>{{ liberty_admin_user | default('admin') }}</user>
+        <user>{{ liberty_admin_user | mandatory }}</user>
     </administrator-role>
 
     <!-- ===================================================================== -->

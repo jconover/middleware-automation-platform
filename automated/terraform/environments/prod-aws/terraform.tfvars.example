@@ -63,10 +63,11 @@ certificate_arn    = ""
 create_management_server = true
 management_instance_type = "t3.medium"  # 2 vCPU, 4GB RAM (~$30/month)
 
-# IMPORTANT: Restrict this to your router's public IP for security!
-# Get your IP: curl -s ifconfig.me or visit https://whatismyip.com
-# management_allowed_cidrs = ["YOUR_ROUTER_PUBLIC_IP/32"]
-management_allowed_cidrs = ["203.0.113.50/32"]  # Example - replace with your IP
+# SECURITY: Restrict management server access to your public IP only.
+# This controls SSH (22), AWX (30080), Grafana (3000), and Prometheus (9090) access.
+# Get your IP: curl -s ifconfig.me
+# WARNING: Empty list blocks ALL access. You MUST set your IP before deploying.
+management_allowed_cidrs = ["YOUR_PUBLIC_IP/32"]  # Replace with your actual IP (e.g., "203.0.113.50/32")
 
 # -----------------------------------------------------------------------------
 # Monitoring Server (Prometheus/Grafana)

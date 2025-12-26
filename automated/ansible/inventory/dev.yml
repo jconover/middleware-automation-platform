@@ -9,14 +9,37 @@ all:
     ansible_user: ansible
     ansible_ssh_private_key_file: ~/.ssh/ansible_ed25519
     ansible_python_interpreter: /usr/bin/python3
-    
+
     # Liberty settings
     liberty_version: "24.0.0.1"
     liberty_install_dir: /opt/ibm/wlp
     liberty_user: liberty
     liberty_http_port: 9080
     liberty_https_port: 9443
-    
+
+    # =========================================================================
+    # SECURITY-CRITICAL VARIABLES (REQUIRED)
+    # =========================================================================
+    # These passwords MUST be overridden with secure values from Ansible Vault.
+    # DO NOT use default or weak passwords in any environment.
+    #
+    # To create encrypted values:
+    #   ansible-vault encrypt_string 'YourSecurePassword123!' --name 'liberty_keystore_password'
+    #   ansible-vault encrypt_string 'AdminSecure456!' --name 'liberty_admin_password'
+    #
+    # Then add the encrypted values to group_vars/all/vault.yml or pass via --extra-vars
+    # =========================================================================
+    # liberty_keystore_password: !vault |
+    #   $ANSIBLE_VAULT;1.1;AES256
+    #   [encrypted content here - minimum 16 characters required]
+    #
+    # liberty_admin_password: !vault |
+    #   $ANSIBLE_VAULT;1.1;AES256
+    #   [encrypted content here - minimum 12 characters required]
+    #
+    # liberty_admin_user: admin
+    # =========================================================================
+
     # Database
     postgresql_version: "15"
     redis_version: "7"

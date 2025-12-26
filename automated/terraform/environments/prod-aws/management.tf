@@ -21,9 +21,14 @@ variable "management_instance_type" {
 }
 
 variable "management_allowed_cidrs" {
-  description = "CIDR blocks allowed to access management server (your IP)"
+  description = "CIDR blocks allowed to access management server web UI and SSH"
   type        = list(string)
-  default     = ["104.55.73.102/32"] # Restrict this to your IP in production!
+  default     = []
+
+  # SECURITY: This variable MUST be set per-environment in terraform.tfvars.
+  # Do NOT commit real IP addresses to version control.
+  # Get your public IP: curl -s ifconfig.me
+  # Example: management_allowed_cidrs = ["YOUR_PUBLIC_IP/32"]
 }
 
 # -----------------------------------------------------------------------------
