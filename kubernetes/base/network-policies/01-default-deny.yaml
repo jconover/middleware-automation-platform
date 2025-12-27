@@ -1,0 +1,89 @@
+# =============================================================================
+# Default Deny NetworkPolicies
+# =============================================================================
+# These policies implement a zero-trust network model by denying all ingress
+# and egress traffic by default. Subsequent policies explicitly allow only
+# the traffic required for the application to function.
+#
+# IMPORTANT: Apply these policies AFTER ensuring all required allow policies
+# are in place, or you will lose connectivity to your pods.
+#
+# Order of application:
+#   1. Apply namespace labels (00-namespace-labels.yaml)
+#   2. Apply allow policies (02-*.yaml, 03-*.yaml)
+#   3. Apply default deny policies (this file)
+# =============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}  # Applies to all pods in the namespace
+  policyTypes:
+    - Ingress
+  # No ingress rules = deny all ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}  # Applies to all pods in the namespace
+  policyTypes:
+    - Egress
+  # No egress rules = deny all egress
+
+---
+# Deny ingress for monitoring namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# Deny ingress for jenkins namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: jenkins
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# Deny ingress for awx namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: awx
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress

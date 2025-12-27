@@ -1,0 +1,248 @@
+# =============================================================================
+# Jenkins Namespace NetworkPolicies
+# =============================================================================
+# These policies control traffic for Jenkins controller and agent pods.
+# Jenkins requires:
+#   - Inbound: UI access, webhook triggers, agent connections
+#   - Outbound: Git repos, container registries, deployment targets
+# =============================================================================
+---
+# Allow ingress to Jenkins controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-jenkins-controller-ingress
+  namespace: jenkins
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: jenkins
+  policyTypes:
+    - Ingress
+  ingress:
+    # From NGINX Ingress for web UI
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+    # From MetalLB for LoadBalancer access
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: metallb-system
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Direct external access (homelab network)
+    - from:
+        - ipBlock:
+            cidr: 192.168.68.0/24
+      ports:
+        - protocol: TCP
+          port: 8080
+    # From Jenkins agents (JNLP connection)
+    - from:
+        - podSelector:
+            matchLabels:
+              jenkins/label: middleware
+      ports:
+        - protocol: TCP
+          port: 50000
+    # GitHub/GitLab webhooks (external)
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# Allow Jenkins controller egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-jenkins-controller-egress
+  namespace: jenkins
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: jenkins
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Kubernetes API for pod agent provisioning
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443
+    # Git repositories (HTTPS)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # Git repositories (SSH)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 22
+    # Container registries (ECR, DockerHub, Quay)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # To Liberty for deployment verification
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: liberty
+          podSelector:
+            matchLabels:
+              app: liberty
+      ports:
+        - protocol: TCP
+          port: 9080
+
+---
+# Allow Jenkins agent pods egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-jenkins-agent-egress
+  namespace: jenkins
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      jenkins/label: middleware
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Connect to Jenkins controller (JNLP)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: jenkins
+      ports:
+        - protocol: TCP
+          port: 50000
+        - protocol: TCP
+          port: 8080
+    # Git repositories
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 22
+    # Container registries (ECR, DockerHub, Quay)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # Maven Central and other package repositories
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+    # Liberty for smoke tests
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: liberty
+          podSelector:
+            matchLabels:
+              app: liberty
+      ports:
+        - protocol: TCP
+          port: 9080
+    # AWX for triggering Ansible jobs
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: awx
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8052

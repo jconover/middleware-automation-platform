@@ -1,0 +1,25 @@
+---
+# Namespace configuration with Pod Security Admission labels
+# Enforces the "restricted" Pod Security Standard
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: liberty-prod
+  labels:
+    # Pod Security Admission labels (Kubernetes 1.23+)
+    # Enforce: violations will cause pod rejection
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    # Warn: violations will trigger warnings
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    # Audit: violations will be logged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    # Application labels
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/part-of: middleware-platform
+    environment: production
+  annotations:
+    description: "Production namespace for Liberty application with restricted security"
+    security.kubernetes.io/pod-security-standards: restricted

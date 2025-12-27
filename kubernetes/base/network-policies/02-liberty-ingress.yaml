@@ -1,0 +1,177 @@
+# =============================================================================
+# Liberty Application Ingress Policies
+# =============================================================================
+# These policies define which sources can send traffic to Liberty pods.
+# Liberty exposes:
+#   - HTTP (9080): Application endpoints, health checks, metrics
+#   - HTTPS (9443): Secure application endpoints, admin console
+# =============================================================================
+---
+# Allow ingress from NGINX Ingress Controller
+# Required for: External HTTP/HTTPS traffic routed through ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-nginx
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 9080
+        - protocol: TCP
+          port: 9443
+
+---
+# Allow ingress from Prometheus for metrics scraping
+# Required for: /metrics endpoint (MicroProfile Metrics)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-prometheus
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9080  # Metrics endpoint on HTTP port
+
+---
+# Allow ingress from other Liberty pods (pod-to-pod communication)
+# Required for: Internal service mesh, session replication
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-liberty-pods
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: liberty
+      ports:
+        - protocol: TCP
+          port: 9080
+        - protocol: TCP
+          port: 9443
+
+---
+# Allow ingress from Jenkins for deployment verification
+# Required for: Health check validation during CI/CD pipelines
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-jenkins
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: jenkins
+      ports:
+        - protocol: TCP
+          port: 9080
+
+---
+# Allow ingress from AWX for Ansible health checks
+# Required for: Post-deployment verification via Ansible playbooks
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-awx
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: awx
+      ports:
+        - protocol: TCP
+          port: 9080
+        - protocol: TCP
+          port: 9443
+
+---
+# Allow ingress from MetalLB for LoadBalancer health probes
+# Required for: k3s/bare-metal LoadBalancer service type
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-metallb
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: metallb-system
+      ports:
+        - protocol: TCP
+          port: 9080
+        - protocol: TCP
+          port: 9443

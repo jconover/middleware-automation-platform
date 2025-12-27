@@ -1,8 +1,24 @@
 ---
+# AWX Kubernetes Deployment
+# Security-hardened configuration for enterprise automation platform
 apiVersion: v1
 kind: Namespace
 metadata:
   name: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/component: automation
+    app.kubernetes.io/part-of: middleware-platform
+    # Pod Security Admission labels (Kubernetes 1.23+)
+    # AWX requires 'baseline' due to container requirements
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+  annotations:
+    description: "AWX automation platform namespace with security hardening"
 
 ---
 apiVersion: awx.ansible.com/v1beta1
@@ -10,28 +26,100 @@ kind: AWX
 metadata:
   name: awx
   namespace: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/component: automation
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/managed-by: awx-operator
+  annotations:
+    description: "AWX automation controller with enterprise security configuration"
 spec:
   service_type: LoadBalancer
-  
+
+  # Web container resource management
   web_resource_requirements:
     requests:
       cpu: 500m
       memory: 1Gi
     limits:
+      cpu: 2000m
+      memory: 4Gi
+
+  # Task container resource management
+  task_resource_requirements:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+  # EE (Execution Environment) resource management
+  ee_resource_requirements:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
       cpu: 1000m
       memory: 2Gi
-  
+
+  # Redis container resource management
+  redis_resource_requirements:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # PostgreSQL configuration with persistent storage
   postgres_storage_class: longhorn
   postgres_storage_requirements:
     requests:
       storage: 10Gi
-  
+    limits:
+      storage: 50Gi
+
+  # Projects persistence configuration
   projects_persistence: true
   projects_storage_class: longhorn
   projects_storage_size: 5Gi
-  
+
+  # Security configuration
   admin_user: admin
   admin_password_secret: awx-admin-password
+
+  # Security context for web container
+  security_context_settings:
+    runAsNonRoot: true
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+
+  # Extra environment variables for security
+  extra_settings:
+    - setting: SOCIAL_AUTH_REDIRECT_IS_HTTPS
+      value: "true"
+    - setting: SESSION_COOKIE_SECURE
+      value: "true"
+    - setting: CSRF_COOKIE_SECURE
+      value: "true"
+
+  # Node selector for dedicated nodes (optional)
+  # node_selector: |
+  #   node-role.kubernetes.io/automation: ""
+
+  # Tolerations for dedicated nodes (optional)
+  # tolerations: |
+  #   - key: "automation"
+  #     operator: "Equal"
+  #     value: "true"
+  #     effect: "NoSchedule"
+
+  # Pod annotations for security
+  annotations: |
+    container.apparmor.security.beta.kubernetes.io/awx-web: runtime/default
+    container.apparmor.security.beta.kubernetes.io/awx-task: runtime/default
+    container.apparmor.security.beta.kubernetes.io/awx-ee: runtime/default
 
 # =============================================================================
 # SECURITY NOTE: AWX Admin Password Secret
@@ -75,12 +163,150 @@ kind: Service
 metadata:
   name: awx-lb
   namespace: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/component: automation
+    app.kubernetes.io/part-of: middleware-platform
   annotations:
     metallb.universe.tf/loadBalancerIPs: "192.168.68.205"
+    description: "AWX web interface load balancer"
 spec:
   type: LoadBalancer
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
   selector:
     app.kubernetes.io/name: awx-web
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 8052
+      protocol: TCP
+
+---
+# NetworkPolicy for AWX - restrict traffic to necessary endpoints
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: awx-network-policy
+  namespace: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/component: automation
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: awx
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - protocol: TCP
+          port: 8052
+    # Allow MetalLB traffic
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: metallb-system
+      ports:
+        - protocol: TCP
+          port: 8052
+    # Allow inter-pod communication within AWX namespace
+    - from:
+        - podSelector: {}
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow inter-pod communication within AWX namespace
+    - to:
+        - podSelector: {}
+    # Allow SSH to managed nodes
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 22
+    # Allow WinRM to managed Windows nodes
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 5985
+        - protocol: TCP
+          port: 5986
+    # Allow HTTPS for external API calls and SCM
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8443
+
+---
+# ResourceQuota for AWX namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: awx-resource-quota
+  namespace: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: "16Gi"
+    limits.cpu: "16"
+    limits.memory: "32Gi"
+    pods: "20"
+    persistentvolumeclaims: "10"
+
+---
+# LimitRange for AWX namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: awx-limit-range
+  namespace: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "1Gi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "256Mi"
+      min:
+        cpu: "50m"
+        memory: "64Mi"
+      max:
+        cpu: "4000m"
+        memory: "8Gi"

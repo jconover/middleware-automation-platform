@@ -1,0 +1,115 @@
+# ServiceMonitor for Open Liberty Application Metrics
+# Enables Prometheus Operator to automatically discover and scrape Liberty pods
+#
+# Prerequisites:
+#   - Prometheus Operator installed (kube-prometheus-stack or similar)
+#   - Liberty Service with 'app: liberty' label selector
+#   - Liberty pods exposing /metrics endpoint on port 9080
+#
+# The ServiceMonitor uses label selectors to match the Liberty Service,
+# and Prometheus Operator automatically configures scrape targets.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: liberty-metrics
+  labels:
+    # Standard labels for organizational consistency
+    app: liberty
+    component: monitoring
+    # Release label for Prometheus Operator discovery
+    # Matches default kube-prometheus-stack selector
+    release: prometheus
+spec:
+  # Job label determines the 'job' label value in Prometheus metrics
+  # Aligns with existing Grafana dashboards expecting 'liberty' job
+  jobLabel: app
+
+  # Namespace selector - monitors services in all namespaces with matching labels
+  # For single-namespace deployment, replace with specific namespace
+  namespaceSelector:
+    matchNames:
+      - default
+      - liberty
+      - middleware
+
+  # Service selector - matches Liberty services by label
+  selector:
+    matchLabels:
+      app: liberty
+
+  # Endpoint configuration for metrics scraping
+  endpoints:
+    - port: http
+      path: /metrics
+      # Scrape interval aligned with existing Prometheus configuration
+      interval: 15s
+      # Timeout should be less than interval to prevent overlap
+      scrapeTimeout: 10s
+      # Honor labels from the target to preserve instance identity
+      honorLabels: true
+      # Relabeling to add meaningful metadata
+      relabelings:
+        # Preserve the pod name as a label
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        # Preserve the node name for topology awareness
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+        # Add namespace label explicitly
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+      # Metric relabeling for consistency with existing dashboards
+      metricRelabelings:
+        # Drop high-cardinality metrics if needed (example pattern)
+        # Uncomment to exclude specific metric patterns
+        # - sourceLabels: [__name__]
+        #   regex: 'vendor_.*_histogram_bucket'
+        #   action: drop
+        []
+
+---
+# PodMonitor as an alternative for direct pod scraping
+# Use this when you need to scrape pods without a Service,
+# or when pods have sidecar containers with separate metrics
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: liberty-pods
+  labels:
+    app: liberty
+    component: monitoring
+    release: prometheus
+spec:
+  # Job label for Prometheus
+  jobLabel: app
+
+  # Namespace selector
+  namespaceSelector:
+    matchNames:
+      - default
+      - liberty
+      - middleware
+
+  # Pod selector - matches Liberty pods directly
+  selector:
+    matchLabels:
+      app: liberty
+
+  # Pod metrics endpoint configuration
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+      # Relabeling for pod-level metadata
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+        # Add container name for multi-container pods
+        - sourceLabels: [__meta_kubernetes_pod_container_name]
+          targetLabel: container

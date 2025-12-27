@@ -1,0 +1,226 @@
+# =============================================================================
+# Liberty Application Egress Policies
+# =============================================================================
+# These policies define which destinations Liberty pods can reach.
+# Liberty requires egress to:
+#   - DNS (kube-dns): Name resolution
+#   - Database: PostgreSQL/RDS connections
+#   - External APIs: Third-party service integrations
+#   - Kubernetes API: For health reporting and service discovery
+# =============================================================================
+---
+# Allow egress to kube-dns for DNS resolution
+# Required for: All DNS lookups (service discovery, external domains)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-dns
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# Allow egress to PostgreSQL database
+# Required for: Application database connections
+# Note: Adjust the CIDR or podSelector based on your database deployment
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-database
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Egress
+  egress:
+    # PostgreSQL within the cluster (same namespace)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    # PostgreSQL in a dedicated database namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: database
+          podSelector:
+            matchLabels:
+              app: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    # AWS RDS (external) - uses private subnet CIDR
+    # Adjust CIDR to match your VPC private subnets
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+            except:
+              - 10.0.0.0/24  # Exclude cluster pod network if overlapping
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# Allow egress to Redis/ElastiCache for session caching
+# Required for: Distributed session management, caching
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-redis
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Egress
+  egress:
+    # Redis within the cluster
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Redis in dedicated namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: cache
+          podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # AWS ElastiCache (external) - private subnet access
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 6379
+
+---
+# Allow egress to other Liberty pods
+# Required for: Internal service communication, cluster coordination
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-liberty-pods
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: liberty
+      ports:
+        - protocol: TCP
+          port: 9080
+        - protocol: TCP
+          port: 9443
+
+---
+# Allow egress to external HTTPS services
+# Required for: Third-party API calls, OAuth providers, external integrations
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-external-https
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Egress
+  egress:
+    # Allow HTTPS to any external IP (0.0.0.0/0 minus private ranges)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Allow egress to Kubernetes API server
+# Required for: Service discovery, ConfigMap/Secret watch, health reporting
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-kubernetes-api
+  namespace: liberty
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Egress
+  egress:
+    # Kubernetes API via service
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+      ports:
+        - protocol: TCP
+          port: 443
+    # Direct API server access (adjust IP based on cluster)
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32  # Default k3s API service IP
+      ports:
+        - protocol: TCP
+          port: 443

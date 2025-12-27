@@ -1,0 +1,45 @@
+# =============================================================================
+# NetworkPolicy Kustomization
+# =============================================================================
+# This kustomization bundles all NetworkPolicy resources for easy deployment.
+#
+# Usage:
+#   # Preview what will be applied
+#   kubectl kustomize kubernetes/base/network-policies/
+#
+#   # Apply all policies
+#   kubectl apply -k kubernetes/base/network-policies/
+#
+#   # Delete all policies
+#   kubectl delete -k kubernetes/base/network-policies/
+#
+# IMPORTANT: Ensure namespace labels are applied and allow policies are
+# working before applying default deny policies.
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: network-policies
+  annotations:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-security
+
+# Resources are ordered: labels first, allow policies, then deny policies
+resources:
+  - 00-namespace-labels.yaml
+  - 02-liberty-ingress.yaml
+  - 03-liberty-egress.yaml
+  - 04-monitoring-policies.yaml
+  - 05-jenkins-policies.yaml
+  - 06-awx-policies.yaml
+  # Default deny policies applied last
+  - 01-default-deny.yaml
+
+# Labels applied only to resource metadata, not to selectors
+# This prevents breaking NetworkPolicy pod/namespace selectors
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/part-of: middleware-platform
+    includeSelectors: false

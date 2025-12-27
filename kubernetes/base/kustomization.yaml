@@ -1,0 +1,36 @@
+---
+# Kustomize base configuration for Liberty application
+# Provides security-hardened Kubernetes resources
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: liberty-base
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/part-of: middleware-platform
+  app.kubernetes.io/managed-by: kustomize
+
+# Resources included in this base
+resources:
+  - liberty-deployment.yaml
+
+# ConfigMap generator for application configuration
+configMapGenerator:
+  - name: liberty-config
+    literals:
+      - db.host=postgres.database.svc.cluster.local
+      - db.port=5432
+      - db.name=libertydb
+    options:
+      labels:
+        app: liberty
+
+# Secret generator placeholder (use external secrets in production)
+# secretGenerator:
+#   - name: liberty-secrets
+#     literals:
+#       - db.password=REPLACE_WITH_EXTERNAL_SECRET

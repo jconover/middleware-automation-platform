@@ -1,0 +1,211 @@
+# PrometheusRule for Open Liberty Alerting
+# Defines alerting rules that Prometheus Operator loads automatically
+#
+# These rules monitor Liberty application health, JVM performance,
+# and request metrics to ensure production reliability.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: liberty-alerts
+  labels:
+    app: liberty
+    component: monitoring
+    # Prometheus Operator selector label
+    release: prometheus
+    # Role label for rule categorization
+    role: alert-rules
+spec:
+  groups:
+    # Application Health Alerts
+    - name: liberty.health
+      interval: 30s
+      rules:
+        - alert: LibertyServerDown
+          expr: up{job="liberty"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            component: liberty
+          annotations:
+            summary: "Liberty server {{ $labels.pod }} is down"
+            description: "Liberty pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has been unreachable for more than 1 minute."
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/liberty-server-down.md"
+
+        - alert: LibertyHighRestartCount
+          expr: increase(kube_pod_container_status_restarts_total{container="liberty"}[1h]) > 3
+          for: 5m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "Liberty pod {{ $labels.pod }} restarting frequently"
+            description: "Liberty container in pod {{ $labels.pod }} has restarted {{ $value }} times in the last hour."
+
+        - alert: LibertyReadinessFailure
+          expr: kube_pod_status_ready{condition="true", pod=~"liberty.*"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "Liberty pod {{ $labels.pod }} not ready"
+            description: "Liberty pod {{ $labels.pod }} has been in non-ready state for more than 5 minutes."
+
+    # JVM Performance Alerts
+    - name: liberty.jvm
+      interval: 30s
+      rules:
+        - alert: LibertyHighHeapUsage
+          expr: |
+            100 * base_memory_usedHeap_bytes{job="liberty"}
+              / base_memory_maxHeap_bytes{job="liberty"} > 85
+          for: 5m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "High heap usage on Liberty pod {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} heap usage is {{ $value | printf \"%.1f\" }}% (threshold: 85%)."
+
+        - alert: LibertyCriticalHeapUsage
+          expr: |
+            100 * base_memory_usedHeap_bytes{job="liberty"}
+              / base_memory_maxHeap_bytes{job="liberty"} > 95
+          for: 2m
+          labels:
+            severity: critical
+            component: liberty
+          annotations:
+            summary: "Critical heap usage on Liberty pod {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} heap usage is {{ $value | printf \"%.1f\" }}% - OOM risk imminent."
+
+        - alert: LibertyHighGCTime
+          expr: |
+            rate(base_gc_time_total_seconds{job="liberty"}[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "High GC time on Liberty pod {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} is spending {{ $value | printf \"%.2f\" }} seconds per second in garbage collection."
+
+        - alert: LibertyThreadPoolExhaustion
+          expr: |
+            vendor_threadpool_activeThreads{job="liberty"}
+              / vendor_threadpool_size{job="liberty"} > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "Thread pool near exhaustion on {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} thread pool is {{ $value | printf \"%.0f\" }}% utilized."
+
+    # Request and Response Alerts
+    - name: liberty.requests
+      interval: 30s
+      rules:
+        - alert: LibertyHighErrorRate
+          expr: |
+            sum(rate(base_servlet_request_total{job="liberty", status=~"5.."}[5m]))
+              / sum(rate(base_servlet_request_total{job="liberty"}[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "High 5xx error rate on Liberty cluster"
+            description: "Liberty servers are returning 5xx errors at {{ $value | printf \"%.1f\" }}% rate (threshold: 5%)."
+
+        - alert: LibertyCriticalErrorRate
+          expr: |
+            sum(rate(base_servlet_request_total{job="liberty", status=~"5.."}[5m]))
+              / sum(rate(base_servlet_request_total{job="liberty"}[5m])) > 0.10
+          for: 2m
+          labels:
+            severity: critical
+            component: liberty
+          annotations:
+            summary: "Critical error rate on Liberty cluster"
+            description: "Liberty servers are returning 5xx errors at {{ $value | printf \"%.1f\" }}% rate - immediate attention required."
+
+        - alert: LibertyHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(base_servlet_request_elapsedTime_seconds_bucket{job="liberty"}[5m])) by (le)
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "High request latency on Liberty cluster"
+            description: "95th percentile request latency is {{ $value | printf \"%.2f\" }} seconds (threshold: 2s)."
+
+        - alert: LibertyNoRequests
+          expr: |
+            sum(rate(base_servlet_request_total{job="liberty"}[5m])) == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "No requests to Liberty cluster"
+            description: "Liberty cluster has not received any requests in the last 10 minutes - possible routing or connectivity issue."
+
+    # Resource Utilization Alerts
+    - name: liberty.resources
+      interval: 30s
+      rules:
+        - alert: LibertyHighCPUUsage
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{container="liberty"}[5m])) by (pod)
+              / sum(container_spec_cpu_quota{container="liberty"} / container_spec_cpu_period{container="liberty"}) by (pod) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "High CPU usage on Liberty pod {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} CPU usage is above 90% of its limit for 10 minutes."
+
+        - alert: LibertyHighMemoryUsage
+          expr: |
+            container_memory_working_set_bytes{container="liberty"}
+              / container_spec_memory_limit_bytes{container="liberty"} > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "High memory usage on Liberty pod {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} is using {{ $value | printf \"%.0f\" }}% of its memory limit."
+
+    # Connection Pool Alerts
+    - name: liberty.connections
+      interval: 30s
+      rules:
+        - alert: LibertyDatabaseConnectionPoolLow
+          expr: |
+            vendor_connectionpool_freeConnectionCount{job="liberty"}
+              / vendor_connectionpool_size{job="liberty"} < 0.1
+          for: 5m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "Database connection pool running low on {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} has only {{ $value | printf \"%.0f\" }}% free database connections."
+
+        - alert: LibertyConnectionPoolWaitTime
+          expr: |
+            rate(vendor_connectionpool_waitTime_total_seconds{job="liberty"}[5m]) > 1
+          for: 5m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "High connection pool wait time on {{ $labels.pod }}"
+            description: "Applications on {{ $labels.pod }} are waiting {{ $value | printf \"%.2f\" }}s on average for database connections."

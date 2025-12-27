@@ -1,0 +1,50 @@
+# =============================================================================
+# Namespace Labels for NetworkPolicy Selectors
+# =============================================================================
+# NetworkPolicies use namespace selectors to allow cross-namespace traffic.
+# Apply these labels to enable proper policy matching.
+#
+# Apply with: kubectl apply -f 00-namespace-labels.yaml
+#
+# Note: These patches add labels without removing existing ones.
+# =============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: liberty
+  labels:
+    name: liberty
+    network-policy: enabled
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    network-policy: enabled
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jenkins
+  labels:
+    name: jenkins
+    network-policy: enabled
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: awx
+  labels:
+    name: awx
+    network-policy: enabled
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    name: ingress-nginx
+    network-policy: enabled

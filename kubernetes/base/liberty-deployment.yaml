@@ -1,13 +1,23 @@
 ---
 # Open Liberty Kubernetes Deployment
+# Security-hardened configuration following CIS Kubernetes Benchmark
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: liberty-app
   labels:
     app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    # Security compliance annotations
+    security.kubernetes.io/pod-security-standards: restricted
+    description: "Open Liberty application server with enterprise security hardening"
 spec:
   replicas: 3
+  revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -20,29 +30,81 @@ spec:
     metadata:
       labels:
         app: liberty
+        app.kubernetes.io/name: liberty
+        app.kubernetes.io/component: application-server
+        app.kubernetes.io/part-of: middleware-platform
       annotations:
+        # Prometheus monitoring
         prometheus.io/scrape: "true"
         prometheus.io/port: "9080"
         prometheus.io/path: "/metrics"
+        # Security annotations
+        container.apparmor.security.beta.kubernetes.io/liberty: runtime/default
+        seccomp.security.alpha.kubernetes.io/pod: runtime/default
     spec:
+      # Pod-level security context
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Prevent pods from being scheduled on the same node
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: liberty
+                topologyKey: kubernetes.io/hostname
+
+      # Service account with minimal permissions
+      serviceAccountName: liberty-app
+      automountServiceAccountToken: false
+
+      # DNS policy for security
+      dnsPolicy: ClusterFirst
+
+      # Graceful termination
+      terminationGracePeriodSeconds: 60
 
       containers:
         - name: liberty
           image: icr.io/appcafe/open-liberty:kernel-slim-java17-openj9-ubi
           imagePullPolicy: IfNotPresent
-          
+
+          # Container-level security context (defense in depth)
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+
           ports:
             - name: http
               containerPort: 9080
+              protocol: TCP
             - name: https
               containerPort: 9443
+              protocol: TCP
 
           env:
             - name: WLP_LOGGING_CONSOLE_FORMAT
               value: "JSON"
+            - name: WLP_LOGGING_CONSOLE_LOGLEVEL
+              value: "info"
             - name: DB_HOST
               valueFrom:
                 configMapKeyRef:
@@ -53,46 +115,79 @@ spec:
                 secretKeyRef:
                   name: liberty-secrets
                   key: db.password
+            # JVM security settings
+            - name: JVM_ARGS
+              value: "-XX:+UseContainerSupport -Dcom.ibm.ws.logging.console.format=json"
 
           resources:
             requests:
               cpu: "500m"
               memory: "1Gi"
+              ephemeral-storage: "256Mi"
             limits:
               cpu: "2000m"
               memory: "2Gi"
+              ephemeral-storage: "1Gi"
 
           startupProbe:
             httpGet:
               path: /health/started
               port: http
+              scheme: HTTP
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 30
+            successThreshold: 1
 
           livenessProbe:
             httpGet:
               path: /health/live
               port: http
+              scheme: HTTP
             periodSeconds: 15
+            timeoutSeconds: 5
             failureThreshold: 3
+            successThreshold: 1
 
           readinessProbe:
             httpGet:
               path: /health/ready
               port: http
+              scheme: HTTP
             periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 3
+            successThreshold: 1
 
           volumeMounts:
             - name: config
               mountPath: /config/server.xml
               subPath: server.xml
+              readOnly: true
+            # Writable directories required by Liberty
+            - name: liberty-logs
+              mountPath: /logs
+            - name: liberty-tmp
+              mountPath: /tmp
+            - name: liberty-workarea
+              mountPath: /opt/ol/wlp/output/defaultServer/workarea
 
       volumes:
         - name: config
           configMap:
             name: liberty-config
+            defaultMode: 0440
+        # EmptyDir volumes for writable paths (ephemeral)
+        - name: liberty-logs
+          emptyDir:
+            sizeLimit: 500Mi
+        - name: liberty-tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: liberty-workarea
+          emptyDir:
+            sizeLimit: 256Mi
 
 ---
 apiVersion: v1
@@ -101,15 +196,23 @@ metadata:
   name: liberty-service
   labels:
     app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "Liberty application service endpoint"
 spec:
   type: ClusterIP
+  sessionAffinity: None
   ports:
     - name: http
       port: 9080
       targetPort: http
+      protocol: TCP
     - name: https
       port: 9443
       targetPort: https
+      protocol: TCP
   selector:
     app: liberty
 
@@ -118,6 +221,11 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: liberty-hpa
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -132,14 +240,187 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max
 
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: liberty-pdb
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
 spec:
   minAvailable: 2
   selector:
     matchLabels:
       app: liberty
+
+---
+# ServiceAccount with minimal permissions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: liberty-app
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+automountServiceAccountToken: false
+
+---
+# NetworkPolicy: Restrict ingress to only allowed sources
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: liberty-network-policy
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: liberty
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - protocol: TCP
+          port: 9080
+        - protocol: TCP
+          port: 9443
+    # Allow Prometheus scraping
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9080
+    # Allow inter-pod communication within the same app
+    - from:
+        - podSelector:
+            matchLabels:
+              app: liberty
+      ports:
+        - protocol: TCP
+          port: 9080
+        - protocol: TCP
+          port: 9443
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow database connections (PostgreSQL)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: database
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow external HTTPS (for external API calls if needed)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Resource Quota for the namespace (apply to liberty namespace)
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: liberty-resource-quota
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  hard:
+    requests.cpu: "10"
+    requests.memory: "20Gi"
+    limits.cpu: "40"
+    limits.memory: "40Gi"
+    pods: "20"
+    persistentvolumeclaims: "10"
+
+---
+# LimitRange for default resource constraints
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: liberty-limit-range
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "1000m"
+        memory: "1Gi"
+      defaultRequest:
+        cpu: "250m"
+        memory: "512Mi"
+      min:
+        cpu: "100m"
+        memory: "128Mi"
+      max:
+        cpu: "4000m"
+        memory: "4Gi"
+    - type: PersistentVolumeClaim
+      min:
+        storage: "1Gi"
+      max:
+        storage: "50Gi"

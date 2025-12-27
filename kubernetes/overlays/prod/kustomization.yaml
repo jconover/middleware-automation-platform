@@ -1,0 +1,126 @@
+---
+# Production environment overlay
+# Maximum security hardening with enterprise requirements
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: liberty-prod
+
+# Reference the base configuration
+resources:
+  - ../../base
+  - pod-security-admission.yaml
+
+# Namespace for production
+namespace: liberty-prod
+
+# Name prefix for all resources
+namePrefix: prod-
+
+# Common labels for production environment
+commonLabels:
+  environment: production
+  app.kubernetes.io/instance: liberty-prod
+  security.compliance/level: restricted
+
+# Common annotations for production
+commonAnnotations:
+  config.kubernetes.io/environment: production
+  security.kubernetes.io/enforce: restricted
+  description: "Production Liberty deployment with enterprise security hardening"
+
+# Patches for production environment
+patches:
+  # Ensure production replicas
+  - target:
+      kind: Deployment
+      name: liberty-app
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+
+  # Production resource requirements
+  - target:
+      kind: Deployment
+      name: liberty-app
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "1000m"
+            memory: "2Gi"
+            ephemeral-storage: "512Mi"
+          limits:
+            cpu: "4000m"
+            memory: "4Gi"
+            ephemeral-storage: "2Gi"
+
+  # Production image (use specific version, not latest)
+  - target:
+      kind: Deployment
+      name: liberty-app
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: icr.io/appcafe/open-liberty:24.0.0.12-kernel-slim-java17-openj9-ubi
+
+  # Enforce ImagePullPolicy Always in production
+  - target:
+      kind: Deployment
+      name: liberty-app
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+
+  # Production HPA settings
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: liberty-hpa
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
+      - op: replace
+        path: /spec/maxReplicas
+        value: 20
+
+  # Production PDB - maintain high availability
+  - target:
+      kind: PodDisruptionBudget
+      name: liberty-pdb
+    patch: |-
+      - op: replace
+        path: /spec/minAvailable
+        value: 2
+
+  # Production resource quota
+  - target:
+      kind: ResourceQuota
+      name: liberty-resource-quota
+    patch: |-
+      - op: replace
+        path: /spec/hard
+        value:
+          requests.cpu: "40"
+          requests.memory: "80Gi"
+          limits.cpu: "80"
+          limits.memory: "160Gi"
+          pods: "50"
+          persistentvolumeclaims: "20"
+
+# ConfigMap overrides for production
+configMapGenerator:
+  - name: liberty-config
+    behavior: merge
+    literals:
+      - db.host=postgres-prod.database.svc.cluster.local
+      - log.level=INFO
+
+# Images - use digest for immutability in production
+images:
+  - name: icr.io/appcafe/open-liberty
+    newTag: 24.0.0.12-kernel-slim-java17-openj9-ubi

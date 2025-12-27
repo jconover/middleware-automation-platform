@@ -1,0 +1,297 @@
+# =============================================================================
+# AWX Namespace NetworkPolicies
+# =============================================================================
+# These policies control traffic for AWX web, task, and PostgreSQL pods.
+# AWX requires:
+#   - Inbound: UI access, API calls from Jenkins, webhook triggers
+#   - Outbound: SSH to managed hosts, Git repos, container registries
+# =============================================================================
+---
+# Allow ingress to AWX web UI
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-awx-web-ingress
+  namespace: awx
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: awx-web
+  policyTypes:
+    - Ingress
+  ingress:
+    # From NGINX Ingress
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8052
+    # From MetalLB LoadBalancer
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: metallb-system
+      ports:
+        - protocol: TCP
+          port: 8052
+    # Direct external access (homelab network)
+    - from:
+        - ipBlock:
+            cidr: 192.168.68.0/24
+      ports:
+        - protocol: TCP
+          port: 8052
+    # From Jenkins for API calls
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: jenkins
+      ports:
+        - protocol: TCP
+          port: 8052
+    # GitHub/GitLab webhooks
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8052
+
+---
+# Allow AWX web to communicate with task and PostgreSQL
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-awx-web-egress
+  namespace: awx
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: awx-web
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # To AWX PostgreSQL database
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: database
+      ports:
+        - protocol: TCP
+          port: 5432
+    # To AWX task runner
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: awx-task
+      ports:
+        - protocol: TCP
+          port: 8052
+
+---
+# Allow AWX task runner ingress from web
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-awx-task-ingress
+  namespace: awx
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: awx-task
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: awx-web
+      ports:
+        - protocol: TCP
+          port: 8052
+
+---
+# Allow AWX task runner egress (Ansible execution)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-awx-task-egress
+  namespace: awx
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: awx-task
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # To AWX PostgreSQL database
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: database
+      ports:
+        - protocol: TCP
+          port: 5432
+    # SSH to managed hosts (homelab network)
+    - to:
+        - ipBlock:
+            cidr: 192.168.68.0/24
+      ports:
+        - protocol: TCP
+          port: 22
+    # SSH to managed hosts (private networks)
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 22
+    # WinRM for Windows hosts
+    - to:
+        - ipBlock:
+            cidr: 192.168.68.0/24
+      ports:
+        - protocol: TCP
+          port: 5985
+        - protocol: TCP
+          port: 5986
+    # Git repositories for project sync
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 22
+    # Container registries for execution environments
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # Liberty for post-deployment verification
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: liberty
+          podSelector:
+            matchLabels:
+              app: liberty
+      ports:
+        - protocol: TCP
+          port: 9080
+        - protocol: TCP
+          port: 9443
+
+---
+# Allow AWX PostgreSQL ingress from web and task
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-awx-postgres-ingress
+  namespace: awx
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: database
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: awx-web
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: awx-task
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# Allow AWX PostgreSQL minimal egress (DNS only)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-awx-postgres-egress
+  namespace: awx
+  labels:
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: database
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution only
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
