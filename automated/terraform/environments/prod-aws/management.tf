@@ -3,33 +3,8 @@
 # =============================================================================
 # This instance runs in a public subnet and can manage all other instances
 # via SSM (no VPC peering required for multi-region).
+# Variables are defined in variables.tf with validation
 # =============================================================================
-
-# -----------------------------------------------------------------------------
-# Variables
-# -----------------------------------------------------------------------------
-variable "create_management_server" {
-  description = "Whether to create the AWX/Jenkins management server"
-  type        = bool
-  default     = true
-}
-
-variable "management_instance_type" {
-  description = "EC2 instance type for management server (AWX needs 4GB+ RAM)"
-  type        = string
-  default     = "t3.medium" # 2 vCPU, 4GB RAM (~$30/month)
-}
-
-variable "management_allowed_cidrs" {
-  description = "CIDR blocks allowed to access management server web UI and SSH"
-  type        = list(string)
-  default     = []
-
-  # SECURITY: This variable MUST be set per-environment in terraform.tfvars.
-  # Do NOT commit real IP addresses to version control.
-  # Get your public IP: curl -s ifconfig.me
-  # Example: management_allowed_cidrs = ["YOUR_PUBLIC_IP/32"]
-}
 
 # -----------------------------------------------------------------------------
 # Security Group

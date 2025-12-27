@@ -3,22 +3,8 @@
 # =============================================================================
 # Dedicated server for monitoring Liberty application servers.
 # Runs Prometheus for metrics collection and Grafana for visualization.
+# Variables are defined in variables.tf with validation
 # =============================================================================
-
-# -----------------------------------------------------------------------------
-# Variables
-# -----------------------------------------------------------------------------
-variable "create_monitoring_server" {
-  description = "Whether to create the dedicated monitoring server"
-  type        = bool
-  default     = true
-}
-
-variable "monitoring_instance_type" {
-  description = "EC2 instance type for monitoring server"
-  type        = string
-  default     = "t3.small" # 2 vCPU, 2GB RAM (~$15/month)
-}
 
 # -----------------------------------------------------------------------------
 # Grafana Admin Credentials (Secrets Manager)

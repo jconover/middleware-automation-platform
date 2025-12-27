@@ -1,33 +1,7 @@
 # =============================================================================
 # ECS Fargate - Cluster, Task Definition, and Service
 # =============================================================================
-
-# -----------------------------------------------------------------------------
-# Variables for ECS (add to variables.tf or use defaults here)
-# -----------------------------------------------------------------------------
-variable "ecs_enabled" {
-  description = "Enable ECS Fargate deployment (set to true to migrate from EC2)"
-  type        = bool
-  default     = false
-}
-
-variable "ecs_task_cpu" {
-  description = "CPU units for ECS task (256, 512, 1024, 2048, 4096)"
-  type        = number
-  default     = 512
-}
-
-variable "ecs_task_memory" {
-  description = "Memory for ECS task in MB"
-  type        = number
-  default     = 1024
-}
-
-variable "ecs_desired_count" {
-  description = "Desired number of ECS tasks"
-  type        = number
-  default     = 2
-}
+# Variables are defined in variables.tf with validation
 
 # -----------------------------------------------------------------------------
 # CloudWatch Log Group

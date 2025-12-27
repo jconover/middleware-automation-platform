@@ -84,35 +84,4 @@ resource "aws_appautoscaling_policy" "liberty_requests" {
   }
 }
 
-# -----------------------------------------------------------------------------
-# Scaling Variables
-# -----------------------------------------------------------------------------
-variable "ecs_min_capacity" {
-  description = "Minimum number of ECS tasks"
-  type        = number
-  default     = 2
-}
-
-variable "ecs_max_capacity" {
-  description = "Maximum number of ECS tasks"
-  type        = number
-  default     = 6
-}
-
-variable "ecs_cpu_target" {
-  description = "Target CPU utilization percentage for scaling"
-  type        = number
-  default     = 70
-}
-
-variable "ecs_memory_target" {
-  description = "Target memory utilization percentage for scaling"
-  type        = number
-  default     = 80
-}
-
-variable "ecs_requests_per_target" {
-  description = "Target requests per task for scaling"
-  type        = number
-  default     = 1000
-}
+# Scaling variables are defined in variables.tf with validation
