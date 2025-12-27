@@ -6,6 +6,13 @@
 [![Open Liberty](https://img.shields.io/badge/Open%20Liberty-24.0.0.1-blue)](https://openliberty.io/)
 [![Ansible](https://img.shields.io/badge/Ansible-2.15+-red)](https://www.ansible.com/)
 [![Terraform](https://img.shields.io/badge/Terraform-1.6+-purple)](https://www.terraform.io/)
+[![AWS](https://img.shields.io/badge/AWS-Production%20Ready-FF9900?logo=amazonaws)](https://aws.amazon.com/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.28+-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![Docker](https://img.shields.io/badge/Podman-Container%20Ready-892CA0?logo=podman&logoColor=white)](https://podman.io/)
+[![MicroProfile](https://img.shields.io/badge/MicroProfile-6.0-blue)](https://microprofile.io/)
+[![Jakarta EE](https://img.shields.io/badge/Jakarta%20EE-10-orange)](https://jakarta.ee/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-Monitoring-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/)
+[![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800?logo=grafana&logoColor=white)](https://grafana.com/)
 
 ## Executive Summary
 

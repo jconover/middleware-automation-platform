@@ -233,24 +233,6 @@ resource "aws_lb_listener" "admin_console" {
 }
 
 # -----------------------------------------------------------------------------
-# Locals for Certificate Logic
-# -----------------------------------------------------------------------------
-locals {
-  # Use provided certificate ARN, or created certificate, or none
-  certificate_arn = var.certificate_arn != "" ? var.certificate_arn : (
-    var.create_certificate && length(aws_acm_certificate.main) > 0 ? aws_acm_certificate.main[0].arn : ""
-  )
-
-  has_certificate = local.certificate_arn != ""
-
-  # For admin console, use provided cert or fall back to a self-signed approach
-  # ALB requires a certificate for HTTPS - use the main cert if available
-  admin_certificate_arn = local.certificate_arn != "" ? local.certificate_arn : (
-    length(aws_acm_certificate.admin_self_signed) > 0 ? aws_acm_certificate.admin_self_signed[0].arn : ""
-  )
-}
-
-# -----------------------------------------------------------------------------
 # Self-signed Certificate for Admin Console (if no other cert available)
 # -----------------------------------------------------------------------------
 resource "tls_private_key" "admin" {

@@ -1,0 +1,68 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+README*
+CHANGELOG*
+LICENSE*
+docs/
+
+# IDE and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Build artifacts that shouldn't be in context
+*.log
+*.tmp
+*.temp
+
+# Test files
+*_test.go
+*.test
+tests/
+test/
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+.circleci/
+
+# Kubernetes/Terraform (not needed in container)
+*.tf
+*.tfvars
+*.tfstate*
+kubernetes/
+helm/
+
+# Ansible (not needed in container)
+ansible/
+*.yml.example
+inventory/
+
+# Development files
+Makefile
+Dockerfile.dev
+docker-compose*.yml
+
+# Secrets (never include)
+*.pem
+*.key
+*.crt
+*.env
+.env*
+secrets/
+credentials/
+
+# Podman/Docker specific
+.containerignore
+.dockerignore

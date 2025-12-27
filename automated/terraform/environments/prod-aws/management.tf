@@ -269,6 +269,7 @@ output "awx_url" {
 output "awx_admin_password_command" {
   description = "Command to get AWX admin password"
   value       = "ssh ubuntu@${var.create_management_server ? aws_eip.management[0].public_ip : "N/A"} 'sudo kubectl get secret awx-admin-password -o jsonpath=\"{.data.password}\" | base64 -d'"
+  sensitive   = true
 }
 
 output "management_ssh_command" {

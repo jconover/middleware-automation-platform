@@ -316,9 +316,11 @@ output "monitoring_ssh_command" {
 output "grafana_credentials_secret_arn" {
   description = "ARN of the Secrets Manager secret containing Grafana admin credentials"
   value       = var.create_monitoring_server ? aws_secretsmanager_secret.grafana_credentials[0].arn : null
+  sensitive   = true
 }
 
 output "grafana_admin_password_command" {
   description = "AWS CLI command to retrieve Grafana admin password"
   value       = var.create_monitoring_server ? "aws secretsmanager get-secret-value --secret-id ${aws_secretsmanager_secret.grafana_credentials[0].id} --query SecretString --output text | jq -r .admin_password" : null
+  sensitive   = true
 }
