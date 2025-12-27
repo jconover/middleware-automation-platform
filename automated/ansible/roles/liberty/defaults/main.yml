@@ -1,0 +1,125 @@
+---
+# =============================================================================
+# Liberty Role - Default Variables
+# =============================================================================
+# These are sensible defaults for Open Liberty deployment.
+# Override in inventory or playbook vars as needed.
+# SECURITY: Passwords must be set via Ansible Vault - no defaults provided.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Open Liberty Version and Installation
+# -----------------------------------------------------------------------------
+liberty_version: "24.0.0.1"
+liberty_install_dir: /opt/liberty
+liberty_user: liberty
+liberty_server_name: defaultServer
+
+# -----------------------------------------------------------------------------
+# Java Configuration
+# -----------------------------------------------------------------------------
+liberty_java_version: 17
+
+# -----------------------------------------------------------------------------
+# Network Ports
+# -----------------------------------------------------------------------------
+liberty_http_port: 9080
+liberty_https_port: 9443
+liberty_admin_port: 9060
+
+# -----------------------------------------------------------------------------
+# JVM Settings
+# -----------------------------------------------------------------------------
+# Initial heap size
+liberty_jvm_heap_min: 512m
+
+# Maximum heap size
+liberty_jvm_heap_max: 1024m
+
+# Metaspace settings
+liberty_jvm_metaspace_size: 256m
+liberty_jvm_max_metaspace_size: 512m
+
+# Garbage collector (G1GC recommended for most workloads)
+liberty_jvm_gc: "-XX:+UseG1GC"
+
+# Additional JVM options (list format)
+liberty_jvm_options:
+  - "-XX:+UseContainerSupport"
+  - "-XX:MaxRAMPercentage=75.0"
+  - "-Djava.security.egd=file:/dev/./urandom"
+
+# -----------------------------------------------------------------------------
+# Database Connection Pool Settings
+# -----------------------------------------------------------------------------
+# These apply when postgresql_host is defined
+liberty_db_pool_min_size: 5
+liberty_db_pool_max_size: 20
+liberty_db_pool_timeout: 30s
+liberty_db_pool_reap_time: 180s
+liberty_db_pool_max_idle_time: 30m
+liberty_db_connection_timeout: 10s
+
+# PostgreSQL JDBC driver version
+postgresql_jdbc_version: "42.7.1"
+
+# -----------------------------------------------------------------------------
+# Session and Cache Settings
+# -----------------------------------------------------------------------------
+# Session timeout in minutes
+liberty_session_timeout: 30
+
+# Redisson version for JCache/Redis integration
+redisson_version: "3.24.3"
+
+# -----------------------------------------------------------------------------
+# Logging Configuration
+# -----------------------------------------------------------------------------
+liberty_log_dir: /var/log/liberty
+liberty_log_max_file_size: 100
+liberty_log_max_files: 10
+liberty_console_log_level: INFO
+liberty_trace_specification: "*=info"
+
+# -----------------------------------------------------------------------------
+# Health and Metrics
+# -----------------------------------------------------------------------------
+# Enable MicroProfile Health endpoints
+liberty_health_enabled: true
+
+# Enable MicroProfile Metrics
+liberty_metrics_enabled: true
+
+# Metrics authentication (set to true for production)
+liberty_metrics_auth_required: false
+
+# -----------------------------------------------------------------------------
+# Security Settings
+# -----------------------------------------------------------------------------
+# SSL/TLS protocol version
+liberty_ssl_protocol: TLSv1.3
+
+# Certificate validity in days
+liberty_cert_validity_days: 365
+
+# Admin user for Liberty Admin Center
+liberty_admin_user: admin
+
+# NOTE: The following security-critical variables have NO defaults
+# and MUST be provided via Ansible Vault:
+#   - liberty_keystore_password (minimum 16 characters)
+#   - liberty_admin_password (minimum 12 characters)
+#   - postgresql_password (when using database)
+
+# -----------------------------------------------------------------------------
+# Feature Sets
+# -----------------------------------------------------------------------------
+# Default Liberty features to enable
+liberty_features:
+  - jakartaee-10.0
+  - mpHealth-4.0
+  - mpMetrics-5.0
+  - mpConfig-3.0
+  - mpOpenAPI-3.1
+  - jdbc-4.3
+  - jndi-1.0

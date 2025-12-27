@@ -1,0 +1,147 @@
+---
+# =============================================================================
+# Molecule Prepare Playbook for Liberty Role
+# =============================================================================
+# This playbook prepares the test instance before running the Liberty role.
+# It installs prerequisites that would normally be present on a production
+# system but are not included in the minimal Docker image.
+# =============================================================================
+
+- name: Prepare Test Instance
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    # =========================================================================
+    # System Updates
+    # =========================================================================
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    # =========================================================================
+    # Essential System Packages
+    # =========================================================================
+    - name: Install essential packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - software-properties-common
+          - unzip
+          - wget
+        state: present
+      when: ansible_os_family == "Debian"
+
+    # =========================================================================
+    # Systemd Setup (Required for Service Management in Docker)
+    # =========================================================================
+    - name: Ensure systemd is properly initialized
+      ansible.builtin.command:
+        cmd: systemctl daemon-reexec
+      changed_when: false
+      failed_when: false
+
+    - name: Wait for systemd to be ready
+      ansible.builtin.wait_for:
+        path: /run/systemd/system
+        timeout: 30
+      failed_when: false
+
+    # =========================================================================
+    # Java Installation (Liberty Prerequisite)
+    # =========================================================================
+    - name: Install OpenJDK 17
+      ansible.builtin.apt:
+        name:
+          - openjdk-17-jdk
+          - openjdk-17-jre
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Verify Java installation
+      ansible.builtin.command:
+        cmd: java -version
+      register: java_check
+      changed_when: false
+      failed_when: java_check.rc != 0
+
+    - name: Set JAVA_HOME environment variable
+      ansible.builtin.lineinfile:
+        path: /etc/environment
+        regexp: '^JAVA_HOME='
+        line: "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64"
+        create: true
+        mode: "0644"
+
+    # =========================================================================
+    # Network Utilities (For Health Check Verification)
+    # =========================================================================
+    - name: Install network utilities
+      ansible.builtin.apt:
+        name:
+          - curl
+          - netcat-openbsd
+        state: present
+      when: ansible_os_family == "Debian"
+
+    # =========================================================================
+    # Python Dependencies (For Ansible URI Module)
+    # =========================================================================
+    - name: Install Python packages for Ansible modules
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-urllib3
+        state: present
+      when: ansible_os_family == "Debian"
+
+    # =========================================================================
+    # User Setup
+    # =========================================================================
+    - name: Create liberty group
+      ansible.builtin.group:
+        name: liberty
+        state: present
+        system: true
+
+    # =========================================================================
+    # Directory Preparation
+    # =========================================================================
+    - name: Create opt directory if not exists
+      ansible.builtin.file:
+        path: /opt
+        state: directory
+        mode: "0755"
+
+    # =========================================================================
+    # Cleanup
+    # =========================================================================
+    - name: Clean apt cache to reduce image size
+      ansible.builtin.apt:
+        autoclean: true
+      when: ansible_os_family == "Debian"
+
+    # =========================================================================
+    # Final Status
+    # =========================================================================
+    - name: Display preparation summary
+      ansible.builtin.debug:
+        msg: |
+          =================================================
+          Test Instance Preparation Complete
+          =================================================
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Java: Installed (OpenJDK 17)
+          Network Tools: curl, netcat
+          Systemd: Initialized
+          =================================================
+          Ready for Liberty role converge
+          =================================================

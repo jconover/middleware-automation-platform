@@ -1,0 +1,48 @@
+---
+# =============================================================================
+# Molecule Converge Playbook for Liberty Role
+# =============================================================================
+# This playbook applies the Liberty role to the test instance.
+# Variables are defined in molecule.yml under provisioner.inventory.host_vars.
+# =============================================================================
+
+- name: Converge
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    # Override variables for test environment
+    # These complement the host_vars defined in molecule.yml
+    liberty_version: "24.0.0.4"
+    liberty_install_dir: "/opt/wlp"
+    liberty_server_name: "defaultServer"
+    liberty_user: "liberty"
+    liberty_java_version: "17"
+    liberty_http_port: 9080
+    liberty_https_port: 9443
+    liberty_admin_user: "admin"
+    # Test passwords meeting validation requirements
+    liberty_keystore_password: "MoleculeTest#2024$KeyStore!"
+    liberty_admin_password: "MoleculeAdmin#2024"
+    # Test environment - skips production-only features
+    env_name: "test"
+
+  pre_tasks:
+    - name: Display test configuration
+      ansible.builtin.debug:
+        msg: |
+          Testing Liberty Role with:
+            - Liberty Version: {{ liberty_version }}
+            - Install Directory: {{ liberty_install_dir }}
+            - Server Name: {{ liberty_server_name }}
+            - HTTP Port: {{ liberty_http_port }}
+            - HTTPS Port: {{ liberty_https_port }}
+
+  roles:
+    - role: liberty
+
+  post_tasks:
+    - name: Display Liberty installation status
+      ansible.builtin.debug:
+        msg: "Liberty role converge completed successfully"

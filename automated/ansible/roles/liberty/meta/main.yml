@@ -1,0 +1,51 @@
+---
+# =============================================================================
+# Liberty Role - Metadata
+# =============================================================================
+
+galaxy_info:
+  role_name: liberty
+  author: Middleware Automation Team
+  description: >
+    Deploys and configures IBM Open Liberty application server with
+    Jakarta EE 10, MicroProfile support, database connectivity,
+    and production-ready security settings.
+  company: Enterprise Middleware Platform
+
+  license: MIT
+
+  min_ansible_version: "2.14"
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - focal    # 20.04 LTS
+        - jammy    # 22.04 LTS
+        - noble    # 24.04 LTS
+    - name: Debian
+      versions:
+        - bullseye # 11
+        - bookworm # 12
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+
+  galaxy_tags:
+    - liberty
+    - openliberty
+    - websphere
+    - jakartaee
+    - microprofile
+    - java
+    - middleware
+    - application_server
+    - ibm
+
+# -----------------------------------------------------------------------------
+# Role Dependencies
+# -----------------------------------------------------------------------------
+# The common role provides base system configuration (packages, timezone, etc.)
+# that Liberty requires to function properly.
+dependencies:
+  - role: common

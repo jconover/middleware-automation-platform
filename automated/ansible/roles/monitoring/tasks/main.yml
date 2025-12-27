@@ -3,6 +3,33 @@
 # Monitoring Role - Main Tasks
 # =============================================================================
 
+# =============================================================================
+# SECURITY: Validate Grafana admin password before proceeding
+# =============================================================================
+- name: Validate Grafana admin password is defined
+  ansible.builtin.assert:
+    that:
+      - grafana_admin_password is defined
+      - grafana_admin_password | length > 0
+    fail_msg: >
+      SECURITY ERROR: grafana_admin_password must be defined.
+      Set the GRAFANA_ADMIN_PASSWORD environment variable or pass it via extra vars.
+      Example: export GRAFANA_ADMIN_PASSWORD='YourSecureP@ssw0rd'
+      Or: ansible-playbook site.yml -e "grafana_admin_password=YourSecureP@ssw0rd"
+
+- name: Validate Grafana admin password meets security requirements
+  ansible.builtin.assert:
+    that:
+      - grafana_admin_password | length >= 12
+      - grafana_admin_password != 'admin'
+      - grafana_admin_password != 'password'
+      - grafana_admin_password != 'changeme'
+      - grafana_admin_password != 'grafana'
+    fail_msg: >
+      SECURITY ERROR: grafana_admin_password must be at least 12 characters
+      and cannot be a common default password (admin, password, changeme, grafana).
+      Please use a strong, unique password for production deployments.
+
 # -----------------------------------------------------------------------------
 # Prometheus Installation
 # -----------------------------------------------------------------------------
@@ -160,14 +187,22 @@
     state: present
     update_cache: true
 
-- name: Add Grafana GPG key
-  ansible.builtin.apt_key:
-    url: https://apt.grafana.com/gpg.key
-    state: present
+- name: Create keyrings directory
+  ansible.builtin.file:
+    path: /usr/share/keyrings
+    state: directory
+    mode: "0755"
 
-- name: Add Grafana repository
+- name: Download Grafana GPG key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /usr/share/keyrings/grafana.asc
+    mode: "0644"
+    force: false
+
+- name: Add Grafana repository with signed-by
   ansible.builtin.apt_repository:
-    repo: "deb https://apt.grafana.com stable main"
+    repo: "deb [signed-by=/usr/share/keyrings/grafana.asc] https://apt.grafana.com stable main"
     state: present
     filename: grafana
 

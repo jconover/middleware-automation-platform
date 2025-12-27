@@ -1,0 +1,91 @@
+---
+# =============================================================================
+# Common Role - Default Variables
+# =============================================================================
+# Base system configuration defaults applied to all managed hosts.
+# Override in inventory or playbook vars as needed.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# System Timezone
+# -----------------------------------------------------------------------------
+timezone: UTC
+
+# -----------------------------------------------------------------------------
+# Common System Packages
+# -----------------------------------------------------------------------------
+# Essential packages installed on all managed hosts
+common_packages:
+  - curl
+  - wget
+  - unzip
+  - vim
+  - htop
+  - jq
+  - net-tools
+  - acl
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+# Additional packages to install (extend in inventory)
+common_extra_packages: []
+
+# -----------------------------------------------------------------------------
+# Java Configuration
+# -----------------------------------------------------------------------------
+# Default Java version for roles that require Java
+java_version: 17
+
+# Java package name pattern (Debian/Ubuntu)
+java_package_debian: "openjdk-{{ java_version }}-jdk"
+
+# Java package name pattern (RHEL/CentOS)
+java_package_redhat: "java-{{ java_version }}-openjdk-devel"
+
+# JAVA_HOME path patterns
+java_home_debian: "/usr/lib/jvm/java-{{ java_version }}-openjdk-amd64"
+java_home_redhat: "/usr/lib/jvm/java-{{ java_version }}-openjdk"
+
+# -----------------------------------------------------------------------------
+# System Limits
+# -----------------------------------------------------------------------------
+# File descriptor limits for application servers
+common_nofile_soft: 65535
+common_nofile_hard: 65535
+
+# Process limits
+common_nproc_soft: 65535
+common_nproc_hard: 65535
+
+# -----------------------------------------------------------------------------
+# Firewall Configuration
+# -----------------------------------------------------------------------------
+# Whether to configure firewall rules
+common_configure_firewall: false
+
+# -----------------------------------------------------------------------------
+# SSH Configuration
+# -----------------------------------------------------------------------------
+# Whether to harden SSH configuration
+common_harden_ssh: false
+
+# -----------------------------------------------------------------------------
+# NTP/Time Synchronization
+# -----------------------------------------------------------------------------
+# Whether to configure time synchronization
+common_configure_ntp: true
+common_ntp_servers:
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+  - 2.pool.ntp.org
+  - 3.pool.ntp.org
+
+# -----------------------------------------------------------------------------
+# Logging Configuration
+# -----------------------------------------------------------------------------
+# System log retention in days
+common_log_retention_days: 30
+
+# Whether to configure centralized logging
+common_configure_rsyslog: false

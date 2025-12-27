@@ -1,0 +1,218 @@
+---
+# =============================================================================
+# Molecule Verify Playbook for Liberty Role
+# =============================================================================
+# This playbook verifies that the Liberty role was applied correctly.
+# It checks installation, service status, and health endpoints.
+# =============================================================================
+
+- name: Verify Liberty Installation
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    liberty_install_dir: "/opt/wlp"
+    liberty_server_name: "defaultServer"
+    liberty_http_port: 9080
+    liberty_user: "liberty"
+
+  tasks:
+    # =========================================================================
+    # Installation Verification
+    # =========================================================================
+    - name: Verify Liberty binary exists
+      ansible.builtin.stat:
+        path: "{{ liberty_install_dir }}/bin/server"
+      register: liberty_binary
+      failed_when: not liberty_binary.stat.exists
+
+    - name: Verify Liberty binary is executable
+      ansible.builtin.assert:
+        that:
+          - liberty_binary.stat.executable
+        fail_msg: "Liberty server binary is not executable"
+        success_msg: "Liberty server binary is executable"
+
+    - name: Verify Liberty version
+      ansible.builtin.command:
+        cmd: "{{ liberty_install_dir }}/bin/server version"
+      register: liberty_version_output
+      changed_when: false
+      failed_when: liberty_version_output.rc != 0
+
+    - name: Display Liberty version
+      ansible.builtin.debug:
+        var: liberty_version_output.stdout_lines
+
+    # =========================================================================
+    # Server Instance Verification
+    # =========================================================================
+    - name: Verify Liberty server instance exists
+      ansible.builtin.stat:
+        path: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}"
+      register: liberty_server_dir
+      failed_when: not liberty_server_dir.stat.exists
+
+    - name: Verify server.xml configuration exists
+      ansible.builtin.stat:
+        path: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/server.xml"
+      register: server_xml
+      failed_when: not server_xml.stat.exists
+
+    - name: Verify jvm.options exists
+      ansible.builtin.stat:
+        path: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/jvm.options"
+      register: jvm_options
+      failed_when: not jvm_options.stat.exists
+
+    - name: Verify SSL keystore exists
+      ansible.builtin.stat:
+        path: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/resources/security/key.p12"
+      register: ssl_keystore
+      failed_when: not ssl_keystore.stat.exists
+
+    # =========================================================================
+    # User and Permissions Verification
+    # =========================================================================
+    - name: Verify Liberty user exists
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ liberty_user }}"
+      register: liberty_user_check
+
+    - name: Verify Liberty directory ownership
+      ansible.builtin.stat:
+        path: "{{ liberty_install_dir }}"
+      register: liberty_dir_stat
+
+    - name: Assert correct directory ownership
+      ansible.builtin.assert:
+        that:
+          - liberty_dir_stat.stat.pw_name == liberty_user
+        fail_msg: "Liberty directory is not owned by {{ liberty_user }}"
+        success_msg: "Liberty directory ownership is correct"
+
+    # =========================================================================
+    # Service Verification
+    # =========================================================================
+    - name: Verify Liberty systemd service exists
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/liberty-{{ liberty_server_name }}.service"
+      register: liberty_service_file
+      failed_when: not liberty_service_file.stat.exists
+
+    - name: Verify Liberty service is enabled
+      ansible.builtin.systemd:
+        name: "liberty-{{ liberty_server_name }}"
+      register: liberty_service_status
+
+    - name: Assert Liberty service is enabled and running
+      ansible.builtin.assert:
+        that:
+          - liberty_service_status.status.ActiveState == "active"
+          - liberty_service_status.status.UnitFileState == "enabled"
+        fail_msg: "Liberty service is not active or not enabled"
+        success_msg: "Liberty service is active and enabled"
+
+    # =========================================================================
+    # Health Endpoint Verification
+    # =========================================================================
+    - name: Wait for Liberty to be fully ready
+      ansible.builtin.uri:
+        url: "http://localhost:{{ liberty_http_port }}/health/ready"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: health_ready
+      retries: 30
+      delay: 5
+      until: health_ready.status == 200
+
+    - name: Verify health ready endpoint response
+      ansible.builtin.assert:
+        that:
+          - health_ready.status == 200
+        fail_msg: "Health ready endpoint did not return 200"
+        success_msg: "Health ready endpoint is responding correctly"
+
+    - name: Check liveness endpoint
+      ansible.builtin.uri:
+        url: "http://localhost:{{ liberty_http_port }}/health/live"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: health_live
+
+    - name: Verify health live endpoint response
+      ansible.builtin.assert:
+        that:
+          - health_live.status == 200
+        fail_msg: "Health live endpoint did not return 200"
+        success_msg: "Health live endpoint is responding correctly"
+
+    - name: Check started endpoint
+      ansible.builtin.uri:
+        url: "http://localhost:{{ liberty_http_port }}/health/started"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: health_started
+
+    - name: Verify health started endpoint response
+      ansible.builtin.assert:
+        that:
+          - health_started.status == 200
+        fail_msg: "Health started endpoint did not return 200"
+        success_msg: "Health started endpoint is responding correctly"
+
+    # =========================================================================
+    # Metrics Endpoint Verification (Optional)
+    # =========================================================================
+    - name: Check metrics endpoint availability
+      ansible.builtin.uri:
+        url: "http://localhost:{{ liberty_http_port }}/metrics"
+        method: GET
+        status_code:
+          - 200
+          - 401  # May require authentication
+        timeout: 10
+      register: metrics_check
+      failed_when: false
+
+    - name: Display metrics endpoint status
+      ansible.builtin.debug:
+        msg: "Metrics endpoint returned status {{ metrics_check.status }}"
+      when: metrics_check is defined
+
+    # =========================================================================
+    # Java Verification
+    # =========================================================================
+    - name: Verify Java is installed
+      ansible.builtin.command:
+        cmd: java -version
+      register: java_version
+      changed_when: false
+
+    - name: Display Java version
+      ansible.builtin.debug:
+        var: java_version.stderr_lines
+
+    # =========================================================================
+    # Final Summary
+    # =========================================================================
+    - name: Display verification summary
+      ansible.builtin.debug:
+        msg: |
+          =================================================
+          Liberty Role Verification Summary
+          =================================================
+          Liberty Binary: {{ liberty_binary.stat.path }} [OK]
+          Server Instance: {{ liberty_server_name }} [OK]
+          Service Status: Active and Enabled [OK]
+          Health Ready: {{ health_ready.status }} [OK]
+          Health Live: {{ health_live.status }} [OK]
+          Health Started: {{ health_started.status }} [OK]
+          =================================================
+          All verification checks passed!
+          =================================================
