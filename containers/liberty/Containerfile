@@ -1,30 +1,85 @@
-# Open Liberty Container - Podman Optimized
-# Build: podman build -t liberty-app:1.0.0 -f Containerfile .
-# Run:   podman run -d -p 9080:9080 -p 9443:9443 liberty-app:1.0.0
+# Open Liberty Container - Multi-Stage Build
+#
+# Build (full rebuild from source):
+#   podman build -t liberty-app:1.0.0 -f Containerfile .
+#
+# Build with version info:
+#   podman build -t liberty-app:1.0.0 \
+#     --build-arg VERSION=1.0.0 \
+#     --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) \
+#     --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+#     -f Containerfile .
+#
+# Run:
+#   podman run -d -p 9080:9080 -p 9443:9443 liberty-app:1.0.0
 
-FROM icr.io/appcafe/open-liberty:kernel-slim-java17-openj9-ubi
+# =============================================================================
+# Stage 1: Builder - Compile the application WAR from source
+# =============================================================================
+FROM docker.io/library/maven:3.9-eclipse-temurin-17 AS builder
 
-LABEL maintainer="Justin" \
-      version="1.0.0" \
-      description="Open Liberty Application Server"
+WORKDIR /build
+
+# Copy only POM first for dependency caching
+COPY sample-app/pom.xml ./pom.xml
+
+# Download dependencies (cached unless pom.xml changes)
+RUN mvn dependency:go-offline -B
+
+# Copy source code and build
+COPY sample-app/src ./src
+RUN mvn clean package -DskipTests -B
+
+# =============================================================================
+# Stage 2: Runtime - Minimal Liberty image with application
+# =============================================================================
+FROM icr.io/appcafe/open-liberty:kernel-slim-java17-openj9-ubi AS runtime
+
+# Build-time arguments for versioning
+ARG VERSION=1.0.0
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+
+# Container metadata following OCI Image Spec
+LABEL org.opencontainers.image.title="Open Liberty Sample Application" \
+      org.opencontainers.image.description="Open Liberty Application Server with Jakarta EE 10 and MicroProfile 6" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${GIT_COMMIT}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.vendor="Middleware Automation Platform" \
+      org.opencontainers.image.authors="Justin" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.base.name="icr.io/appcafe/open-liberty:kernel-slim-java17-openj9-ubi" \
+      org.opencontainers.image.source="https://github.com/example/middleware-automation-platform" \
+      # Application-specific labels
+      app.liberty.version="24.0" \
+      app.java.version="17" \
+      app.profile="MicroProfile 6.0"
 
 # Install curl for health checks (run as root, then switch back)
 USER root
-RUN yum install -y curl && yum clean all
+RUN yum install -y curl && yum clean all && rm -rf /var/cache/yum
 USER 1001
 
-# Copy server configuration
+# Copy server configuration first (changes less frequently)
 COPY --chown=1001:0 server.xml /config/server.xml
 COPY --chown=1001:0 jvm.options /config/jvm.options
 
-# Install features
+# Install Liberty features based on server.xml
 RUN features.sh
 
-# Copy application
-COPY --chown=1001:0 apps/*.war /config/apps/
+# Copy application WAR from builder stage
+COPY --chown=1001:0 --from=builder /build/target/*.war /config/apps/
 
-# Health check
+# Configure security hardening
+RUN configure.sh
+
+# Health check using MicroProfile Health endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:9080/health/ready || exit 1
 
+# Expose HTTP and HTTPS ports
 EXPOSE 9080 9443
+
+# Ensure graceful shutdown on container stop
+STOPSIGNAL SIGTERM

@@ -28,6 +28,11 @@ spec:
         }
     }
 
+    options {
+        timeout(time: 1, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
     environment {
         APP_NAME = 'middleware-platform'
         REGISTRY = 'registry.local'
@@ -38,6 +43,19 @@ spec:
         ECR_REPO = ''  // Set dynamically based on AWS account
         ECS_CLUSTER = 'mw-prod-cluster'
         ECS_SERVICE = 'mw-prod-liberty'
+
+        // Rollback tracking
+        PREVIOUS_TASK_DEF_ARN = ''
+        ECS_DEPLOYMENT_ATTEMPTED = 'false'
+
+        // Versioning - populated in Checkout stage
+        GIT_COMMIT_SHORT = ''
+        VERSION = ''
+        BUILD_TIMESTAMP = ''
+
+        // Health check configuration
+        HEALTH_CHECK_MAX_RETRIES = '30'
+        HEALTH_CHECK_RETRY_DELAY = '10'
     }
 
     parameters {
@@ -50,12 +68,22 @@ spec:
     stages {
         stage('Checkout') {
             steps {
-                script { env.DEPLOY_START_TIME = new Date().format("yyyy-MM-dd HH:mm:ss") }
                 checkout scm
+                script {
+                    env.DEPLOY_START_TIME = new Date().format("yyyy-MM-dd HH:mm:ss")
+                    env.BUILD_TIMESTAMP = new Date().format("yyyyMMdd-HHmmss")
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+                    env.VERSION = "${BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
+                }
                 echo """
                 ════════════════════════════════════════════════════════════
                 Enterprise Middleware Platform - CI/CD Pipeline
                 Environment: ${params.ENVIRONMENT}
+                Version:     ${env.VERSION}
+                Commit:      ${env.GIT_COMMIT_SHORT}
                 Started:     ${env.DEPLOY_START_TIME}
                 ════════════════════════════════════════════════════════════
                 """
@@ -63,6 +91,9 @@ spec:
         }
 
         stage('Build Application') {
+            options {
+                timeout(time: 15, unit: 'MINUTES')
+            }
             when { expression { params.DEPLOY_TYPE != 'infrastructure-only' } }
             steps {
                 container('maven') {
@@ -76,7 +107,55 @@ spec:
             }
         }
 
+        stage('Unit Tests') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+            when { expression { params.DEPLOY_TYPE != 'infrastructure-only' } }
+            steps {
+                container('maven') {
+                    dir('sample-app') {
+                        sh 'mvn test -B'
+                    }
+                }
+            }
+            post {
+                always {
+                    junit testResults: 'sample-app/target/surefire-reports/*.xml', allowEmptyResults: true
+                }
+            }
+        }
+
+        stage('Code Quality') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+            when { expression { params.DEPLOY_TYPE != 'infrastructure-only' } }
+            steps {
+                container('maven') {
+                    dir('sample-app') {
+                        sh 'mvn pmd:pmd checkstyle:checkstyle -B'
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'sample-app/target/site/*.xml', allowEmptyArchive: true
+                    recordIssues(
+                        tools: [
+                            pmdParser(pattern: 'sample-app/target/pmd.xml'),
+                            checkStyle(pattern: 'sample-app/target/checkstyle-result.xml')
+                        ],
+                        qualityGates: [[threshold: 50, type: 'TOTAL', unstable: true]]
+                    )
+                }
+            }
+        }
+
         stage('Build Container') {
+            options {
+                timeout(time: 20, unit: 'MINUTES')
+            }
             when { expression { params.DEPLOY_TYPE != 'infrastructure-only' } }
             steps {
                 container('podman') {
@@ -84,9 +163,48 @@ spec:
                         sh '''
                             mkdir -p apps
                             cp ../../sample-app/target/*.war apps/ 2>/dev/null || true
-                            podman build -t liberty-app:${BUILD_NUMBER} -f Containerfile .
+                            podman build -t liberty-app:${VERSION} -f Containerfile .
+                            echo "Built container image: liberty-app:${VERSION}"
                         '''
                     }
+                }
+            }
+        }
+
+        stage('Security Scan') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+            when { expression { params.DEPLOY_TYPE != 'infrastructure-only' } }
+            steps {
+                container('podman') {
+                    sh '''#!/bin/bash
+                        set -e
+
+                        echo "Installing Trivy vulnerability scanner..."
+                        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+                        echo "Scanning container image for vulnerabilities..."
+                        echo "Image: liberty-app:${VERSION}"
+                        echo ""
+
+                        # Scan for HIGH and CRITICAL vulnerabilities
+                        # Exit code 1 if CRITICAL vulnerabilities found
+                        trivy image \
+                            --severity HIGH,CRITICAL \
+                            --exit-code 1 \
+                            --no-progress \
+                            --format table \
+                            liberty-app:${VERSION}
+
+                        echo ""
+                        echo "Security scan completed successfully - no critical vulnerabilities found"
+                    '''
+                }
+            }
+            post {
+                failure {
+                    echo 'SECURITY SCAN FAILED: Critical vulnerabilities detected in container image'
                 }
             }
         }
@@ -100,11 +218,20 @@ spec:
             }
             steps {
                 container('podman') {
-                    sh '''
-                        podman tag liberty-app:${BUILD_NUMBER} ${REGISTRY}/${APP_NAME}:${BUILD_NUMBER}
-                        podman tag liberty-app:${BUILD_NUMBER} ${REGISTRY}/${APP_NAME}:latest
-                        podman push ${REGISTRY}/${APP_NAME}:${BUILD_NUMBER}
-                        podman push ${REGISTRY}/${APP_NAME}:latest
+                    sh '''#!/bin/bash
+                        set -e
+
+                        # Tag with semantic version
+                        podman tag liberty-app:${VERSION} ${REGISTRY}/${APP_NAME}:${VERSION}
+                        podman push ${REGISTRY}/${APP_NAME}:${VERSION}
+                        echo "Pushed ${REGISTRY}/${APP_NAME}:${VERSION}"
+
+                        # Tag as 'latest' only on main branch
+                        if [ "${GIT_BRANCH}" = "origin/main" ] || [ "${GIT_BRANCH}" = "main" ]; then
+                            podman tag liberty-app:${VERSION} ${REGISTRY}/${APP_NAME}:latest
+                            podman push ${REGISTRY}/${APP_NAME}:latest
+                            echo "Pushed ${REGISTRY}/${APP_NAME}:latest"
+                        fi
                     '''
                 }
             }
@@ -149,13 +276,17 @@ spec:
                             # Re-enable command tracing for non-sensitive operations
                             set -x
 
-                            # Tag and push to ECR
-                            podman tag liberty-app:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
-                            podman tag liberty-app:${BUILD_NUMBER} ${ECR_REPO}:latest
-                            podman push ${ECR_REPO}:${BUILD_NUMBER}
-                            podman push ${ECR_REPO}:latest
+                            # Tag and push to ECR with semantic version
+                            podman tag liberty-app:${VERSION} ${ECR_REPO}:${VERSION}
+                            podman push ${ECR_REPO}:${VERSION}
+                            echo "Successfully pushed image to ECR with tag: ${VERSION}"
 
-                            echo "Successfully pushed image to ECR with tag: ${BUILD_NUMBER}"
+                            # Tag as 'latest' only on main branch
+                            if [ "${GIT_BRANCH}" = "origin/main" ] || [ "${GIT_BRANCH}" = "main" ]; then
+                                podman tag liberty-app:${VERSION} ${ECR_REPO}:latest
+                                podman push ${ECR_REPO}:latest
+                                echo "Also tagged and pushed as 'latest'"
+                            fi
                         '''
                     }
                 }
@@ -169,7 +300,7 @@ spec:
                     dir('automated/ansible') {
                         sh '''
                             ANSIBLE_ARGS="-i inventory/${ENVIRONMENT}.yml playbooks/site.yml"
-                            ANSIBLE_ARGS="${ANSIBLE_ARGS} -e app_version=${BUILD_NUMBER}"
+                            ANSIBLE_ARGS="${ANSIBLE_ARGS} -e app_version=${VERSION}"
                             ANSIBLE_ARGS="${ANSIBLE_ARGS} -e liberty_version=${LIBERTY_VERSION}"
 
                             if [ "${DRY_RUN}" = "true" ]; then
@@ -193,6 +324,25 @@ spec:
             steps {
                 container('podman') {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod']]) {
+                        script {
+                            // Capture the current task definition ARN before deploying for rollback
+                            env.PREVIOUS_TASK_DEF_ARN = sh(
+                                script: '''#!/bin/bash
+                                    set +x
+                                    aws ecs describe-services \
+                                        --cluster ${ECS_CLUSTER} \
+                                        --services ${ECS_SERVICE} \
+                                        --region ${AWS_REGION} \
+                                        --query 'services[0].taskDefinition' \
+                                        --output text 2>/dev/null
+                                ''',
+                                returnStdout: true
+                            ).trim()
+
+                            echo "Captured previous task definition for rollback: ${env.PREVIOUS_TASK_DEF_ARN}"
+                            env.ECS_DEPLOYMENT_ATTEMPTED = 'true'
+                        }
+
                         sh '''#!/bin/bash
                             set -e
 
@@ -228,9 +378,52 @@ spec:
                     }
                 }
             }
+            post {
+                failure {
+                    script {
+                        if (env.PREVIOUS_TASK_DEF_ARN && env.PREVIOUS_TASK_DEF_ARN != 'None' && env.PREVIOUS_TASK_DEF_ARN != '') {
+                            echo "ECS deployment failed. Initiating rollback to previous task definition..."
+                            container('podman') {
+                                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod']]) {
+                                    sh '''#!/bin/bash
+                                        set +x
+                                        echo "Rolling back to task definition: ${PREVIOUS_TASK_DEF_ARN}"
+
+                                        aws ecs update-service \
+                                            --cluster ${ECS_CLUSTER} \
+                                            --service ${ECS_SERVICE} \
+                                            --task-definition ${PREVIOUS_TASK_DEF_ARN} \
+                                            --region ${AWS_REGION} \
+                                            --output text \
+                                            --query 'service.serviceName' 2>/dev/null || {
+                                                echo "ERROR: Rollback failed - manual intervention required"
+                                                exit 1
+                                            }
+
+                                        echo "Waiting for rollback to complete..."
+                                        aws ecs wait services-stable \
+                                            --cluster ${ECS_CLUSTER} \
+                                            --services ${ECS_SERVICE} \
+                                            --region ${AWS_REGION} 2>/dev/null || {
+                                                echo "WARNING: Rollback may not have completed successfully"
+                                            }
+
+                                        echo "Rollback completed successfully"
+                                    '''
+                                }
+                            }
+                        } else {
+                            echo "No previous task definition available for rollback"
+                        }
+                    }
+                }
+            }
         }
 
         stage('Health Check') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
             when { expression { !params.DRY_RUN } }
             steps {
                 script {
@@ -243,7 +436,40 @@ spec:
                                     # Disable command tracing to prevent infrastructure details exposure
                                     set +x
 
-                                    echo "Checking ECS service health..."
+                                    # Health check function with retry logic
+                                    check_endpoint() {
+                                        local endpoint="$1"
+                                        local description="$2"
+                                        local attempt=1
+
+                                        echo "Checking ${description}..."
+                                        while [ $attempt -le ${HEALTH_CHECK_MAX_RETRIES} ]; do
+                                            if curl -sf -H "X-Target: ecs" --connect-timeout 5 --max-time 10 \
+                                                "http://${ALB_DNS}${endpoint}" > /dev/null 2>&1; then
+                                                echo "  [PASS] ${description} (attempt ${attempt}/${HEALTH_CHECK_MAX_RETRIES})"
+                                                return 0
+                                            fi
+                                            echo "  [RETRY] ${description} - attempt ${attempt}/${HEALTH_CHECK_MAX_RETRIES}, waiting ${HEALTH_CHECK_RETRY_DELAY}s..."
+                                            sleep ${HEALTH_CHECK_RETRY_DELAY}
+                                            attempt=$((attempt + 1))
+                                        done
+                                        echo "  [FAIL] ${description} - exhausted all ${HEALTH_CHECK_MAX_RETRIES} retries"
+                                        return 1
+                                    }
+
+                                    echo "================================================================"
+                                    echo "ECS Health Check - Version: ${VERSION}"
+                                    echo "Max retries: ${HEALTH_CHECK_MAX_RETRIES}, Delay: ${HEALTH_CHECK_RETRY_DELAY}s"
+                                    echo "================================================================"
+
+                                    # Wait for ECS service to stabilize
+                                    echo "Waiting for ECS service to stabilize..."
+                                    aws ecs wait services-stable \
+                                        --cluster ${ECS_CLUSTER} \
+                                        --services ${ECS_SERVICE} \
+                                        --region ${AWS_REGION} 2>/dev/null || {
+                                            echo "WARNING: ECS wait timed out, proceeding with health checks..."
+                                        }
 
                                     # Get ALB DNS name from AWS (suppress verbose output)
                                     ALB_DNS=$(aws elbv2 describe-load-balancers \
@@ -257,31 +483,106 @@ spec:
                                         exit 1
                                     fi
 
-                                    # Health check with ECS routing header
-                                    echo "Waiting for service to be ready..."
-                                    sleep 30
+                                    # Track overall health check status
+                                    HEALTH_CHECK_FAILED=0
 
-                                    # Perform health check without exposing endpoint URL
-                                    if curl -sf -H "X-Target: ecs" "http://${ALB_DNS}/health/ready" > /dev/null 2>&1; then
-                                        echo "Health check passed!"
-                                    else
-                                        echo "ERROR: Health check failed"
+                                    # Check multiple endpoints
+                                    echo ""
+                                    echo "Validating application endpoints..."
+                                    echo "----------------------------------------------------------------"
+
+                                    # Primary health check - readiness probe
+                                    if ! check_endpoint "/health/ready" "Readiness probe"; then
+                                        HEALTH_CHECK_FAILED=1
+                                    fi
+
+                                    # Secondary health check - API info endpoint
+                                    if ! check_endpoint "/api/info" "API info endpoint"; then
+                                        HEALTH_CHECK_FAILED=1
+                                    fi
+
+                                    # Tertiary health check - metrics endpoint
+                                    if ! check_endpoint "/metrics" "Metrics endpoint"; then
+                                        echo "  [WARN] Metrics endpoint not responding (non-critical)"
+                                    fi
+
+                                    echo "----------------------------------------------------------------"
+
+                                    if [ $HEALTH_CHECK_FAILED -eq 1 ]; then
+                                        echo "ERROR: One or more critical health checks failed"
                                         exit 1
                                     fi
+
+                                    echo ""
+                                    echo "All critical health checks passed!"
                                 '''
                             }
                         }
                     } else {
                         sh '''#!/bin/bash
                             set -e
-                            echo "Waiting for service to be ready..."
-                            sleep 30
-                            if curl -sf "http://liberty.${ENVIRONMENT}.local/health/ready" > /dev/null 2>&1; then
-                                echo "Health check passed!"
-                            else
-                                echo "ERROR: Health check failed"
+
+                            # Health check function with retry logic
+                            check_endpoint() {
+                                local base_url="$1"
+                                local endpoint="$2"
+                                local description="$3"
+                                local attempt=1
+
+                                echo "Checking ${description}..."
+                                while [ $attempt -le ${HEALTH_CHECK_MAX_RETRIES} ]; do
+                                    if curl -sf --connect-timeout 5 --max-time 10 \
+                                        "${base_url}${endpoint}" > /dev/null 2>&1; then
+                                        echo "  [PASS] ${description} (attempt ${attempt}/${HEALTH_CHECK_MAX_RETRIES})"
+                                        return 0
+                                    fi
+                                    echo "  [RETRY] ${description} - attempt ${attempt}/${HEALTH_CHECK_MAX_RETRIES}, waiting ${HEALTH_CHECK_RETRY_DELAY}s..."
+                                    sleep ${HEALTH_CHECK_RETRY_DELAY}
+                                    attempt=$((attempt + 1))
+                                done
+                                echo "  [FAIL] ${description} - exhausted all ${HEALTH_CHECK_MAX_RETRIES} retries"
+                                return 1
+                            }
+
+                            BASE_URL="http://liberty.${ENVIRONMENT}.local"
+
+                            echo "================================================================"
+                            echo "Health Check - Version: ${VERSION}"
+                            echo "Target: ${BASE_URL}"
+                            echo "Max retries: ${HEALTH_CHECK_MAX_RETRIES}, Delay: ${HEALTH_CHECK_RETRY_DELAY}s"
+                            echo "================================================================"
+
+                            # Track overall health check status
+                            HEALTH_CHECK_FAILED=0
+
+                            echo ""
+                            echo "Validating application endpoints..."
+                            echo "----------------------------------------------------------------"
+
+                            # Primary health check - readiness probe
+                            if ! check_endpoint "${BASE_URL}" "/health/ready" "Readiness probe"; then
+                                HEALTH_CHECK_FAILED=1
+                            fi
+
+                            # Secondary health check - API info endpoint
+                            if ! check_endpoint "${BASE_URL}" "/api/info" "API info endpoint"; then
+                                HEALTH_CHECK_FAILED=1
+                            fi
+
+                            # Tertiary health check - metrics endpoint
+                            if ! check_endpoint "${BASE_URL}" "/metrics" "Metrics endpoint"; then
+                                echo "  [WARN] Metrics endpoint not responding (non-critical)"
+                            fi
+
+                            echo "----------------------------------------------------------------"
+
+                            if [ $HEALTH_CHECK_FAILED -eq 1 ]; then
+                                echo "ERROR: One or more critical health checks failed"
                                 exit 1
                             fi
+
+                            echo ""
+                            echo "All critical health checks passed!"
                         '''
                     }
                 }
@@ -297,9 +598,11 @@ spec:
                 ════════════════════════════════════════════════════════════
                 DEPLOYMENT COMPLETE
                 Status:    ${currentBuild.currentResult}
+                Version:   ${env.VERSION ?: 'N/A'}
+                Commit:    ${env.GIT_COMMIT_SHORT ?: 'N/A'}
                 Started:   ${env.DEPLOY_START_TIME}
                 Completed: ${endTime}
-                
+
                 TIMING COMPARISON:
                 Manual Deployment:    ~7 hours
                 Automated Pipeline:   ~25 minutes
@@ -307,6 +610,67 @@ spec:
                 """
             }
             cleanWs()
+        }
+
+        success {
+            script {
+                def duration = currentBuild.durationString.replace(' and counting', '')
+                def successMessage = """
+                    *Deployment Successful*
+                    Job: ${env.JOB_NAME}
+                    Build: #${env.BUILD_NUMBER}
+                    Environment: ${params.ENVIRONMENT}
+                    Version: ${env.VERSION}
+                    Duration: ${duration}
+                    Build URL: ${env.BUILD_URL}
+                """.stripIndent()
+
+                echo successMessage
+
+                // Send Slack notification if plugin is available
+                try {
+                    slackSend(
+                        color: 'good',
+                        channel: '#deployments',
+                        message: successMessage
+                    )
+                } catch (Exception e) {
+                    echo "Slack notification skipped: ${e.message}"
+                }
+            }
+        }
+
+        failure {
+            script {
+                def duration = currentBuild.durationString.replace(' and counting', '')
+                def failedStage = env.STAGE_NAME ?: 'Unknown'
+                def rollbackStatus = (env.ECS_DEPLOYMENT_ATTEMPTED == 'true' && env.PREVIOUS_TASK_DEF_ARN) ?
+                    'Rollback attempted' : 'No rollback performed'
+
+                def failureMessage = """
+                    *Deployment Failed*
+                    Job: ${env.JOB_NAME}
+                    Build: #${env.BUILD_NUMBER}
+                    Environment: ${params.ENVIRONMENT}
+                    Failed Stage: ${failedStage}
+                    Duration: ${duration}
+                    Rollback: ${rollbackStatus}
+                    Build URL: ${env.BUILD_URL}
+                """.stripIndent()
+
+                echo failureMessage
+
+                // Send Slack notification if plugin is available
+                try {
+                    slackSend(
+                        color: 'danger',
+                        channel: '#deployments',
+                        message: failureMessage
+                    )
+                } catch (Exception e) {
+                    echo "Slack notification skipped: ${e.message}"
+                }
+            }
         }
     }
 }

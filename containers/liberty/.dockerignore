@@ -1,16 +1,36 @@
-# Git
+# =============================================================================
+# .dockerignore - Optimized for Multi-Stage Builds
+# =============================================================================
+# This file excludes unnecessary files from the build context to:
+# 1. Speed up builds by reducing context size
+# 2. Prevent sensitive data from entering the image
+# 3. Avoid cache invalidation from irrelevant changes
+#
+# IMPORTANT: The multi-stage build copies sample-app/ for Maven compilation.
+# Do NOT exclude sample-app/src or sample-app/pom.xml.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Git metadata (not needed in container)
+# -----------------------------------------------------------------------------
 .git
 .gitignore
 .gitattributes
+.gitmodules
 
-# Documentation
+# -----------------------------------------------------------------------------
+# Documentation (not needed in container)
+# -----------------------------------------------------------------------------
 *.md
 README*
 CHANGELOG*
 LICENSE*
 docs/
+CLAUDE.md
 
-# IDE and editors
+# -----------------------------------------------------------------------------
+# IDE and editor files
+# -----------------------------------------------------------------------------
 .idea/
 .vscode/
 *.swp
@@ -18,51 +38,116 @@ docs/
 *~
 .DS_Store
 Thumbs.db
+*.iml
 
-# Build artifacts that shouldn't be in context
+# -----------------------------------------------------------------------------
+# Build artifacts and caches
+# -----------------------------------------------------------------------------
 *.log
 *.tmp
 *.temp
 
-# Test files
+# Maven build output (we rebuild inside container)
+sample-app/target/
+**/target/
+
+# Node modules (if any frontend exists)
+node_modules/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# -----------------------------------------------------------------------------
+# Test files (tests run separately, not in production image)
+# -----------------------------------------------------------------------------
 *_test.go
 *.test
 tests/
 test/
+**/src/test/
 
-# CI/CD files
+# -----------------------------------------------------------------------------
+# CI/CD configuration (not needed in container)
+# -----------------------------------------------------------------------------
 .github/
 .gitlab-ci.yml
 .travis.yml
 Jenkinsfile
 .circleci/
+ci-cd/
 
-# Kubernetes/Terraform (not needed in container)
+# -----------------------------------------------------------------------------
+# Infrastructure as Code (not needed in container)
+# -----------------------------------------------------------------------------
+# Terraform
 *.tf
 *.tfvars
 *.tfstate*
+.terraform/
+terraform/
+
+# Kubernetes manifests
 kubernetes/
 helm/
+*.yaml
+!sample-app/**/*.yaml
 
-# Ansible (not needed in container)
+# Ansible
 ansible/
+automated/
 *.yml.example
 inventory/
 
-# Development files
+# -----------------------------------------------------------------------------
+# Development and local files
+# -----------------------------------------------------------------------------
 Makefile
 Dockerfile.dev
 docker-compose*.yml
+*.local
+.envrc
 
-# Secrets (never include)
+# Other containers (when building from repo root)
+containers/*/
+!containers/liberty/
+
+# Monitoring configs (deployed separately)
+monitoring/
+
+# -----------------------------------------------------------------------------
+# Secrets and credentials (NEVER include in image)
+# -----------------------------------------------------------------------------
 *.pem
 *.key
 *.crt
+*.p12
+*.jks
 *.env
 .env*
 secrets/
 credentials/
+**/secrets/
+**/*.secret
 
-# Podman/Docker specific
+# AWS credentials
+.aws/
+
+# SSH keys
+id_rsa*
+id_ed25519*
+*.pub
+
+# -----------------------------------------------------------------------------
+# Container build files (avoid recursion)
+# -----------------------------------------------------------------------------
 .containerignore
 .dockerignore
+
+# -----------------------------------------------------------------------------
+# Pre-built WAR files (we build from source in multi-stage)
+# -----------------------------------------------------------------------------
+# Note: apps/*.war is excluded because we build from sample-app/src
+apps/*.war
