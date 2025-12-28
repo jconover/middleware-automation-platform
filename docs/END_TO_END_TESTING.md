@@ -168,7 +168,7 @@ sleep 30
 kubectl get namespaces
 ```
 
-### 2.3 Load Container Image to k3s
+### 2.3 Load Container Image to Kubernetes
 
 ```bash
 cd /home/justin/Projects/middleware-automation-platform
@@ -176,19 +176,19 @@ cd /home/justin/Projects/middleware-automation-platform
 # Save image to tar
 podman save liberty-app:1.0.0 -o /tmp/liberty-app.tar
 
-# Import on k8s-master
-sudo k3s ctr images import /tmp/liberty-app.tar
+# Import on k8s-master-01 (192.168.68.82)
+sudo ctr -n k8s.io images import /tmp/liberty-app.tar
 
-# Import on k8s-worker-01
+# Import on k8s-worker-01 (liberty-dev-01, 192.168.68.86)
+scp /tmp/liberty-app.tar 192.168.68.86:/tmp/
+ssh 192.168.68.86 "sudo ctr -n k8s.io images import /tmp/liberty-app.tar"
+
+# Import on k8s-worker-02 (liberty-dev-02, 192.168.68.88)
 scp /tmp/liberty-app.tar 192.168.68.88:/tmp/
-ssh 192.168.68.88 "sudo k3s ctr images import /tmp/liberty-app.tar"
-
-# Import on k8s-worker-02
-scp /tmp/liberty-app.tar 192.168.68.83:/tmp/
-ssh 192.168.68.83 "sudo k3s ctr images import /tmp/liberty-app.tar"
+ssh 192.168.68.88 "sudo ctr -n k8s.io images import /tmp/liberty-app.tar"
 
 # Verify import
-sudo k3s crictl images | grep liberty-app
+sudo crictl images | grep liberty-app
 ```
 
 ### 2.4 Deploy Liberty to Kubernetes
@@ -531,7 +531,7 @@ echo "========================================"
 
 | Issue | Solution |
 |-------|----------|
-| ImagePullBackOff | Image not imported to all nodes - run `k3s ctr images import` on each |
+| ImagePullBackOff | Image not imported to all nodes - run `ctr -n k8s.io images import` on each |
 | LoadBalancer pending | MetalLB not configured - check `kubectl get ipaddresspools -n metallb-system` |
 | Pods not scheduling | Check node resources with `kubectl describe nodes` |
 

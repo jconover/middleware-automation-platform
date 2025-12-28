@@ -10,12 +10,12 @@ This documentation targets the **Beelink Mini PC Kubernetes Lab**:
 
 | Node | Hostname | IP Address | Role | Hardware |
 |------|----------|------------|------|----------|
-| 1 | k8s-master | 192.168.68.86 | Control Plane + Worker | Beelink Mini PC |
-| 2 | k8s-worker-01 | 192.168.68.88 | Worker | Beelink Mini PC |
-| 3 | k8s-worker-02 | 192.168.68.83 | Worker | Beelink Mini PC |
+| 1 | k8s-master-01 | 192.168.68.82 | Control Plane + Worker | Beelink Mini PC |
+| 2 | k8s-worker-01 | 192.168.68.86 | Worker | Beelink Mini PC |
+| 3 | k8s-worker-02 | 192.168.68.88 | Worker | Beelink Mini PC |
 
 The cluster uses:
-- **k3s** as the lightweight Kubernetes distribution
+- **kubeadm** with containerd as the Kubernetes distribution
 - **MetalLB** for bare-metal LoadBalancer services
 - **Longhorn** for distributed persistent storage across nodes
 - **Local network** 192.168.68.0/24
@@ -37,8 +37,8 @@ Beelink Kubernetes Lab (192.168.68.0/24)
 
 Physical Nodes:
 ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│   k8s-master     │  │  k8s-worker-01   │  │  k8s-worker-02   │
-│  192.168.68.86   │  │  192.168.68.88   │  │  192.168.68.83   │
+│  k8s-master-01   │  │  k8s-worker-01   │  │  k8s-worker-02   │
+│  192.168.68.82   │  │  192.168.68.86   │  │  192.168.68.88   │
 │  Control Plane   │  │     Worker       │  │     Worker       │
 │  + Worker        │  │                  │  │                  │
 └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
@@ -126,27 +126,27 @@ The Containerfile uses the official Open Liberty base image (`icr.io/appcafe/ope
 - **jvm.options** for JVM tuning
 - Built-in health check using `/health/ready` endpoint
 
-#### Step 4: Load Image into k3s Cluster
+#### Step 4: Load Image into Kubernetes Cluster
 
-For the Beelink k3s cluster, import the image directly on each node:
+For the Beelink kubeadm cluster, import the image directly on each node:
 
 ```bash
 # Save the image to a tar file
 podman save liberty-app:1.0.0 -o /tmp/liberty-app.tar
 
-# Import on k8s-master (192.168.68.86)
-sudo k3s ctr images import /tmp/liberty-app.tar
+# Import on k8s-master-01 (192.168.68.82)
+sudo ctr -n k8s.io images import /tmp/liberty-app.tar
 
-# Import on k8s-worker-01 (192.168.68.88)
+# Import on k8s-worker-01 (192.168.68.86)
+scp /tmp/liberty-app.tar 192.168.68.86:/tmp/
+ssh 192.168.68.86 "sudo ctr -n k8s.io images import /tmp/liberty-app.tar"
+
+# Import on k8s-worker-02 (192.168.68.88)
 scp /tmp/liberty-app.tar 192.168.68.88:/tmp/
-ssh 192.168.68.88 "sudo k3s ctr images import /tmp/liberty-app.tar"
-
-# Import on k8s-worker-02 (192.168.68.83)
-scp /tmp/liberty-app.tar 192.168.68.83:/tmp/
-ssh 192.168.68.83 "sudo k3s ctr images import /tmp/liberty-app.tar"
+ssh 192.168.68.88 "sudo ctr -n k8s.io images import /tmp/liberty-app.tar"
 
 # Verify import
-sudo k3s crictl images | grep liberty-app
+sudo crictl images | grep liberty-app
 ```
 
 #### Step 5: Create Namespace and Secrets
