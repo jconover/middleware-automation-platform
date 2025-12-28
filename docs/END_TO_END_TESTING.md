@@ -170,6 +170,29 @@ kubectl get namespaces
 
 ### 2.3 Load Container Image to Kubernetes
 
+**Option A: Docker Hub (Recommended)**
+
+Push to a registry and let Kubernetes pull automatically:
+
+```bash
+# Tag for Docker Hub (replace YOUR_USERNAME with your Docker Hub username)
+podman tag liberty-app:1.0.0 docker.io/YOUR_USERNAME/liberty-app:1.0.0
+
+# Login to Docker Hub
+podman login docker.io
+
+# Push to registry
+podman push docker.io/YOUR_USERNAME/liberty-app:1.0.0
+
+# Update kubernetes/base/liberty-deployment.yaml to use:
+#   image: docker.io/YOUR_USERNAME/liberty-app:1.0.0
+#   imagePullPolicy: Always
+```
+
+**Option B: Manual Import (Air-gapped environments)**
+
+For environments without registry access, import directly to each node:
+
 ```bash
 cd /home/justin/Projects/middleware-automation-platform
 
@@ -197,19 +220,27 @@ sudo crictl images | grep liberty-app
 # Create namespace
 kubectl create namespace liberty
 
-# Create ConfigMap
+# Create ConfigMap with server.xml and db.host
 kubectl create configmap liberty-config \
   --namespace liberty \
-  --from-file=server.xml=/home/justin/Projects/middleware-automation-platform/containers/liberty/server.xml
+  --from-file=server.xml=/home/justin/Projects/middleware-automation-platform/containers/liberty/server.xml \
+  --from-literal=db.host=localhost
+
+# Create secret for database password (placeholder for testing)
+kubectl create secret generic liberty-secrets \
+  --namespace liberty \
+  --from-literal=db.password=testpassword123
 
 # Apply deployment
-kubectl apply -k kubernetes/overlays/local
+kubectl apply -f kubernetes/base/liberty-deployment.yaml -n liberty
 
 # Watch pods come up
 kubectl get pods -n liberty -w
 ```
 
 **Expected:** 3 pods reach `Running` state (matches HPA minReplicas)
+
+> **Note:** If pods show `CrashLoopBackOff`, check logs with `kubectl logs -n liberty <pod-name>`. Common issues include missing ConfigMap/Secret or volume mount problems.
 
 ### 2.5 Verify Liberty in Kubernetes
 
@@ -233,7 +264,54 @@ curl -s http://localhost:9080/sample-app/api/hello
 kill $PF_PID 2>/dev/null
 ```
 
-### 2.6 Deploy Monitoring Stack
+### 2.6 Install MetalLB (LoadBalancer for Bare-Metal)
+
+MetalLB provides LoadBalancer services for bare-metal Kubernetes clusters:
+
+```bash
+# Install MetalLB
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+
+# Wait for MetalLB pods
+kubectl wait --namespace metallb-system --for=condition=ready pod --selector=app=metallb --timeout=90s
+
+# Configure IP address pool (192.168.68.200-210)
+cat <<EOF | kubectl apply -f -
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: default-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 192.168.68.200-192.168.68.210
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: default
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - default-pool
+EOF
+```
+
+### 2.7 Expose Liberty via LoadBalancer
+
+```bash
+# Patch Liberty service to use LoadBalancer
+kubectl patch svc liberty-service -n liberty -p '{"spec": {"type": "LoadBalancer"}}'
+
+# Verify IP assignment (should get 192.168.68.200)
+kubectl get svc liberty-service -n liberty
+
+# Test from browser or curl
+curl http://192.168.68.200:9080/health/ready
+curl http://192.168.68.200:9080/sample-app/api/hello
+```
+
+### 2.8 Deploy Monitoring Stack
 
 ```bash
 # Add Helm repos
@@ -252,13 +330,40 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
     --set grafana.service.loadBalancerIP=192.168.68.202 \
     --set alertmanager.service.type=LoadBalancer \
     --set alertmanager.service.loadBalancerIP=192.168.68.203 \
+    --set grafana.adminPassword=admin123 \
     --wait --timeout 10m
 
 # Verify LoadBalancer IPs
 kubectl get svc -n monitoring | grep LoadBalancer
 ```
 
-### 2.7 Deploy Jenkins (Optional)
+### 2.9 Add Liberty to Prometheus
+
+```bash
+# Create ServiceMonitor for Liberty metrics
+cat <<EOF | kubectl apply -f -
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: liberty-monitor
+  namespace: liberty
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: liberty
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+EOF
+
+# Verify in Prometheus (Status > Targets should show liberty-service)
+curl -s "http://192.168.68.201:9090/api/v1/targets" | grep liberty
+```
+
+### 2.10 Deploy Jenkins (Optional)
 
 ```bash
 # Create namespace and secret
@@ -279,7 +384,7 @@ helm upgrade --install jenkins jenkins/jenkins \
 kubectl get svc -n jenkins | grep LoadBalancer
 ```
 
-### 2.8 Deploy AWX (Optional)
+### 2.11 Deploy AWX (Optional)
 
 ```bash
 # Create namespace and secret
@@ -306,17 +411,19 @@ kubectl apply -f awx/awx-deployment.yaml
 kubectl get pods -n awx -w
 ```
 
-### 2.9 Kubernetes Verification Checklist
+### 2.12 Kubernetes Verification Checklist
 
 | Service | URL | Verification |
 |---------|-----|--------------|
-| Liberty | Port-forward 9080 | `curl localhost:9080/health/ready` |
-| Prometheus | http://192.168.68.201:9090 | UI loads, Status > Targets shows UP |
-| Grafana | http://192.168.68.202:3000 | Login with admin/prom-operator |
-| Jenkins | http://192.168.68.206:8080 | Login page loads |
-| AWX | http://192.168.68.205 | Login page loads |
+| Liberty | http://192.168.68.200:9080 | `curl http://192.168.68.200:9080/health/ready` |
+| Liberty Metrics | http://192.168.68.200:9080/metrics | Prometheus-format metrics |
+| Prometheus | http://192.168.68.201:9090 | UI loads, Status > Targets shows liberty-service UP |
+| Grafana | http://192.168.68.202 | Login with admin/admin123 |
+| Alertmanager | http://192.168.68.203:9093 | UI loads |
+| Jenkins | http://192.168.68.206:8080 | Login page loads (optional) |
+| AWX | http://192.168.68.205 | Login page loads (optional) |
 
-### 2.10 Get Credentials
+### 2.13 Get Credentials
 
 ```bash
 # Grafana

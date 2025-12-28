@@ -68,14 +68,14 @@ Physical Nodes:
 
 | Service       | IP Address      | Port |
 |---------------|-----------------|------|
-| NGINX Ingress | 192.168.68.200  | 80/443 |
+| Liberty       | 192.168.68.200  | 9080 |
 | Prometheus    | 192.168.68.201  | 9090 |
-| Grafana       | 192.168.68.202  | 3000 |
+| Grafana       | 192.168.68.202  | 80   |
 | AlertManager  | 192.168.68.203  | 9093 |
-| ArgoCD        | 192.168.68.204  | 443 |
-| AWX           | 192.168.68.205  | 80 |
+| ArgoCD        | 192.168.68.204  | 443  |
+| AWX           | 192.168.68.205  | 80   |
 | Jenkins       | 192.168.68.206  | 8080 |
-| Applications  | 192.168.68.210+ | varies |
+| Reserved      | 192.168.68.207-210 | - |
 
 ## Deployment Steps
 
