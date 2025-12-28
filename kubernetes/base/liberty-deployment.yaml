@@ -75,8 +75,8 @@ spec:
 
       containers:
         - name: liberty
-          image: icr.io/appcafe/open-liberty:kernel-slim-java17-openj9-ubi
-          imagePullPolicy: IfNotPresent
+          image: docker.io/jconover/liberty-app:1.0.0
+          imagePullPolicy: Always
 
           # Container-level security context (defense in depth)
           securityContext:
@@ -170,8 +170,8 @@ spec:
               mountPath: /logs
             - name: liberty-tmp
               mountPath: /tmp
-            - name: liberty-workarea
-              mountPath: /opt/ol/wlp/output/defaultServer/workarea
+            - name: liberty-output
+              mountPath: /opt/ol/wlp/output/defaultServer
 
       volumes:
         - name: config
@@ -185,9 +185,9 @@ spec:
         - name: liberty-tmp
           emptyDir:
             sizeLimit: 256Mi
-        - name: liberty-workarea
+        - name: liberty-output
           emptyDir:
-            sizeLimit: 256Mi
+            sizeLimit: 512Mi
 
 ---
 apiVersion: v1
