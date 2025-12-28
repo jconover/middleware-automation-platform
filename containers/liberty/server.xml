@@ -19,4 +19,7 @@
     <mpMetrics authentication="false"/>
 
     <logging consoleLogLevel="INFO" consoleFormat="JSON"/>
+
+    <!-- Auto-deploy WAR files from apps directory -->
+    <webApplication id="sample-app" location="sample-app.war" contextRoot="/sample-app"/>
 </server>

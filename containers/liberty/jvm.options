@@ -1,5 +1,4 @@
--XX:+UseContainerSupport
--XX:MaxRAMPercentage=75.0
--XX:+UseG1GC
--XX:MaxGCPauseMillis=200
+# OpenJ9-compatible JVM options
+-Xmx512m
+-Xms256m
 -Djava.security.egd=file:/dev/urandom
