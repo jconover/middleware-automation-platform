@@ -118,7 +118,7 @@ flowchart LR
 | Metric | Type | Description |
 |--------|------|-------------|
 | `base_servlet_request_total` | Counter | Total HTTP requests |
-| `base_servlet_request_seconds` | Histogram | Request duration |
+| `base_servlet_request_elapsedTime_seconds` | Histogram | Request duration |
 | `base_memory_usedHeap_bytes` | Gauge | JVM heap usage |
 | `base_cpu_processCpuLoad` | Gauge | CPU utilization |
 | `base_thread_count` | Gauge | Active threads |

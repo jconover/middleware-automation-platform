@@ -43,7 +43,7 @@ groups:
       - alert: ECSLibertySlowResponses
         expr: |
           histogram_quantile(0.95,
-            sum(rate(base_servlet_request_seconds_bucket{job="ecs-liberty"}[5m])) by (le)
+            sum(rate(base_servlet_request_elapsedTime_seconds_bucket{job="ecs-liberty"}[5m])) by (le)
           ) > 2
         for: 5m
         labels:
