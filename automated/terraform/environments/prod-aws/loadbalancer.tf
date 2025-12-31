@@ -3,6 +3,11 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
+# ELB Service Account (for ALB access logs - region-aware)
+# -----------------------------------------------------------------------------
+data "aws_elb_service_account" "main" {}
+
+# -----------------------------------------------------------------------------
 # ACM Certificate (Optional - DNS validation)
 # -----------------------------------------------------------------------------
 resource "aws_acm_certificate" "main" {
@@ -80,7 +85,7 @@ resource "aws_s3_bucket_policy" "alb_logs" {
       {
         Effect = "Allow"
         Principal = {
-          AWS = "arn:aws:iam::127311923021:root" # ELB account for us-east-1
+          AWS = data.aws_elb_service_account.main.arn
         }
         Action   = "s3:PutObject"
         Resource = "${aws_s3_bucket.alb_logs.arn}/alb/*"
