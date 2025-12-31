@@ -10,6 +10,27 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
+# Secure temporary directory setup
+TEMP_DIR=""
+
+cleanup_temp_files() {
+    if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
+        rm -rf "$TEMP_DIR"
+    fi
+}
+
+# Ensure cleanup on exit, error, or interrupt
+trap cleanup_temp_files EXIT INT TERM
+
+create_secure_temp_dir() {
+    # Create temp directory with restrictive permissions
+    TEMP_DIR="$(mktemp -d)" || {
+        echo "ERROR: Failed to create secure temporary directory" >&2
+        exit 1
+    }
+    chmod 700 "$TEMP_DIR"
+}
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -57,7 +78,8 @@ destroy_monitoring() {
 
     cd "${PROJECT_ROOT}/automated/ansible"
 
-    cat > /tmp/destroy-monitoring.yml << 'EOF'
+    local playbook_file="${TEMP_DIR}/destroy-monitoring.yml"
+    cat > "$playbook_file" << 'EOF'
 ---
 - name: Destroy Monitoring Stack
   hosts: monitoring_servers
@@ -127,8 +149,7 @@ destroy_monitoring() {
         daemon_reload: true
 EOF
 
-    ansible-playbook -i "inventory/${ENVIRONMENT}.yml" /tmp/destroy-monitoring.yml
-    rm -f /tmp/destroy-monitoring.yml
+    ansible-playbook -i "inventory/${ENVIRONMENT}.yml" "$playbook_file"
 
     log_info "Monitoring stack removed"
 }
@@ -138,7 +159,8 @@ destroy_liberty() {
 
     cd "${PROJECT_ROOT}/automated/ansible"
 
-    cat > /tmp/destroy-liberty.yml << 'EOF'
+    local playbook_file="${TEMP_DIR}/destroy-liberty.yml"
+    cat > "$playbook_file" << 'EOF'
 ---
 - name: Destroy Liberty Servers
   hosts: liberty_servers
@@ -181,8 +203,7 @@ destroy_liberty() {
         daemon_reload: true
 EOF
 
-    ansible-playbook -i "inventory/${ENVIRONMENT}.yml" /tmp/destroy-liberty.yml
-    rm -f /tmp/destroy-liberty.yml
+    ansible-playbook -i "inventory/${ENVIRONMENT}.yml" "$playbook_file"
 
     log_info "Liberty servers removed"
 }
@@ -227,6 +248,9 @@ main() {
 
     print_banner
     confirm_destroy
+
+    # Create secure temporary directory for playbook files
+    create_secure_temp_dir
 
     case $PHASE in
         all)

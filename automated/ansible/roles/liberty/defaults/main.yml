@@ -15,6 +15,11 @@ liberty_install_dir: /opt/liberty
 liberty_user: liberty
 liberty_server_name: defaultServer
 
+# SHA256 checksum for Open Liberty download (optional but recommended)
+# Format: "sha256:CHECKSUM_VALUE"
+# Obtain from: https://public.dhe.ibm.com/ibmdl/export/pub/software/openliberty/runtime/release/
+# liberty_checksum: "sha256:..."
+
 # -----------------------------------------------------------------------------
 # Java Configuration
 # -----------------------------------------------------------------------------
@@ -63,6 +68,11 @@ liberty_db_connection_timeout: 10s
 # PostgreSQL JDBC driver version
 postgresql_jdbc_version: "42.7.1"
 
+# SHA256 checksum for PostgreSQL JDBC driver (optional but recommended)
+# Format: "sha256:CHECKSUM_VALUE"
+# Obtain from: https://jdbc.postgresql.org/download/
+# postgresql_jdbc_checksum: "sha256:..."
+
 # -----------------------------------------------------------------------------
 # Session and Cache Settings
 # -----------------------------------------------------------------------------
@@ -71,6 +81,11 @@ liberty_session_timeout: 30
 
 # Redisson version for JCache/Redis integration
 redisson_version: "3.24.3"
+
+# SHA256 checksum for Redisson JAR (optional but recommended)
+# Format: "sha256:CHECKSUM_VALUE"
+# Obtain from Maven Central: https://repo1.maven.org/maven2/org/redisson/redisson-all/
+# redisson_checksum: "sha256:..."
 
 # -----------------------------------------------------------------------------
 # Logging Configuration

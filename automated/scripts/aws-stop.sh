@@ -56,17 +56,24 @@ stop_ec2_instances() {
 
     # Find all instances with our name prefix (management, monitoring servers)
     # Note: Liberty EC2 instances have been decommissioned in favor of ECS
-    INSTANCE_IDS=$(aws ec2 describe-instances \
+    local instance_ids_raw
+    instance_ids_raw=$(aws ec2 describe-instances \
         --region "$AWS_REGION" \
         --filters "Name=tag:Name,Values=${NAME_PREFIX}-*" "Name=instance-state-name,Values=running" \
         --query 'Reservations[].Instances[].InstanceId' \
         --output text)
 
-    if [[ -n "$INSTANCE_IDS" ]]; then
-        log_info "Found running instances: $INSTANCE_IDS"
-        aws ec2 stop-instances --region "$AWS_REGION" --instance-ids $INSTANCE_IDS
+    # Convert space/tab-separated output to array for safe handling
+    local -a instance_ids=()
+    if [[ -n "$instance_ids_raw" ]]; then
+        read -ra instance_ids <<< "$instance_ids_raw"
+    fi
+
+    if [[ ${#instance_ids[@]} -gt 0 ]]; then
+        log_info "Found running instances: ${instance_ids[*]}"
+        aws ec2 stop-instances --region "$AWS_REGION" --instance-ids "${instance_ids[@]}"
         log_info "Stop command sent. Waiting for instances to stop..."
-        aws ec2 wait instance-stopped --region "$AWS_REGION" --instance-ids $INSTANCE_IDS
+        aws ec2 wait instance-stopped --region "$AWS_REGION" --instance-ids "${instance_ids[@]}"
         log_info "All EC2 instances stopped."
     else
         log_info "No running EC2 instances found."

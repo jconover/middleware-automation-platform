@@ -140,6 +140,11 @@
     dest: "/tmp/openliberty-{{ liberty_version }}.zip"
     mode: "0644"
     timeout: 300
+    checksum: "{{ liberty_checksum | default(omit) }}"
+  register: liberty_download
+  retries: 3
+  delay: 10
+  until: liberty_download is succeeded
   when: not liberty_installed.stat.exists
 
 - name: Extract Open Liberty
@@ -208,6 +213,12 @@
     owner: "{{ liberty_user }}"
     group: "{{ liberty_user }}"
     mode: "0644"
+    timeout: 120
+    checksum: "{{ postgresql_jdbc_checksum | default(omit) }}"
+  register: postgresql_jdbc_download
+  retries: 3
+  delay: 10
+  until: postgresql_jdbc_download is succeeded
   when: postgresql_host is defined and postgresql_host != ''
   notify: Restart Liberty
 
@@ -228,6 +239,12 @@
     owner: "{{ liberty_user }}"
     group: "{{ liberty_user }}"
     mode: "0644"
+    timeout: 120
+    checksum: "{{ redisson_checksum | default(omit) }}"
+  register: redisson_download
+  retries: 3
+  delay: 10
+  until: redisson_download is succeeded
   when: redis_host is defined and redis_host != ''
   notify: Restart Liberty
 

@@ -11,6 +11,11 @@ prometheus_config_dir: /etc/prometheus
 prometheus_data_dir: /var/lib/prometheus
 prometheus_port: 9090
 
+# SHA256 checksum for Prometheus download (optional but recommended)
+# Format: "sha256:CHECKSUM_VALUE"
+# Obtain from: https://github.com/prometheus/prometheus/releases
+# prometheus_checksum: "sha256:..."
+
 # Grafana settings
 grafana_version: "10.1.0"
 grafana_port: 3000
@@ -21,6 +26,11 @@ grafana_admin_password: "{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') | default(''
 node_exporter_version: "1.6.1"
 node_exporter_port: 9100
 
+# SHA256 checksum for Node Exporter download (optional but recommended)
+# Format: "sha256:CHECKSUM_VALUE"
+# Obtain from: https://github.com/prometheus/node_exporter/releases
+# node_exporter_checksum: "sha256:..."
+
 # =============================================================================
 # Alertmanager settings
 # =============================================================================
@@ -30,6 +40,11 @@ alertmanager_install_dir: /opt/alertmanager
 alertmanager_config_dir: /etc/alertmanager
 alertmanager_data_dir: /var/lib/alertmanager
 alertmanager_secrets_dir: /etc/alertmanager/secrets
+
+# SHA256 checksum for Alertmanager download (optional but recommended)
+# Format: "sha256:CHECKSUM_VALUE"
+# Obtain from: https://github.com/prometheus/alertmanager/releases
+# alertmanager_checksum: "sha256:..."
 
 # Alertmanager webhook configuration
 # Set via environment variable: ALERTMANAGER_SLACK_WEBHOOK_URL

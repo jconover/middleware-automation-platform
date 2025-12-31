@@ -1,0 +1,66 @@
+groups:
+  - name: ecs-liberty
+    rules:
+      - alert: ECSLibertyTaskDown
+        expr: up{job="ecs-liberty"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ECS Liberty task {{ $labels.ecs_task_id }} is down"
+          description: "Liberty container in ECS cluster {{ $labels.ecs_cluster }} is not responding."
+
+      - alert: ECSLibertyNoTasks
+        expr: count(up{job="ecs-liberty"}) == 0 or absent(up{job="ecs-liberty"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No ECS Liberty tasks are running"
+          description: "Prometheus cannot find any running Liberty tasks in ECS. Check ECS service status."
+
+      - alert: ECSLibertyHighHeapUsage
+        # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+        expr: memory_usedHeap_bytes{job="ecs-liberty", mp_scope="base"} / memory_maxHeap_bytes{job="ecs-liberty", mp_scope="base"} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High heap usage on ECS task {{ $labels.ecs_task_id }}"
+          description: "Liberty heap usage is above 85% on task {{ $labels.ecs_task_id }}."
+
+      - alert: ECSLibertyHighErrorRate
+        # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+        expr: |
+          sum(rate(servlet_request_total{job="ecs-liberty", mp_scope="base", status=~"5.."}[5m]))
+          /
+          sum(rate(servlet_request_total{job="ecs-liberty", mp_scope="base"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate on ECS Liberty tasks"
+          description: "More than 5% of requests are returning 5xx errors."
+
+      - alert: ECSLibertySlowResponses
+        # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(servlet_request_elapsedTime_seconds_bucket{job="ecs-liberty", mp_scope="base"}[5m])) by (le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow responses from ECS Liberty tasks"
+          description: "95th percentile response time is above 2 seconds."
+
+      - alert: ECSLibertyTaskRestarts
+        expr: |
+          changes(up{job="ecs-liberty"}[10m]) > 2
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ECS Liberty tasks restarting frequently"
+          description: "Task {{ $labels.ecs_task_id }} has restarted multiple times in the last 10 minutes."

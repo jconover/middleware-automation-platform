@@ -63,6 +63,12 @@
     url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
     dest: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
     mode: "0644"
+    timeout: 300
+    checksum: "{{ prometheus_checksum | default(omit) }}"
+  register: prometheus_download
+  retries: 3
+  delay: 10
+  until: prometheus_download is succeeded
   when: not prometheus_installed.stat.exists
 
 - name: Extract Prometheus
@@ -88,7 +94,7 @@
 
 - name: Deploy Prometheus configuration
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../../monitoring/prometheus/prometheus.yml"
+    src: prometheus.yml
     dest: "{{ prometheus_config_dir }}/prometheus.yml"
     owner: "{{ prometheus_user }}"
     group: "{{ prometheus_user }}"
@@ -97,7 +103,7 @@
 
 - name: Deploy Prometheus alert rules
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../../monitoring/prometheus/rules/"
+    src: rules/
     dest: "{{ prometheus_config_dir }}/rules/"
     owner: "{{ prometheus_user }}"
     group: "{{ prometheus_user }}"
@@ -140,6 +146,12 @@
     url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
     dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
     mode: "0644"
+    timeout: 120
+    checksum: "{{ node_exporter_checksum | default(omit) }}"
+  register: node_exporter_download
+  retries: 3
+  delay: 10
+  until: node_exporter_download is succeeded
   when: not node_exporter_installed.stat.exists
 
 - name: Extract Node Exporter
@@ -211,6 +223,12 @@
     url: "https://github.com/prometheus/alertmanager/releases/download/v{{ alertmanager_version }}/alertmanager-{{ alertmanager_version }}.linux-amd64.tar.gz"
     dest: "/tmp/alertmanager-{{ alertmanager_version }}.tar.gz"
     mode: "0644"
+    timeout: 120
+    checksum: "{{ alertmanager_checksum | default(omit) }}"
+  register: alertmanager_download
+  retries: 3
+  delay: 10
+  until: alertmanager_download is succeeded
   when:
     - alertmanager_enabled | bool
     - not alertmanager_installed.stat.exists
@@ -330,6 +348,11 @@
     dest: /usr/share/keyrings/grafana.asc
     mode: "0644"
     force: false
+    timeout: 60
+  register: grafana_gpg_download
+  retries: 3
+  delay: 5
+  until: grafana_gpg_download is succeeded
 
 - name: Add Grafana repository with signed-by
   ansible.builtin.apt_repository:
