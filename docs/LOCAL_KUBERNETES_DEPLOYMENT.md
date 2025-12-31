@@ -77,6 +77,43 @@ Physical Nodes:
 | Jenkins       | 192.168.68.206  | 8080 |
 | Reserved      | 192.168.68.207-210 | - |
 
+## Credential Configuration
+
+Before deploying services, configure admin credentials for Grafana, Jenkins, and AWX.
+
+### Quick Start: Automated Setup (Recommended)
+
+The easiest way to deploy all services with proper credential management:
+
+```bash
+# Option 1: Generate random secure passwords
+./local-setup/setup-local-env.sh --generate-passwords full
+
+# Option 2: Provide your own passwords
+export GRAFANA_ADMIN_PASSWORD="your-secure-password"
+export JENKINS_ADMIN_PASSWORD="your-secure-password"
+export AWX_ADMIN_PASSWORD="your-secure-password"
+./local-setup/setup-local-env.sh full
+```
+
+Generated credentials are saved to `~/.local-env-credentials`. View them with:
+
+```bash
+cat ~/.local-env-credentials
+```
+
+See [CREDENTIAL_SETUP.md](./CREDENTIAL_SETUP.md#4-local-kubernetes-deployment-beelink-homelab) for complete credential documentation.
+
+### Manual Deployment
+
+If deploying components individually (steps below), set credentials before each Helm install:
+
+```bash
+export GRAFANA_ADMIN_PASSWORD="your-secure-password"
+export JENKINS_ADMIN_PASSWORD="your-secure-password"
+export AWX_ADMIN_PASSWORD="your-secure-password"
+```
+
 ## Deployment Steps
 
 ### 1. Deploy Liberty Application
@@ -330,7 +367,7 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
     --set prometheus.service.loadBalancerIP=192.168.68.201 \
     --set grafana.service.type=LoadBalancer \
     --set grafana.service.loadBalancerIP=192.168.68.202 \
-    --set grafana.adminPassword=admin \
+    --set grafana.adminPassword="${GRAFANA_ADMIN_PASSWORD}" \
     --set alertmanager.service.type=LoadBalancer \
     --set alertmanager.service.loadBalancerIP=192.168.68.203 \
     --wait --timeout 10m

@@ -6,9 +6,10 @@ This guide documents all credentials that **must be configured** before deployin
 
 | Component | Credential Type | Storage Method |
 |-----------|----------------|----------------|
-| Grafana | Admin password | AWS Secrets Manager (auto-generated) |
+| Grafana (AWS) | Admin password | AWS Secrets Manager (auto-generated) |
+| Grafana (Local K8s) | Admin password | Environment variable or generated |
 | AWX | Admin password | Kubernetes Secret |
-| Jenkins (K8s) | Admin password | Kubernetes Secret |
+| Jenkins (K8s) | Admin password | Kubernetes Secret or environment variable |
 | Jenkins (AWS) | Admin password | Environment Variable |
 | Liberty | Keystore password | Ansible Vault |
 | Liberty | Admin credentials | Ansible Vault |
@@ -241,7 +242,90 @@ The playbook will fail with a clear error if `JENKINS_ADMIN_PASSWORD` is not set
 
 ---
 
-## 4. Database Credentials
+## 4. Local Kubernetes Deployment (Beelink Homelab)
+
+The `local-setup/setup-local-env.sh` script deploys Grafana, Jenkins, and AWX to your local Kubernetes cluster. Credentials must be configured before running the script.
+
+### 4.1 Option A: Set Environment Variables
+
+Provide your own passwords via environment variables:
+
+```bash
+export GRAFANA_ADMIN_PASSWORD="your-secure-password"
+export JENKINS_ADMIN_PASSWORD="your-secure-password"
+export AWX_ADMIN_PASSWORD="your-secure-password"
+
+# Run the setup script
+./local-setup/setup-local-env.sh full
+```
+
+### 4.2 Option B: Generate Random Passwords
+
+Let the script generate secure random credentials:
+
+```bash
+./local-setup/setup-local-env.sh --generate-passwords full
+```
+
+Generated credentials are saved to `~/.local-env-credentials` (chmod 600).
+
+### 4.3 Password Requirements
+
+| Variable | Minimum Length | Notes |
+|----------|---------------|-------|
+| `GRAFANA_ADMIN_PASSWORD` | 8 characters | Used for Grafana admin login |
+| `JENKINS_ADMIN_PASSWORD` | 8 characters | Used for Jenkins admin login |
+| `AWX_ADMIN_PASSWORD` | 8 characters | Used for AWX admin login |
+
+### 4.4 Retrieve Generated Credentials
+
+```bash
+# View the credentials file
+cat ~/.local-env-credentials
+
+# Source credentials into your shell
+source ~/.local-env-credentials
+
+# Or retrieve from Kubernetes secrets after deployment
+kubectl get secret prometheus-grafana -n monitoring \
+  -o jsonpath='{.data.admin-password}' | base64 -d && echo
+
+kubectl get secret awx-admin-password -n awx \
+  -o jsonpath='{.data.password}' | base64 -d && echo
+```
+
+### 4.5 Credential Storage
+
+The script creates Kubernetes secrets automatically:
+
+| Service | Secret Name | Namespace | Key |
+|---------|-------------|-----------|-----|
+| Grafana | `prometheus-grafana` | monitoring | `admin-password` |
+| Jenkins | Via Helm values | jenkins | `controller.adminPassword` |
+| AWX | `awx-admin-password` | awx | `password` |
+
+### 4.6 Security Recommendations
+
+1. **Copy passwords** to your password manager after deployment
+2. **Delete the credentials file** when no longer needed: `rm ~/.local-env-credentials`
+3. **Never commit** credentials to version control
+
+### 4.7 Deploy Individual Components
+
+```bash
+# Monitoring only (Prometheus + Grafana)
+./local-setup/setup-local-env.sh --generate-passwords --monitoring
+
+# Jenkins only
+./local-setup/setup-local-env.sh --generate-passwords --jenkins
+
+# AWX only
+./local-setup/setup-local-env.sh --generate-passwords --awx
+```
+
+---
+
+## 5. Database Credentials (AWS)
 
 Database credentials are **automatically generated** by Terraform and stored in AWS Secrets Manager.
 
@@ -256,7 +340,7 @@ The Liberty servers automatically retrieve these credentials at deployment time.
 
 ---
 
-## 5. Pre-Deployment Checklist
+## 6. Pre-Deployment Checklist
 
 Before running `terraform apply`:
 
@@ -276,9 +360,14 @@ Before deploying Jenkins (AWS):
 
 - [ ] Set `JENKINS_ADMIN_PASSWORD` environment variable
 
+Before running Local Kubernetes setup:
+
+- [ ] Set `GRAFANA_ADMIN_PASSWORD`, `JENKINS_ADMIN_PASSWORD`, `AWX_ADMIN_PASSWORD` environment variables
+- [ ] Or use `--generate-passwords` flag to auto-generate credentials
+
 ---
 
-## 6. Credential Rotation
+## 7. Credential Rotation
 
 ### Rotate Grafana Password
 
@@ -326,7 +415,7 @@ ansible-playbook -i inventory/prod-aws.yml playbooks/site.yml \
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 ### "liberty_keystore_password must be defined"
 

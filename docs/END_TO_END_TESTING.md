@@ -310,6 +310,13 @@ curl http://192.168.68.200:9080/sample-app/api/hello
 
 ### 2.8 Deploy Monitoring Stack
 
+**Set Grafana password before deploying:**
+
+```bash
+# Set password (use a secure password in production)
+export GRAFANA_ADMIN_PASSWORD="your-secure-password"
+```
+
 ```bash
 # Add Helm repos
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -327,7 +334,7 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
     --set grafana.service.loadBalancerIP=192.168.68.202 \
     --set alertmanager.service.type=LoadBalancer \
     --set alertmanager.service.loadBalancerIP=192.168.68.203 \
-    --set grafana.adminPassword=admin123 \
+    --set grafana.adminPassword="${GRAFANA_ADMIN_PASSWORD}" \
     --wait --timeout 10m
 
 # Verify LoadBalancer IPs

@@ -177,7 +177,7 @@ middleware-automation-platform/
 │   └── alertmanager/
 │
 ├── local-setup/                   # Local environment setup
-│   └── setup-local-env.sh
+│   └── setup-local-env.sh         # Deploys Grafana, Jenkins, AWX to local K8s
 │
 └── docs/                          # Documentation
     └── architecture/
@@ -241,7 +241,30 @@ curl http://localhost:9080/health/ready
 curl http://localhost:9080/sample-app/api/hello
 ```
 
-### Option 4: AWS Production Deployment
+### Option 4: Local Kubernetes (Beelink Homelab)
+
+Deploy Liberty, monitoring stack, Jenkins, and AWX to a local Kubernetes cluster:
+
+```bash
+# Deploy Liberty application
+kubectl apply -k kubernetes/base
+
+# Deploy management services with generated credentials
+./local-setup/setup-local-env.sh --generate-passwords full
+
+# Or provide your own passwords
+export GRAFANA_ADMIN_PASSWORD="your-password"
+export JENKINS_ADMIN_PASSWORD="your-password"
+export AWX_ADMIN_PASSWORD="your-password"
+./local-setup/setup-local-env.sh full
+
+# View generated credentials
+cat ~/.local-env-credentials
+```
+
+See **[docs/LOCAL_KUBERNETES_DEPLOYMENT.md](./docs/LOCAL_KUBERNETES_DEPLOYMENT.md)** for complete setup.
+
+### Option 5: AWS Production Deployment
 
 #### Step 1: Bootstrap Terraform State Backend (one-time)
 
