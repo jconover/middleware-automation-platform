@@ -147,7 +147,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "100 * sum(rate(base_servlet_request_total{job=\"liberty\", namespace=~\"$namespace\", status=~\"5..\"}[5m])) / sum(rate(base_servlet_request_total{job=\"liberty\", namespace=~\"$namespace\"}[5m]))",
+          "expr": "100 * sum(rate(servlet_request_total{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\", status=~\"5..\"}[5m])) / sum(rate(servlet_request_total{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"}[5m]))",
           "legendFormat": "Error Rate",
           "refId": "A"
         }
@@ -187,7 +187,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "avg(100 * base_memory_usedHeap_bytes{job=\"liberty\", namespace=~\"$namespace\"} / base_memory_maxHeap_bytes{job=\"liberty\", namespace=~\"$namespace\"})",
+          "expr": "avg(100 * memory_usedHeap_bytes{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"} / memory_maxHeap_bytes{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"})",
           "legendFormat": "Avg Heap Usage",
           "refId": "A"
         }
@@ -225,7 +225,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(base_servlet_request_total{job=\"liberty\", namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(servlet_request_total{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"}[5m]))",
           "legendFormat": "Request Rate",
           "refId": "A"
         }
@@ -327,7 +327,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "sum(rate(base_servlet_request_total{job=\"liberty\", namespace=~\"$namespace\"}[5m])) by (pod)",
+          "expr": "sum(rate(servlet_request_total{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"}[5m])) by (pod)",
           "legendFormat": "{{ pod }}",
           "refId": "A"
         }
@@ -376,13 +376,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "100 * sum(rate(base_servlet_request_total{job=\"liberty\", namespace=~\"$namespace\", status=~\"5..\"}[5m])) / sum(rate(base_servlet_request_total{job=\"liberty\", namespace=~\"$namespace\"}[5m]))",
+          "expr": "100 * sum(rate(servlet_request_total{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\", status=~\"5..\"}[5m])) / sum(rate(servlet_request_total{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"}[5m]))",
           "legendFormat": "5xx Error Rate",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "100 * sum(rate(base_servlet_request_total{job=\"liberty\", namespace=~\"$namespace\", status=~\"4..\"}[5m])) / sum(rate(base_servlet_request_total{job=\"liberty\", namespace=~\"$namespace\"}[5m]))",
+          "expr": "100 * sum(rate(servlet_request_total{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\", status=~\"4..\"}[5m])) / sum(rate(servlet_request_total{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"}[5m]))",
           "legendFormat": "4xx Error Rate",
           "refId": "B"
         }
@@ -439,7 +439,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "100 * base_memory_usedHeap_bytes{job=\"liberty\", namespace=~\"$namespace\"} / base_memory_maxHeap_bytes{job=\"liberty\", namespace=~\"$namespace\"}",
+          "expr": "100 * memory_usedHeap_bytes{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"} / memory_maxHeap_bytes{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"}",
           "legendFormat": "{{ pod }}",
           "refId": "A"
         }
@@ -486,13 +486,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "base_memory_usedHeap_bytes{job=\"liberty\", namespace=~\"$namespace\"}",
+          "expr": "memory_usedHeap_bytes{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"}",
           "legendFormat": "Used - {{ pod }}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "base_memory_maxHeap_bytes{job=\"liberty\", namespace=~\"$namespace\"}",
+          "expr": "memory_maxHeap_bytes{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"}",
           "legendFormat": "Max - {{ pod }}",
           "refId": "B"
         }
@@ -539,7 +539,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "base_thread_count{job=\"liberty\", namespace=~\"$namespace\"}",
+          "expr": "thread_count{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"}",
           "legendFormat": "{{ pod }}",
           "refId": "A"
         }
@@ -586,7 +586,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "rate(base_gc_time_total_seconds{job=\"liberty\", namespace=~\"$namespace\"}[5m])",
+          "expr": "rate(gc_time_total_seconds{mp_scope=\"base\",job=\"liberty\", namespace=~\"$namespace\"}[5m])",
           "legendFormat": "{{ pod }}",
           "refId": "A"
         }

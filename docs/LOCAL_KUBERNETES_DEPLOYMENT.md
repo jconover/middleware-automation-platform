@@ -523,10 +523,10 @@ The Grafana sidecar automatically loads dashboards from ConfigMaps with the `gra
 |-------|-------------|-------------|
 | Healthy Tasks | Liberty instances reporting up | `up{job="liberty"} == 1` |
 | Unhealthy Tasks | Liberty instances reporting down | `up{job="liberty"} == 0` |
-| Request Rate | HTTP requests per second | `rate(base_servlet_request_total[5m])` |
-| Error Rates | 4xx and 5xx error percentages | `base_servlet_request_total{status=~"4.."}` |
-| Heap Usage % | JVM heap utilization | `base_memory_usedHeap_bytes / base_memory_maxHeap_bytes` |
-| Heap Memory | Used vs maximum heap bytes | `base_memory_usedHeap_bytes`, `base_memory_maxHeap_bytes` |
+| Request Rate | HTTP requests per second | `rate(servlet_request_total{mp_scope="base"}[5m])` |
+| Error Rates | 4xx and 5xx error percentages | `servlet_request_total{mp_scope="base", status=~"4.."}` |
+| Heap Usage % | JVM heap utilization | `memory_usedHeap_bytes{mp_scope="base"} / memory_maxHeap_bytes{mp_scope="base"}` |
+| Heap Memory | Used vs maximum heap bytes | `memory_usedHeap_bytes{mp_scope="base"}`, `memory_maxHeap_bytes{mp_scope="base"}` |
 
 ### 3. Deploy AWX
 
@@ -877,11 +877,11 @@ curl -s http://192.168.68.86:9080/metrics/application  # Application metrics
 curl -s http://192.168.68.86:9080/metrics | wc -l
 # Expected output: 100+ lines of metrics data
 
-# Sample key metrics to verify:
-# - base_jvm_uptime_seconds
-# - base_memory_usedHeap_bytes
-# - base_cpu_processCpuLoad_percent
-# - vendor_servlet_request_total
+# Sample key metrics to verify (MicroProfile Metrics 5.0 naming):
+# - jvm_uptime_seconds{mp_scope="base"}
+# - memory_usedHeap_bytes{mp_scope="base"}
+# - cpu_processCpuLoad_percent{mp_scope="base"}
+# - servlet_request_total{mp_scope="vendor"}
 ```
 
 ### 3. Prometheus Targets Verification
@@ -933,8 +933,8 @@ curl -s 'http://192.168.68.82:9090/api/v1/query?query=up{job="liberty"}' | jq '.
 # {"instance":"192.168.68.86:9080","value":"1"}
 # {"instance":"192.168.68.88:9080","value":"1"}
 
-# Check JVM heap usage across Liberty servers
-curl -s 'http://192.168.68.82:9090/api/v1/query?query=base_memory_usedHeap_bytes' | jq '.data.result[] | {instance: .metric.instance, heap_bytes: .value[1]}'
+# Check JVM heap usage across Liberty servers (MicroProfile Metrics 5.0 naming)
+curl -s 'http://192.168.68.82:9090/api/v1/query?query=memory_usedHeap_bytes{mp_scope="base"}' | jq '.data.result[] | {instance: .metric.instance, heap_bytes: .value[1]}'
 ```
 
 ### 4. Grafana Dashboard Access

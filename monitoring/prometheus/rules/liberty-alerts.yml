@@ -10,7 +10,8 @@ groups:
           summary: "Liberty server {{ $labels.instance }} is down"
 
       - alert: LibertyHighHeapUsage
-        expr: base_memory_usedHeap_bytes / base_memory_maxHeap_bytes > 0.85
+        # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+        expr: memory_usedHeap_bytes{mp_scope="base"} / memory_maxHeap_bytes{mp_scope="base"} > 0.85
         for: 5m
         labels:
           severity: warning
@@ -18,7 +19,8 @@ groups:
           summary: "High heap usage on {{ $labels.instance }}"
 
       - alert: LibertyHighErrorRate
-        expr: sum(rate(base_servlet_request_total{status=~"5.."}[5m])) / sum(rate(base_servlet_request_total[5m])) > 0.05
+        # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+        expr: sum(rate(servlet_request_total{mp_scope="base", status=~"5.."}[5m])) / sum(rate(servlet_request_total{mp_scope="base"}[5m])) > 0.05
         for: 5m
         labels:
           severity: warning

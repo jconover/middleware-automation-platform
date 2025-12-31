@@ -114,14 +114,17 @@ flowchart LR
 
 ## Key Metrics Collected
 
-### Application Metrics (MicroProfile)
+### Application Metrics (MicroProfile Metrics 5.0)
+
+MicroProfile Metrics 5.0 uses `mp_scope` label instead of metric prefixes:
+
 | Metric | Type | Description |
 |--------|------|-------------|
-| `base_servlet_request_total` | Counter | Total HTTP requests |
-| `base_servlet_request_elapsedTime_seconds` | Histogram | Request duration |
-| `base_memory_usedHeap_bytes` | Gauge | JVM heap usage |
-| `base_cpu_processCpuLoad` | Gauge | CPU utilization |
-| `base_thread_count` | Gauge | Active threads |
+| `servlet_request_total{mp_scope="base"}` | Counter | Total HTTP requests |
+| `servlet_request_elapsedTime_seconds{mp_scope="base"}` | Histogram | Request duration |
+| `memory_usedHeap_bytes{mp_scope="base"}` | Gauge | JVM heap usage |
+| `cpu_processCpuLoad{mp_scope="base"}` | Gauge | CPU utilization |
+| `thread_count{mp_scope="base"}` | Gauge | Active threads |
 
 ### Infrastructure Metrics (Node Exporter)
 | Metric | Type | Description |

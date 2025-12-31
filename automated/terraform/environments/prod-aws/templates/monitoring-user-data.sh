@@ -182,7 +182,8 @@ groups:
           summary: "No ECS Liberty tasks are running"
 
       - alert: ECSLibertyHighHeapUsage
-        expr: base_memory_usedHeap_bytes{job="ecs-liberty"} / base_memory_maxHeap_bytes{job="ecs-liberty"} > 0.85
+        # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+        expr: memory_usedHeap_bytes{job="ecs-liberty", mp_scope="base"} / memory_maxHeap_bytes{job="ecs-liberty", mp_scope="base"} > 0.85
         for: 5m
         labels:
           severity: warning
@@ -190,10 +191,11 @@ groups:
           summary: "High heap usage on ECS task {{ $labels.ecs_task_id }}"
 
       - alert: ECSLibertyHighErrorRate
+        # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
         expr: |
-          sum(rate(base_servlet_request_total{job="ecs-liberty", status=~"5.."}[5m]))
+          sum(rate(servlet_request_total{job="ecs-liberty", mp_scope="base", status=~"5.."}[5m]))
           /
-          sum(rate(base_servlet_request_total{job="ecs-liberty"}[5m])) > 0.05
+          sum(rate(servlet_request_total{job="ecs-liberty", mp_scope="base"}[5m])) > 0.05
         for: 5m
         labels:
           severity: warning

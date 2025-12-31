@@ -36,9 +36,8 @@ resource "aws_ecr_repository" "liberty" {
 
 ### 1.2 Build and Push Liberty Image
 ```bash
-# Build from existing Containerfile
-cd containers/liberty
-podman build -t liberty-app:1.0.0 .
+# Build from existing Containerfile (run from project root)
+podman build -t liberty-app:1.0.0 -f containers/liberty/Containerfile .
 
 # Tag and push to ECR
 aws ecr get-login-password | podman login --username AWS --password-stdin <account>.dkr.ecr.us-east-1.amazonaws.com

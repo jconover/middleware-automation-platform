@@ -1,14 +1,22 @@
 # Open Liberty Container - Multi-Stage Build
 #
+# IMPORTANT: Build from PROJECT ROOT (not from containers/liberty directory)
+# The build context must include both sample-app/ and containers/liberty/
+#
 # Build (full rebuild from source):
-#   podman build -t liberty-app:1.0.0 -f Containerfile .
+#   cd /path/to/middleware-automation-platform  # Project root
+#   podman build -t liberty-app:1.0.0 -f containers/liberty/Containerfile .
 #
 # Build with version info:
 #   podman build -t liberty-app:1.0.0 \
 #     --build-arg VERSION=1.0.0 \
 #     --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) \
 #     --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
-#     -f Containerfile .
+#     -f containers/liberty/Containerfile .
+#
+# Build for Docker Hub (local K8s):
+#   podman build -t docker.io/jconover/liberty-app:1.0.0 \
+#     -f containers/liberty/Containerfile .
 #
 # Run:
 #   podman run -d -p 9080:9080 -p 9443:9443 liberty-app:1.0.0

@@ -1580,7 +1580,8 @@ groups:
           summary: "Liberty server {{ $labels.instance }} is down"
 
       - alert: LibertyHighCPU
-        expr: base_cpu_processCpuLoad{job="liberty"} > 0.8
+        # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+        expr: cpu_processCpuLoad{job="liberty", mp_scope="base"} > 0.8
         for: 5m
         labels:
           severity: warning
@@ -1588,7 +1589,8 @@ groups:
           summary: "High CPU on {{ $labels.instance }}"
 
       - alert: LibertyHighHeapUsage
-        expr: base_memory_usedHeap_bytes{job="liberty"} / base_memory_maxHeap_bytes{job="liberty"} > 0.9
+        # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+        expr: memory_usedHeap_bytes{job="liberty", mp_scope="base"} / memory_maxHeap_bytes{job="liberty", mp_scope="base"} > 0.9
         for: 5m
         labels:
           severity: warning
@@ -1621,7 +1623,8 @@ groups:
           summary: "Liberty server {{ $labels.instance }} is down"
 
       - alert: LibertyHighHeapUsage
-        expr: base_memory_usedHeap_bytes{job="liberty"} / base_memory_maxHeap_bytes{job="liberty"} > 0.9
+        # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+        expr: memory_usedHeap_bytes{job="liberty", mp_scope="base"} / memory_maxHeap_bytes{job="liberty", mp_scope="base"} > 0.9
         for: 5m
         labels:
           severity: warning

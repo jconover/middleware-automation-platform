@@ -186,13 +186,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(base_servlet_request_total{job=\"ecs-liberty\"}[5m]))",
+          "expr": "sum(rate(servlet_request_total{mp_scope=\"base\",job=\"ecs-liberty\"}[5m]))",
           "legendFormat": "Total Request Rate",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(base_servlet_request_total{job=\"ecs-liberty\", status=~\"2..\"}[5m]))",
+          "expr": "sum(rate(servlet_request_total{mp_scope=\"base\",job=\"ecs-liberty\", status=~\"2..\"}[5m]))",
           "legendFormat": "2xx Responses",
           "refId": "B"
         }
@@ -241,13 +241,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "100 * sum(rate(base_servlet_request_total{job=\"ecs-liberty\", status=~\"5..\"}[5m])) / sum(rate(base_servlet_request_total{job=\"ecs-liberty\"}[5m]))",
+          "expr": "100 * sum(rate(servlet_request_total{mp_scope=\"base\",job=\"ecs-liberty\", status=~\"5..\"}[5m])) / sum(rate(servlet_request_total{mp_scope=\"base\",job=\"ecs-liberty\"}[5m]))",
           "legendFormat": "5xx Error Rate",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "100 * sum(rate(base_servlet_request_total{job=\"ecs-liberty\", status=~\"4..\"}[5m])) / sum(rate(base_servlet_request_total{job=\"ecs-liberty\"}[5m]))",
+          "expr": "100 * sum(rate(servlet_request_total{mp_scope=\"base\",job=\"ecs-liberty\", status=~\"4..\"}[5m])) / sum(rate(servlet_request_total{mp_scope=\"base\",job=\"ecs-liberty\"}[5m]))",
           "legendFormat": "4xx Error Rate",
           "refId": "B"
         }
@@ -304,7 +304,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "100 * base_memory_usedHeap_bytes{job=\"ecs-liberty\"} / base_memory_maxHeap_bytes{job=\"ecs-liberty\"}",
+          "expr": "100 * memory_usedHeap_bytes{mp_scope=\"base\",job=\"ecs-liberty\"} / memory_maxHeap_bytes{mp_scope=\"base\",job=\"ecs-liberty\"}",
           "legendFormat": "{{ ecs_task_id }}",
           "refId": "A"
         }
@@ -351,13 +351,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "base_memory_usedHeap_bytes{job=\"ecs-liberty\"}",
+          "expr": "memory_usedHeap_bytes{mp_scope=\"base\",job=\"ecs-liberty\"}",
           "legendFormat": "Used - {{ ecs_task_id }}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "base_memory_maxHeap_bytes{job=\"ecs-liberty\"}",
+          "expr": "memory_maxHeap_bytes{mp_scope=\"base\",job=\"ecs-liberty\"}",
           "legendFormat": "Max - {{ ecs_task_id }}",
           "refId": "B"
         }
@@ -415,13 +415,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(base_servlet_request_total{job=\"ecs-liberty\"}[5m]))",
+          "expr": "sum(rate(servlet_request_total{mp_scope=\"base\",job=\"ecs-liberty\"}[5m]))",
           "legendFormat": "ECS",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(base_servlet_request_total{job=\"ec2-liberty\"}[5m]))",
+          "expr": "sum(rate(servlet_request_total{mp_scope=\"base\",job=\"ec2-liberty\"}[5m]))",
           "legendFormat": "EC2",
           "refId": "B"
         }
@@ -473,13 +473,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "avg(100 * base_memory_usedHeap_bytes{job=\"ecs-liberty\"} / base_memory_maxHeap_bytes{job=\"ecs-liberty\"})",
+          "expr": "avg(100 * memory_usedHeap_bytes{mp_scope=\"base\",job=\"ecs-liberty\"} / memory_maxHeap_bytes{mp_scope=\"base\",job=\"ecs-liberty\"})",
           "legendFormat": "ECS",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "avg(100 * base_memory_usedHeap_bytes{job=\"ec2-liberty\"} / base_memory_maxHeap_bytes{job=\"ec2-liberty\"})",
+          "expr": "avg(100 * memory_usedHeap_bytes{mp_scope=\"base\",job=\"ec2-liberty\"} / memory_maxHeap_bytes{mp_scope=\"base\",job=\"ec2-liberty\"})",
           "legendFormat": "EC2",
           "refId": "B"
         }

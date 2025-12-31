@@ -229,15 +229,11 @@ cat README.md
 Build and run Liberty with the sample app in a container:
 
 ```bash
-# Build the sample app
-mvn -f sample-app/pom.xml clean package
+# Build container with multi-stage build (builds app from source)
+# IMPORTANT: Run from project root directory
+podman build -t liberty-app:1.0.0 -f containers/liberty/Containerfile .
 
-# Copy WAR to container build directory
-cp sample-app/target/*.war containers/liberty/apps/
-
-# Build and run the container
-cd containers/liberty
-podman build -t liberty-app:1.0.0 -f Containerfile .
+# Run the container
 podman run -d -p 9080:9080 -p 9443:9443 --name liberty liberty-app:1.0.0
 
 # Verify
@@ -306,14 +302,12 @@ terraform apply   # Deploy (~5-10 minutes)
 
 **For ECS Fargate:**
 ```bash
-# Build and push container to ECR
-mvn -f sample-app/pom.xml clean package
-cp sample-app/target/*.war containers/liberty/apps/
-cd containers/liberty
-podman build -t liberty-app:latest -f Containerfile .
+# Build container (multi-stage build compiles app from source)
+# IMPORTANT: Run from project root directory
+podman build -t liberty-app:latest -f containers/liberty/Containerfile .
 
 # Get ECR push commands
-cd ../../automated/terraform/environments/prod-aws
+cd automated/terraform/environments/prod-aws
 terraform output ecr_push_commands
 # Follow the output commands to push to ECR
 

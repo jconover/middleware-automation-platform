@@ -1725,8 +1725,8 @@ echo "Open http://localhost:9090 in your browser"
 # Check targets status via API
 curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, health: .health, lastScrape: .lastScrape}'
 
-# Query Liberty metrics
-curl -s 'http://localhost:9090/api/v1/query?query=base_cpu_processCpuLoad' | jq .
+# Query Liberty metrics (MicroProfile Metrics 5.0 naming)
+curl -s 'http://localhost:9090/api/v1/query?query=cpu_processCpuLoad{mp_scope="base"}' | jq .
 
 # Check if Liberty target is up
 curl -s 'http://localhost:9090/api/v1/query?query=up{job="liberty"}' | jq '.data.result[].value[1]'
@@ -1824,16 +1824,16 @@ EOF
 
 #### Key Liberty Metrics to Monitor
 
-The dashboard displays these important MicroProfile Metrics:
+The dashboard displays these important MicroProfile Metrics 5.0 (uses `mp_scope` label):
 
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
-| `base_cpu_processCpuLoad` | JVM CPU usage | > 80% |
-| `base_memory_usedHeap_bytes` | Heap memory used | > 80% of max |
-| `base_gc_time_total_seconds` | Garbage collection time | Increasing rapidly |
-| `application_*` | Custom application metrics | Application-specific |
-| `vendor_servlet_request_total` | HTTP request count | Rate anomalies |
-| `vendor_servlet_responseTime_total_seconds` | Response time | > 2s average |
+| `cpu_processCpuLoad{mp_scope="base"}` | JVM CPU usage | > 80% |
+| `memory_usedHeap_bytes{mp_scope="base"}` | Heap memory used | > 80% of max |
+| `gc_time_total_seconds{mp_scope="base"}` | Garbage collection time | Increasing rapidly |
+| `*{mp_scope="application"}` | Custom application metrics | Application-specific |
+| `servlet_request_total{mp_scope="vendor"}` | HTTP request count | Rate anomalies |
+| `servlet_responseTime_total_seconds{mp_scope="vendor"}` | Response time | > 2s average |
 
 ### Monitoring Stack with Podman Compose
 
@@ -2619,12 +2619,10 @@ podman load -i liberty-app.tar
 **Basic development workflow:**
 
 ```bash
-# Build and run Liberty container
+# Build and run Liberty container (multi-stage build compiles app from source)
+# IMPORTANT: Run from project root directory
 cd /home/justin/Projects/middleware-automation-platform
-mvn -f sample-app/pom.xml clean package
-cp sample-app/target/sample-app.war containers/liberty/apps/
-cd containers/liberty
-podman build -t liberty-app:1.0.0 -f Containerfile .
+podman build -t liberty-app:1.0.0 -f containers/liberty/Containerfile .
 podman run -d --name liberty-server -p 9080:9080 -p 9443:9443 liberty-app:1.0.0
 
 # Verify application is running

@@ -59,12 +59,9 @@ ls -la sample-app/target/sample-app.war
 ### 1.3 Build Container Image
 
 ```bash
-# Copy WAR to container build directory
-cp sample-app/target/sample-app.war containers/liberty/apps/
-
-# Build the container image
-cd containers/liberty
-podman build -t liberty-app:1.0.0 -f Containerfile .
+# Build the container image (multi-stage build compiles app from source)
+# IMPORTANT: Run from project root directory
+podman build -t liberty-app:1.0.0 -f containers/liberty/Containerfile .
 
 # Verify image was created
 podman images | grep liberty-app

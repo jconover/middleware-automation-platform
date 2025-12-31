@@ -142,13 +142,15 @@ podman run -d --name grafana \
 
 ### Liberty Application (MicroProfile Metrics 5.0)
 
+MicroProfile Metrics 5.0 uses `mp_scope` label instead of metric prefixes:
+
 | Metric | Type | Description |
 |--------|------|-------------|
-| `base_servlet_request_total` | Counter | Total HTTP requests |
-| `base_servlet_request_elapsedTime_seconds` | Histogram | Request duration |
-| `base_memory_usedHeap_bytes` | Gauge | JVM heap usage |
-| `base_cpu_processCpuLoad` | Gauge | CPU utilization |
-| `base_thread_count` | Gauge | Active threads |
+| `servlet_request_total{mp_scope="base"}` | Counter | Total HTTP requests |
+| `servlet_request_elapsedTime_seconds{mp_scope="base"}` | Histogram | Request duration |
+| `memory_usedHeap_bytes{mp_scope="base"}` | Gauge | JVM heap usage |
+| `cpu_processCpuLoad{mp_scope="base"}` | Gauge | CPU utilization |
+| `thread_count{mp_scope="base"}` | Gauge | Active threads |
 
 ### Infrastructure (Node Exporter)
 
@@ -179,14 +181,14 @@ podman run -d --name grafana \
 
 ### Query Metrics (Prometheus)
 ```promql
-# Request rate
-rate(base_servlet_request_total[5m])
+# Request rate (MicroProfile Metrics 5.0 uses mp_scope label)
+rate(servlet_request_total{mp_scope="base"}[5m])
 
 # 95th percentile response time
-histogram_quantile(0.95, rate(base_servlet_request_elapsedTime_seconds_bucket[5m]))
+histogram_quantile(0.95, rate(servlet_request_elapsedTime_seconds_bucket{mp_scope="base"}[5m]))
 
 # Heap usage percentage
-base_memory_usedHeap_bytes / base_memory_maxHeap_bytes * 100
+memory_usedHeap_bytes{mp_scope="base"} / memory_maxHeap_bytes{mp_scope="base"} * 100
 ```
 
 ### Validate Alert Rules
