@@ -75,7 +75,10 @@ resource "aws_security_group" "management" {
 }
 
 # -----------------------------------------------------------------------------
-# IAM Role - Full management permissions
+# IAM Role - Least-Privilege Custom Policies
+# -----------------------------------------------------------------------------
+# SECURITY: Uses scoped custom policies instead of AWS managed FullAccess policies.
+# Each policy grants only the minimum permissions needed for AWX/Ansible operations.
 # -----------------------------------------------------------------------------
 resource "aws_iam_role" "management" {
   count = var.create_management_server ? 1 : 0
@@ -98,44 +101,331 @@ resource "aws_iam_role" "management" {
   }
 }
 
-# SSM for managing other instances
-resource "aws_iam_role_policy_attachment" "management_ssm" {
+# -----------------------------------------------------------------------------
+# Custom IAM Policy: EC2 Management (Scoped)
+# -----------------------------------------------------------------------------
+# Purpose: Ansible dynamic inventory and instance start/stop for cost management
+# Replaces: AmazonEC2FullAccess
+resource "aws_iam_role_policy" "management_ec2" {
   count = var.create_management_server ? 1 : 0
 
-  role       = aws_iam_role.management[0].name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMFullAccess"
+  name = "${local.name_prefix}-mgmt-ec2"
+  role = aws_iam_role.management[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EC2DescribeForInventory"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceStatus",
+          "ec2:DescribeTags",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVpcs",
+          "ec2:DescribeRegions",
+          "ec2:DescribeAvailabilityZones"
+        ]
+        Resource = "*" # Describe operations require wildcard per AWS docs
+      },
+      {
+        Sid    = "EC2InstanceManagement"
+        Effect = "Allow"
+        Action = [
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "ec2:RebootInstances"
+        ]
+        Resource = "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/*"
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/Project" = var.project_name
+          }
+        }
+      }
+    ]
+  })
 }
 
-# EC2 for describing/managing instances
-resource "aws_iam_role_policy_attachment" "management_ec2" {
-  count = var.create_management_server ? 1 : 0
+# -----------------------------------------------------------------------------
+# Custom IAM Policy: ECS Deployment (Scoped)
+# -----------------------------------------------------------------------------
+# Purpose: Deploy Liberty containers to ECS via update-service
+# Used by: Jenkinsfile, aws ecs update-service --force-new-deployment
+resource "aws_iam_role_policy" "management_ecs" {
+  count = var.create_management_server && var.ecs_enabled ? 1 : 0
 
-  role       = aws_iam_role.management[0].name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
+  name = "${local.name_prefix}-mgmt-ecs"
+  role = aws_iam_role.management[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ECSReadOperations"
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeClusters",
+          "ecs:DescribeServices",
+          "ecs:DescribeTasks",
+          "ecs:DescribeTaskDefinition",
+          "ecs:ListClusters",
+          "ecs:ListServices",
+          "ecs:ListTasks"
+        ]
+        Resource = "*" # Describe/List operations require wildcard
+      },
+      {
+        Sid    = "ECSServiceUpdate"
+        Effect = "Allow"
+        Action = [
+          "ecs:UpdateService"
+        ]
+        Resource = "arn:aws:ecs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:service/${local.name_prefix}-cluster/${local.name_prefix}-liberty"
+      },
+      {
+        Sid    = "ECSPassRole"
+        Effect = "Allow"
+        Action = "iam:PassRole"
+        Resource = [
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-ecs-task-role",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-ecs-execution-role"
+        ]
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "ecs-tasks.amazonaws.com"
+          }
+        }
+      }
+    ]
+  })
 }
 
-# Secrets Manager for database credentials
-resource "aws_iam_role_policy_attachment" "management_secrets" {
+# -----------------------------------------------------------------------------
+# Custom IAM Policy: ECR Image Management (Scoped)
+# -----------------------------------------------------------------------------
+# Purpose: Push Liberty container images to ECR from CI/CD pipeline
+# Used by: Jenkinsfile container build stage
+resource "aws_iam_role_policy" "management_ecr" {
   count = var.create_management_server ? 1 : 0
 
-  role       = aws_iam_role.management[0].name
-  policy_arn = "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
+  name = "${local.name_prefix}-mgmt-ecr"
+  role = aws_iam_role.management[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ECRAuthentication"
+        Effect = "Allow"
+        Action = "ecr:GetAuthorizationToken"
+        Resource = "*" # GetAuthorizationToken requires wildcard
+      },
+      {
+        Sid    = "ECRImageOperations"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:BatchGetImage",
+          "ecr:CompleteLayerUpload",
+          "ecr:DescribeImages",
+          "ecr:DescribeRepositories",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:InitiateLayerUpload",
+          "ecr:ListImages",
+          "ecr:PutImage",
+          "ecr:UploadLayerPart"
+        ]
+        Resource = "arn:aws:ecr:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:repository/${local.name_prefix}-*"
+      }
+    ]
+  })
 }
 
-# CloudWatch for logs and metrics
-resource "aws_iam_role_policy_attachment" "management_cloudwatch" {
+# -----------------------------------------------------------------------------
+# Custom IAM Policy: Secrets Manager Read-Only (Scoped)
+# -----------------------------------------------------------------------------
+# Purpose: Ansible fetches database credentials for Liberty configuration
+# Used by: automated/ansible/roles/liberty/tasks/main.yml line 72-77
+# Replaces: SecretsManagerReadWrite (downgraded to read-only)
+resource "aws_iam_role_policy" "management_secrets" {
   count = var.create_management_server ? 1 : 0
 
-  role       = aws_iam_role.management[0].name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+  name = "${local.name_prefix}-mgmt-secrets"
+  role = aws_iam_role.management[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SecretsManagerReadOnly"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${local.name_prefix}/*"
+      },
+      {
+        Sid    = "SecretsManagerList"
+        Effect = "Allow"
+        Action = "secretsmanager:ListSecrets"
+        Resource = "*" # ListSecrets requires wildcard
+      }
+    ]
+  })
 }
 
-# S3 for Terraform state and artifacts
-resource "aws_iam_role_policy_attachment" "management_s3" {
+# -----------------------------------------------------------------------------
+# Custom IAM Policy: CloudWatch Logs (Scoped)
+# -----------------------------------------------------------------------------
+# Purpose: Write deployment logs from AWX/Jenkins
+# Replaces: CloudWatchFullAccess (scoped to write-only, specific log groups)
+resource "aws_iam_role_policy" "management_cloudwatch" {
   count = var.create_management_server ? 1 : 0
 
-  role       = aws_iam_role.management[0].name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+  name = "${local.name_prefix}-mgmt-cloudwatch"
+  role = aws_iam_role.management[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "CloudWatchLogsWrite"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = [
+          "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/${local.name_prefix}/*",
+          "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/${local.name_prefix}/*:log-stream:*"
+        ]
+      },
+      {
+        Sid    = "CloudWatchMetricsRead"
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:GetMetricStatistics",
+          "cloudwatch:ListMetrics"
+        ]
+        Resource = "*" # Metrics read operations require wildcard
+      }
+    ]
+  })
+}
+
+# -----------------------------------------------------------------------------
+# Custom IAM Policy: S3 Access (Scoped)
+# -----------------------------------------------------------------------------
+# Purpose: Access Terraform state bucket and deployment artifacts
+# Replaces: AmazonS3FullAccess (scoped to specific bucket patterns)
+resource "aws_iam_role_policy" "management_s3" {
+  count = var.create_management_server ? 1 : 0
+
+  name = "${local.name_prefix}-mgmt-s3"
+  role = aws_iam_role.management[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "S3ListBuckets"
+        Effect = "Allow"
+        Action = [
+          "s3:ListAllMyBuckets",
+          "s3:GetBucketLocation"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "S3ProjectBuckets"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = [
+          "arn:aws:s3:::${local.name_prefix}-*",
+          "arn:aws:s3:::${local.name_prefix}-*/*",
+          "arn:aws:s3:::${var.project_name}-terraform-*",
+          "arn:aws:s3:::${var.project_name}-terraform-*/*"
+        ]
+      }
+    ]
+  })
+}
+
+# -----------------------------------------------------------------------------
+# Custom IAM Policy: SSM Session Manager (Scoped)
+# -----------------------------------------------------------------------------
+# Purpose: Secure shell access to managed instances without SSH keys
+# Replaces: AmazonSSMFullAccess (scoped to project-tagged instances)
+resource "aws_iam_role_policy" "management_ssm" {
+  count = var.create_management_server ? 1 : 0
+
+  name = "${local.name_prefix}-mgmt-ssm"
+  role = aws_iam_role.management[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SSMDescribe"
+        Effect = "Allow"
+        Action = [
+          "ssm:DescribeInstanceInformation",
+          "ssm:GetConnectionStatus",
+          "ssm:DescribeSessions",
+          "ssm:ListCommands",
+          "ssm:ListCommandInvocations"
+        ]
+        Resource = "*" # SSM describe operations require wildcard
+      },
+      {
+        Sid    = "SSMSessionManagement"
+        Effect = "Allow"
+        Action = [
+          "ssm:StartSession",
+          "ssm:TerminateSession",
+          "ssm:ResumeSession"
+        ]
+        Resource = [
+          "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/*",
+          "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:session/*"
+        ]
+        Condition = {
+          StringEquals = {
+            "ssm:resourceTag/Project" = var.project_name
+          }
+        }
+      },
+      {
+        Sid    = "SSMSendCommand"
+        Effect = "Allow"
+        Action = [
+          "ssm:SendCommand",
+          "ssm:GetCommandInvocation"
+        ]
+        Resource = [
+          "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:instance/*",
+          "arn:aws:ssm:${data.aws_region.current.name}::document/AWS-RunShellScript"
+        ]
+        Condition = {
+          StringEquals = {
+            "ssm:resourceTag/Project" = var.project_name
+          }
+        }
+      }
+    ]
+  })
 }
 
 resource "aws_iam_instance_profile" "management" {
