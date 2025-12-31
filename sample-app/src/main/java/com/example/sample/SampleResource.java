@@ -1,9 +1,15 @@
 package com.example.sample;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import com.example.sample.dto.EchoRequest;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.RuntimeMXBean;
@@ -45,7 +51,11 @@ public class SampleResource {
      */
     @GET
     @Path("/hello/{name}")
-    public Response helloName(@PathParam("name") String name) {
+    public Response helloName(
+            @PathParam("name")
+            @NotBlank(message = "Name cannot be blank")
+            @Size(min = 1, max = 100, message = "Name must be between 1 and 100 characters")
+            String name) {
         requestCount.incrementAndGet();
         return Response.ok(Map.of(
             "message", "Hello, " + name + "!",
@@ -95,12 +105,13 @@ public class SampleResource {
     @POST
     @Path("/echo")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response echo(String body) {
+    public Response echo(@Valid EchoRequest request) {
         requestCount.incrementAndGet();
+        String message = request.getMessage();
         return Response.ok(Map.of(
-            "echo", body,
+            "echo", message,
             "timestamp", Instant.now().toString(),
-            "length", body.length()
+            "length", message.length()
         )).build();
     }
 
@@ -110,21 +121,23 @@ public class SampleResource {
      */
     @GET
     @Path("/slow")
-    public Response slow(@QueryParam("delay") @DefaultValue("1000") int delayMs) {
+    public Response slow(
+            @QueryParam("delay")
+            @DefaultValue("1000")
+            @Min(value = 0, message = "Delay must be non-negative")
+            @Max(value = 10000, message = "Delay cannot exceed 10000ms")
+            int delayMs) {
         requestCount.incrementAndGet();
 
-        // Cap delay at 10 seconds
-        int actualDelay = Math.min(delayMs, 10000);
-
         try {
-            Thread.sleep(actualDelay);
+            Thread.sleep(delayMs);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
 
         return Response.ok(Map.of(
             "message", "Slow response completed",
-            "delayMs", actualDelay,
+            "delayMs", delayMs,
             "timestamp", Instant.now().toString()
         )).build();
     }
@@ -135,22 +148,24 @@ public class SampleResource {
      */
     @GET
     @Path("/compute")
-    public Response compute(@QueryParam("iterations") @DefaultValue("1000000") int iterations) {
+    public Response compute(
+            @QueryParam("iterations")
+            @DefaultValue("1000000")
+            @Min(value = 1, message = "Iterations must be at least 1")
+            @Max(value = 10000000, message = "Iterations cannot exceed 10000000")
+            int iterations) {
         requestCount.incrementAndGet();
-
-        // Cap iterations
-        int actualIterations = Math.min(iterations, 10000000);
 
         long start = System.nanoTime();
         double result = 0;
-        for (int i = 0; i < actualIterations; i++) {
+        for (int i = 0; i < iterations; i++) {
             result += Math.sqrt(i) * Math.sin(i);
         }
         long durationNs = System.nanoTime() - start;
 
         return Response.ok(Map.of(
             "message", "Computation completed",
-            "iterations", actualIterations,
+            "iterations", iterations,
             "result", result,
             "durationMs", durationNs / 1_000_000,
             "timestamp", Instant.now().toString()

@@ -1,5 +1,6 @@
 package com.example.sample;
 
+import com.example.sample.dto.EchoRequest;
 import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -131,8 +132,9 @@ class SampleResourceTest {
         @Test
         @DisplayName("echoes back the input")
         void echoReturnsInput() {
-            String input = "{\"test\": \"data\"}";
-            Response response = resource.echo(input);
+            String input = "Hello, World!";
+            EchoRequest request = new EchoRequest(input);
+            Response response = resource.echo(request);
 
             assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
 
@@ -143,14 +145,16 @@ class SampleResourceTest {
         }
 
         @Test
-        @DisplayName("handles empty input")
-        void echoHandlesEmptyInput() {
-            Response response = resource.echo("");
+        @DisplayName("handles various message content")
+        void echoHandlesVariousContent() {
+            String input = "Test message with special chars: !@#$%^&*()";
+            EchoRequest request = new EchoRequest(input);
+            Response response = resource.echo(request);
 
             @SuppressWarnings("unchecked")
             Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-            assertEquals("", entity.get("echo"));
-            assertEquals(0, entity.get("length"));
+            assertEquals(input, entity.get("echo"));
+            assertEquals(input.length(), entity.get("length"));
         }
     }
 
@@ -159,19 +163,18 @@ class SampleResourceTest {
     class SlowEndpoint {
 
         @Test
-        @DisplayName("caps delay at 10 seconds")
-        void slowCapsDelayAt10Seconds() {
+        @DisplayName("respects delay parameter within valid bounds")
+        void slowRespectsDelayParameter() {
             long start = System.currentTimeMillis();
-            Response response = resource.slow(15000); // Request 15 seconds
+            Response response = resource.slow(500);
             long elapsed = System.currentTimeMillis() - start;
 
             @SuppressWarnings("unchecked")
             Map<String, Object> entity = (Map<String, Object>) response.getEntity();
 
-            // Should be capped at 10000ms
-            assertEquals(10000, entity.get("delayMs"));
-            // Allow some tolerance, but should be around 10 seconds (not 15)
-            assertTrue(elapsed < 12000, "Delay should be capped at ~10 seconds");
+            assertEquals(500, entity.get("delayMs"));
+            assertTrue(elapsed >= 400, "Should delay at least 400ms");
+            assertTrue(elapsed < 1000, "Should delay less than 1000ms");
         }
 
         @Test
@@ -188,6 +191,9 @@ class SampleResourceTest {
             assertTrue(elapsed >= 900, "Should delay at least 900ms");
             assertTrue(elapsed < 2000, "Should delay less than 2000ms");
         }
+
+        // Note: Validation of invalid inputs (negative or >10000ms) is handled by
+        // Bean Validation at the JAX-RS level and tested via integration tests
     }
 
     @Nested
@@ -211,15 +217,19 @@ class SampleResourceTest {
         }
 
         @Test
-        @DisplayName("caps iterations at 10 million")
-        void computeCapsIterations() {
-            Response response = resource.compute(20_000_000);
+        @DisplayName("performs computation with larger iteration count")
+        void computeWithLargerIterations() {
+            Response response = resource.compute(100_000);
 
             @SuppressWarnings("unchecked")
             Map<String, Object> entity = (Map<String, Object>) response.getEntity();
 
-            assertEquals(10_000_000, entity.get("iterations"));
+            assertEquals(100_000, entity.get("iterations"));
+            assertNotNull(entity.get("result"));
         }
+
+        // Note: Validation of invalid inputs (<1 or >10000000) is handled by
+        // Bean Validation at the JAX-RS level and tested via integration tests
     }
 
     @Nested
@@ -248,7 +258,7 @@ class SampleResourceTest {
             resource.hello();
             resource.helloName("Test");
             resource.info();
-            resource.echo("test");
+            resource.echo(new EchoRequest("test"));
 
             Response response = resource.stats();
             @SuppressWarnings("unchecked")
