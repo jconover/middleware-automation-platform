@@ -159,6 +159,44 @@ ansible-playbook -i inventory/prod-aws.yml playbooks/site.yml \
 | `liberty_admin_password` | 12 characters | Cannot be: admin, password, changeme |
 | `liberty_admin_user` | - | Cannot be empty |
 
+### 2.5 Password Security Implementation
+
+Liberty passwords are **automatically AES-encoded** during deployment using Liberty's built-in `securityUtility` command. This ensures no plaintext passwords are written to configuration files.
+
+**How It Works:**
+
+1. **Source passwords** are stored encrypted in Ansible Vault
+2. **During deployment**, the Liberty role decrypts vault values temporarily
+3. **Before writing server.xml**, passwords are encoded using:
+   ```bash
+   $LIBERTY_HOME/bin/securityUtility encode --encoding=aes <password>
+   ```
+4. **Only encoded passwords** (e.g., `{aes}AJk3N...`) are written to server.xml
+5. **Liberty decrypts** passwords automatically at runtime
+
+**Security Benefits:**
+
+- No plaintext passwords in configuration files on target servers
+- Passwords are never logged (all encoding tasks use `no_log: true`)
+- Server.xml can be safely viewed without exposing credentials
+- Meets security audit requirements for credential storage
+
+**Implementation Files:**
+
+| File | Purpose |
+|------|---------|
+| `roles/liberty/tasks/encode-passwords.yml` | Encodes all passwords before deployment |
+| `roles/liberty/tasks/main.yml` | Includes encoding tasks, uses `no_log: true` |
+| `roles/liberty/templates/server.xml.j2` | Uses `*_encoded` variables |
+
+**Encoded Password Variables:**
+
+| Source Variable | Encoded Variable |
+|-----------------|------------------|
+| `liberty_keystore_password` | `liberty_keystore_password_encoded` |
+| `liberty_admin_password` | `liberty_admin_password_encoded` |
+| `postgresql_password` | `postgresql_password_encoded` |
+
 ---
 
 ## 3. Jenkins Credentials

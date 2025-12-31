@@ -161,6 +161,38 @@ ansible-vault encrypt_string 'SecureAdm1n#2024' \
 3. **AWS Secrets Manager** integration is available for production database credentials
 4. All tasks handling secrets use `no_log: true` to prevent credential exposure in logs
 
+### Password Encoding
+
+All passwords are **automatically AES-encoded** before being written to Liberty configuration files. This ensures no plaintext passwords appear in `server.xml` on target servers.
+
+**How It Works:**
+
+1. Source passwords remain encrypted in Ansible Vault
+2. During deployment, passwords are temporarily decrypted by Ansible
+3. The `encode-passwords.yml` task file encodes them using Liberty's native utility:
+   ```bash
+   $LIBERTY_HOME/bin/securityUtility encode --encoding=aes <password>
+   ```
+4. Only encoded passwords (e.g., `{aes}AES_ENCRYPTED_VALUE`) are written to `server.xml`
+5. Liberty automatically decrypts passwords at runtime
+
+**Encoded Passwords:**
+
+| Password | Variable Used in server.xml |
+|----------|----------------------------|
+| Keystore | `liberty_keystore_password_encoded` |
+| Admin | `liberty_admin_password_encoded` |
+| Database | `postgresql_password_encoded` |
+
+**Security Guarantees:**
+
+- All encoding operations use `no_log: true` to prevent logging
+- Encoding is validated before proceeding with deployment
+- No plaintext passwords appear in configuration files on disk
+- Server.xml can be safely viewed without exposing credentials
+
+**Implementation:** See `tasks/encode-passwords.yml` for encoding logic.
+
 ### Password Requirements
 
 | Credential | Minimum Length | Additional Requirements |

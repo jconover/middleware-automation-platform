@@ -46,14 +46,14 @@
     <!-- ===================================================================== -->
     <!-- SSL Configuration                                                     -->
     <!-- ===================================================================== -->
-    <!-- SECURITY: liberty_keystore_password MUST be set in inventory or vault -->
-    <!-- Example: ansible-vault encrypt_string 'your-secure-password' --name 'liberty_keystore_password' -->
+    <!-- SECURITY: Passwords are AES-encoded using Liberty securityUtility -->
+    <!-- Source passwords stored in Ansible Vault, encoded at deployment time -->
     <ssl id="defaultSSLConfig"
          keyStoreRef="defaultKeyStore" />
 
     <keyStore id="defaultKeyStore"
               location="${server.config.dir}/resources/security/key.p12"
-              password="{{ liberty_keystore_password | mandatory }}"
+              password="{{ liberty_keystore_password_encoded }}"
               type="PKCS12" />
 
     <!-- ===================================================================== -->
@@ -81,7 +81,7 @@
             portNumber="{{ postgresql_port | default(5432) }}"
             databaseName="{{ postgresql_database | default('appdb') }}"
             user="{{ postgresql_user | default('appuser') }}"
-            password="{{ postgresql_password | default('') }}"
+            password="{{ postgresql_password_encoded }}"
             ssl="{{ postgresql_ssl | default('true') if env_name == 'production' else 'false' }}"
 {% if env_name == 'production' %}
             sslMode="require"
@@ -135,12 +135,11 @@
     <!-- ===================================================================== -->
     <!-- Admin Center Configuration                                            -->
     <!-- ===================================================================== -->
-    <!-- SECURITY: liberty_admin_user and liberty_admin_password MUST be set   -->
-    <!-- in inventory or vault. Never use default credentials in production.   -->
-    <!-- Example: ansible-vault encrypt_string 'secure-password' --name 'liberty_admin_password' -->
+    <!-- SECURITY: Admin credentials AES-encoded using Liberty securityUtility -->
+    <!-- Source passwords stored in Ansible Vault, encoded at deployment time -->
     <basicRegistry id="basic" realm="BasicRealm">
         <user name="{{ liberty_admin_user | mandatory }}"
-              password="{{ liberty_admin_password | mandatory }}" />
+              password="{{ liberty_admin_password_encoded }}" />
     </basicRegistry>
 
     <administrator-role>

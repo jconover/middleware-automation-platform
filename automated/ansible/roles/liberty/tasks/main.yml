@@ -166,6 +166,13 @@
   become: true
   become_user: "{{ liberty_user }}"
 
+# =============================================================================
+# SECURITY: Encode passwords before deploying server.xml
+# Uses Liberty's securityUtility to AES-encode all passwords
+# =============================================================================
+- name: Encode passwords for secure deployment
+  ansible.builtin.include_tasks: encode-passwords.yml
+
 # Configure Server
 - name: Deploy server.xml
   ansible.builtin.template:
@@ -174,6 +181,7 @@
     owner: "{{ liberty_user }}"
     mode: "0640"
   notify: Restart Liberty
+  no_log: true
 
 - name: Deploy JVM options
   ansible.builtin.template:
