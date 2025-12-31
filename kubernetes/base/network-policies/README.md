@@ -235,16 +235,55 @@ kubectl run debug -n monitoring --rm -it --image=nicolaka/netshoot --restart=Nev
 
 ### Adjusting CIDR Ranges
 
-The policies use the following CIDR ranges by default:
+The base policies use these CIDR ranges configured for the **Beelink homelab** environment:
 
-| CIDR | Purpose |
-|------|---------|
-| `192.168.68.0/24` | Homelab network (direct external access) |
-| `10.0.0.0/8` | Private networks (AWS VPC, internal) |
-| `10.43.0.1/32` | k3s Kubernetes API service |
-| `0.0.0.0/0` | External internet (with private exclusions) |
+| CIDR | Purpose | Environment-Specific |
+|------|---------|---------------------|
+| `192.168.68.0/24` | Homelab network (direct external access) | **Yes** - Change for your network |
+| `10.43.0.1/32` | k3s Kubernetes API service | **Yes** - Change for EKS/GKE/AKS |
+| `10.0.0.0/8` | Private networks (AWS VPC, internal) | Generic RFC1918 |
+| `172.16.0.0/12` | Private networks | Generic RFC1918 |
+| `192.168.0.0/16` | Private networks | Generic RFC1918 |
+| `0.0.0.0/0` | External internet (with private exclusions) | Generic |
 
-Update these in the policy files to match your environment.
+**Using Kustomize Overlays (Recommended)**
+
+Instead of editing base files directly, use environment-specific overlays:
+
+```bash
+# For Beelink homelab (default CIDRs)
+kubectl apply -k kubernetes/overlays/local-homelab/
+
+# For AWS EKS
+kubectl apply -k kubernetes/overlays/aws/
+
+# For development
+kubectl apply -k kubernetes/overlays/dev/
+```
+
+**Available Overlays:**
+
+| Overlay | Network CIDR | K8s API | Use Case |
+|---------|--------------|---------|----------|
+| `local-homelab` | `192.168.68.0/24` | `10.43.0.1/32` (k3s) | Beelink cluster |
+| `aws` | `10.0.0.0/16` (VPC) | Security groups | AWS EKS |
+| `dev` | Inherits base | Inherits base | Development |
+| `prod` | Inherits base | Inherits base | Production |
+
+**Creating Custom Overlay:**
+
+```bash
+mkdir -p kubernetes/overlays/my-env
+cat > kubernetes/overlays/my-env/kustomization.yaml << 'EOF'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+namespace: liberty
+patches:
+  # Add your network policy patches here
+EOF
+```
 
 ## Troubleshooting
 

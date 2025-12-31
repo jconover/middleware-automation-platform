@@ -1,0 +1,74 @@
+---
+# AWS-specific NetworkPolicy patches
+# Replaces homelab-specific CIDRs with AWS VPC CIDRs
+#
+# AWS VPC Configuration (customize for your environment):
+#   VPC CIDR: 10.0.0.0/16
+#   EKS API Server: Uses cluster security groups (no CIDR needed)
+#   NAT Gateway: Varies by AZ
+#
+# This file provides strategic merge patches for NetworkPolicies
+# that need AWS-specific CIDR configurations.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-access-to-grafana
+  namespace: monitoring
+spec:
+  ingress:
+    - from:
+        # AWS VPC CIDR - replace with your VPC CIDR
+        - ipBlock:
+            cidr: 10.0.0.0/16
+        # AWS ALB health checks come from VPC
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-access-to-alertmanager
+  namespace: monitoring
+spec:
+  ingress:
+    - from:
+        # AWS VPC CIDR
+        - ipBlock:
+            cidr: 10.0.0.0/16
+      ports:
+        - protocol: TCP
+          port: 9093
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-access-to-jenkins
+  namespace: jenkins
+spec:
+  ingress:
+    - from:
+        # AWS VPC CIDR
+        - ipBlock:
+            cidr: 10.0.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-access-to-awx
+  namespace: awx
+spec:
+  ingress:
+    - from:
+        # AWS VPC CIDR
+        - ipBlock:
+            cidr: 10.0.0.0/16
+      ports:
+        - protocol: TCP
+          port: 80

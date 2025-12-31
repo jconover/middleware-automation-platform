@@ -1,0 +1,81 @@
+---
+# Local Homelab (Beelink cluster) overlay
+# Provides environment-specific CIDRs for the 192.168.68.0/24 network
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: liberty-local-homelab
+
+# Reference the base configuration
+resources:
+  - ../../base
+
+# Namespace for local homelab
+namespace: liberty
+
+# Common labels for local homelab environment
+commonLabels:
+  environment: local-homelab
+  app.kubernetes.io/instance: liberty-homelab
+
+# Common annotations
+commonAnnotations:
+  config.kubernetes.io/environment: local-homelab
+  network.kubernetes.io/cluster-type: k3s
+
+# Patches for local homelab environment
+patches:
+  # Reduce replicas for homelab (limited resources)
+  - target:
+      kind: Deployment
+      name: liberty-app
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+  # Homelab resource requirements
+  - target:
+      kind: Deployment
+      name: liberty-app
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+            ephemeral-storage: "128Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+            ephemeral-storage: "1Gi"
+
+  # Homelab HPA settings
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: liberty-hpa
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 4
+
+# ConfigMap overrides for local homelab
+configMapGenerator:
+  - name: liberty-config
+    behavior: merge
+    literals:
+      - db.host=postgres.database.svc.cluster.local
+      - log.level=DEBUG
+
+# Network Configuration
+# The base network policies use these environment-specific CIDRs:
+#   - HOMELAB_NETWORK: 192.168.68.0/24 (Beelink cluster network)
+#   - K3S_API_SERVER: 10.43.0.1/32 (k3s Kubernetes API ClusterIP)
+#
+# To customize for different environments, create a new overlay and
+# apply strategic merge patches to the network policy files.
