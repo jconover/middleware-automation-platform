@@ -1,0 +1,33 @@
+[Unit]
+Description=Alertmanager
+Documentation=https://prometheus.io/docs/alerting/alertmanager/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User={{ prometheus_user }}
+Group={{ prometheus_user }}
+Type=simple
+ExecStart={{ alertmanager_install_dir }}/alertmanager \
+  --config.file={{ alertmanager_config_dir }}/alertmanager.yml \
+  --storage.path={{ alertmanager_data_dir }} \
+  --web.listen-address=0.0.0.0:{{ alertmanager_port }} \
+  --web.external-url=http://localhost:{{ alertmanager_port }} \
+{% for peer in alertmanager_cluster_peers %}
+  --cluster.peer={{ peer }} \
+{% endfor %}
+  --log.level=info
+
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths={{ alertmanager_data_dir }}
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

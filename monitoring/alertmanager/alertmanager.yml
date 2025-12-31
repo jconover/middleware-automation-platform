@@ -1,5 +1,39 @@
+# =============================================================================
+# AlertManager Configuration for Middleware Automation Platform
+# =============================================================================
+#
+# SETUP REQUIRED - Notifications will NOT work until webhooks are configured!
+#
+# Quick Setup (choose one method):
+#
+#   Method 1: File-based secrets (RECOMMENDED for production)
+#   ---------------------------------------------------------
+#   mkdir -p /etc/alertmanager/secrets
+#   echo 'https://hooks.slack.com/services/T.../B.../xxx' > /etc/alertmanager/secrets/slack-webhook
+#   chmod 600 /etc/alertmanager/secrets/slack-webhook
+#
+#   Method 2: Kubernetes Secret
+#   ---------------------------
+#   kubectl create secret generic alertmanager-secrets \
+#     --from-literal=slack-webhook='https://hooks.slack.com/services/T.../B.../xxx' \
+#     -n monitoring
+#
+#   Method 3: AWS Secrets Manager (for Terraform deployments)
+#   ---------------------------------------------------------
+#   See automated/terraform/environments/prod-aws/alertmanager.tf
+#
+# Verification:
+#   amtool check-config /etc/alertmanager/alertmanager.yml
+#
+# Documentation: docs/ALERTMANAGER_CONFIGURATION.md
+# =============================================================================
+
 global:
   resolve_timeout: 5m
+  # File-based secret for Slack webhook URL
+  # AlertManager will fail to start if this file doesn't exist
+  # Create the file with your webhook URL before starting AlertManager
+  slack_api_url_file: '/etc/alertmanager/secrets/slack-webhook'
 
 route:
   receiver: 'default'
@@ -7,19 +41,87 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
-  
+
   routes:
+    # Critical alerts get immediate attention
     - receiver: 'critical'
       match:
         severity: critical
+      continue: false
+
+    # Warning alerts grouped together
+    - receiver: 'warning'
+      match:
+        severity: warning
+      continue: false
 
 receivers:
+  # Default receiver for unmatched alerts
   - name: 'default'
     slack_configs:
       - channel: '#middleware-alerts'
         send_resolved: true
+        title: '{{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *Alert:* {{ .Labels.alertname }}
+          *Severity:* {{ .Labels.severity | default "info" }}
+          *Instance:* {{ .Labels.instance | default "N/A" }}
+          *Description:* {{ .Annotations.description | default .Annotations.summary | default "No description available" }}
+          {{ end }}
 
+  # Critical alerts - high priority
   - name: 'critical'
     slack_configs:
       - channel: '#middleware-critical'
         send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        title: 'CRITICAL: {{ .CommonLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *Alert:* {{ .Labels.alertname }}
+          *Instance:* {{ .Labels.instance | default "N/A" }}
+          *Job:* {{ .Labels.job | default "N/A" }}
+          *Description:* {{ .Annotations.description | default .Annotations.summary | default "No description available" }}
+          *Runbook:* {{ .Annotations.runbook_url | default "N/A" }}
+          {{ end }}
+
+  # Warning alerts - standard priority
+  - name: 'warning'
+    slack_configs:
+      - channel: '#middleware-alerts'
+        send_resolved: true
+        color: 'warning'
+        title: 'WARNING: {{ .CommonLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *Alert:* {{ .Labels.alertname }}
+          *Instance:* {{ .Labels.instance | default "N/A" }}
+          *Description:* {{ .Annotations.description | default .Annotations.summary | default "No description available" }}
+          {{ end }}
+
+  # Null receiver for silencing specific alerts
+  - name: 'null'
+
+# Inhibition rules reduce alert noise
+inhibit_rules:
+  # If server is down, suppress all other Liberty alerts for same instance
+  - source_match:
+      alertname: 'LibertyServerDown'
+    target_match_re:
+      alertname: 'Liberty.*'
+    equal: ['instance']
+
+  # If no ECS tasks running, suppress individual task down alerts
+  - source_match:
+      alertname: 'ECSLibertyNoTasks'
+    target_match:
+      alertname: 'ECSLibertyTaskDown'
+    equal: ['job']
+
+  # Critical alerts suppress warning alerts for same alertname
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname']

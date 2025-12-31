@@ -21,6 +21,31 @@ grafana_admin_password: "{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') | default(''
 node_exporter_version: "1.6.1"
 node_exporter_port: 9100
 
+# =============================================================================
 # Alertmanager settings
+# =============================================================================
 alertmanager_version: "0.26.0"
 alertmanager_port: 9093
+alertmanager_install_dir: /opt/alertmanager
+alertmanager_config_dir: /etc/alertmanager
+alertmanager_data_dir: /var/lib/alertmanager
+alertmanager_secrets_dir: /etc/alertmanager/secrets
+
+# Alertmanager webhook configuration
+# Set via environment variable: ALERTMANAGER_SLACK_WEBHOOK_URL
+# Or pass as extra var: -e "alertmanager_slack_webhook_url=https://hooks.slack.com/..."
+alertmanager_slack_webhook_url: "{{ lookup('env', 'ALERTMANAGER_SLACK_WEBHOOK_URL') | default('', true) }}"
+
+# Slack channels for different severity levels
+alertmanager_slack_channel_default: '#middleware-alerts'
+alertmanager_slack_channel_critical: '#middleware-critical'
+
+# Optional: PagerDuty integration key
+# Set via environment variable: ALERTMANAGER_PAGERDUTY_KEY
+alertmanager_pagerduty_key: "{{ lookup('env', 'ALERTMANAGER_PAGERDUTY_KEY') | default('', true) }}"
+
+# Enable/disable AlertManager installation
+alertmanager_enabled: true
+
+# Cluster configuration (for HA setups)
+alertmanager_cluster_peers: []

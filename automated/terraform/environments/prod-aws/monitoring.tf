@@ -40,6 +40,25 @@ resource "aws_secretsmanager_secret_version" "grafana_credentials" {
 }
 
 # -----------------------------------------------------------------------------
+# AlertManager Slack Webhook Secret (Optional)
+# -----------------------------------------------------------------------------
+# To enable AlertManager Slack notifications:
+#   1. Create the secret manually in AWS Secrets Manager:
+#      aws secretsmanager create-secret --name mw-prod/monitoring/alertmanager-slack \
+#        --secret-string '{"slack_webhook_url":"https://hooks.slack.com/services/..."}'
+#   2. Set var.alertmanager_slack_secret_arn to the secret ARN
+#
+# The secret should contain JSON with the key "slack_webhook_url":
+#   {"slack_webhook_url": "https://hooks.slack.com/services/T.../B.../xxx"}
+# -----------------------------------------------------------------------------
+
+# Data source to look up the secret if provided
+data "aws_secretsmanager_secret" "alertmanager_slack" {
+  count = var.create_monitoring_server && var.alertmanager_slack_secret_arn != "" ? 1 : 0
+  arn   = var.alertmanager_slack_secret_arn
+}
+
+# -----------------------------------------------------------------------------
 # IAM Role for Monitoring Server (ECS Service Discovery)
 # -----------------------------------------------------------------------------
 resource "aws_iam_role" "monitoring" {
@@ -103,6 +122,15 @@ resource "aws_iam_role_policy" "monitoring_ecs_discovery" {
           "secretsmanager:GetSecretValue"
         ]
         Resource = aws_secretsmanager_secret.grafana_credentials[0].arn
+      },
+      {
+        Sid    = "ReadAlertManagerSecrets"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        # Allow reading the AlertManager slack secret if configured
+        Resource = var.alertmanager_slack_secret_arn != "" ? var.alertmanager_slack_secret_arn : aws_secretsmanager_secret.grafana_credentials[0].arn
       }
     ]
   })
@@ -231,6 +259,7 @@ resource "aws_instance" "monitoring" {
     ecs_enabled                   = var.ecs_enabled
     ecs_cluster_name              = var.ecs_enabled ? aws_ecs_cluster.main[0].name : ""
     grafana_credentials_secret_id = aws_secretsmanager_secret.grafana_credentials[0].id
+    alertmanager_slack_secret_id  = var.alertmanager_slack_secret_arn != "" ? var.alertmanager_slack_secret_arn : ""
   }))
 
   tags = {
@@ -309,4 +338,14 @@ output "grafana_admin_password_command" {
   description = "AWS CLI command to retrieve Grafana admin password"
   value       = var.create_monitoring_server ? "aws secretsmanager get-secret-value --secret-id ${aws_secretsmanager_secret.grafana_credentials[0].id} --query SecretString --output text | jq -r .admin_password" : null
   sensitive   = true
+}
+
+output "alertmanager_url" {
+  description = "AlertManager Web UI URL"
+  value       = var.create_monitoring_server ? "http://${aws_eip.monitoring[0].public_ip}:9093" : null
+}
+
+output "alertmanager_slack_configured" {
+  description = "Whether AlertManager Slack notifications are configured"
+  value       = var.alertmanager_slack_secret_arn != ""
 }

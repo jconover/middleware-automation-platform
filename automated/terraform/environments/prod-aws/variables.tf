@@ -247,6 +247,24 @@ variable "monitoring_instance_type" {
   }
 }
 
+variable "alertmanager_slack_secret_arn" {
+  description = <<-EOT
+    ARN of AWS Secrets Manager secret containing Slack webhook URL for AlertManager.
+    The secret should contain JSON: {"slack_webhook_url": "https://hooks.slack.com/services/..."}
+    If empty, AlertManager will be installed but notifications will be disabled.
+    Create the secret with:
+      aws secretsmanager create-secret --name mw-prod/monitoring/alertmanager-slack \
+        --secret-string '{"slack_webhook_url":"https://hooks.slack.com/services/T.../B.../xxx"}'
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.alertmanager_slack_secret_arn == "" || can(regex("^arn:aws:secretsmanager:", var.alertmanager_slack_secret_arn))
+    error_message = "AlertManager Slack secret ARN must be a valid AWS Secrets Manager ARN or empty string."
+  }
+}
+
 # -----------------------------------------------------------------------------
 # Management Server
 # -----------------------------------------------------------------------------

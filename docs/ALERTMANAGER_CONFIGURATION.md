@@ -2,6 +2,63 @@
 
 This guide explains how to configure AlertManager webhook notifications for the middleware automation platform.
 
+## Quick Start
+
+**IMPORTANT:** AlertManager notifications will NOT work until you configure a webhook URL. Choose your deployment method below:
+
+### AWS Production (Terraform)
+
+```bash
+# 1. Create the Slack webhook secret in AWS Secrets Manager
+aws secretsmanager create-secret \
+  --name mw-prod/monitoring/alertmanager-slack \
+  --secret-string '{"slack_webhook_url":"https://hooks.slack.com/services/T.../B.../xxx"}'
+
+# 2. Get the secret ARN
+aws secretsmanager describe-secret \
+  --secret-id mw-prod/monitoring/alertmanager-slack \
+  --query 'ARN' --output text
+
+# 3. Add to terraform.tfvars
+echo 'alertmanager_slack_secret_arn = "arn:aws:secretsmanager:..."' >> terraform.tfvars
+
+# 4. Apply Terraform
+terraform apply
+```
+
+### Local Kubernetes (Homelab)
+
+```bash
+# Create secret with your Slack webhook
+kubectl create secret generic alertmanager-secrets \
+  --from-literal=slack-webhook='https://hooks.slack.com/services/T.../B.../xxx' \
+  -n monitoring
+
+# Restart AlertManager to pick up changes
+kubectl rollout restart statefulset/alertmanager-prometheus-kube-prometheus-alertmanager -n monitoring
+```
+
+### Ansible (EC2 Instances)
+
+```bash
+# Set environment variable before running playbook
+export ALERTMANAGER_SLACK_WEBHOOK_URL='https://hooks.slack.com/services/T.../B.../xxx'
+
+# Run the monitoring playbook
+ansible-playbook -i inventory/prod.yml playbooks/site.yml --tags monitoring
+```
+
+### Local Development (Podman)
+
+```bash
+# Create secrets directory
+mkdir -p /etc/alertmanager/secrets
+
+# Add your webhook URL
+echo 'https://hooks.slack.com/services/T.../B.../xxx' > /etc/alertmanager/secrets/slack-webhook
+chmod 600 /etc/alertmanager/secrets/slack-webhook
+```
+
 ## Overview
 
 AlertManager handles alert routing and notifications from Prometheus. This platform supports multiple notification channels:
@@ -334,6 +391,48 @@ groups:
 - Webhook URL expired or revoked
 - Regenerate webhook in Slack app settings
 
+### Notifications Not Working (Common Issues)
+
+**1. Webhook file not found**
+```bash
+# Check if the secret file exists
+ls -la /etc/alertmanager/secrets/slack-webhook
+
+# If missing, create it
+sudo mkdir -p /etc/alertmanager/secrets
+echo 'https://hooks.slack.com/...' | sudo tee /etc/alertmanager/secrets/slack-webhook
+sudo chmod 600 /etc/alertmanager/secrets/slack-webhook
+sudo chown prometheus:prometheus /etc/alertmanager/secrets/slack-webhook
+sudo systemctl restart alertmanager
+```
+
+**2. AlertManager using null receiver (no webhook configured)**
+```bash
+# Check the current configuration
+cat /etc/alertmanager/alertmanager.yml | grep -A5 "route:"
+
+# If receiver is 'null', notifications are disabled
+# Reconfigure with a valid webhook
+```
+
+**3. Terraform didn't pass webhook secret**
+```bash
+# Verify the variable is set
+terraform output alertmanager_slack_configured
+
+# Should return 'true' if configured
+# If 'false', set alertmanager_slack_secret_arn in terraform.tfvars
+```
+
+**4. IAM permissions issue (AWS)**
+```bash
+# On monitoring server, test secret access
+aws secretsmanager get-secret-value \
+  --secret-id mw-prod/monitoring/alertmanager-slack
+
+# If access denied, check the monitoring instance IAM role
+```
+
 ### Configuration Syntax Errors
 
 ```bash
@@ -356,13 +455,79 @@ curl -X POST http://alertmanager:9093/-/reload
 
 ## Deployment
 
-### AWS Production
+### AWS Production (Terraform)
 
-AlertManager configuration is deployed via Terraform user-data script:
+AlertManager is automatically installed on the monitoring server via Terraform. To enable Slack notifications:
 
-1. Edit `monitoring/alertmanager/alertmanager.yml`
-2. Store secrets in AWS Secrets Manager
-3. Run `terraform apply`
+**Step 1: Create the Slack Webhook**
+
+Follow the instructions in [Create Slack Webhook](#1-create-slack-webhook) above to get your webhook URL.
+
+**Step 2: Store the Webhook in AWS Secrets Manager**
+
+```bash
+# Create the secret (replace with your actual webhook URL)
+aws secretsmanager create-secret \
+  --name mw-prod/monitoring/alertmanager-slack \
+  --description "AlertManager Slack webhook for middleware platform" \
+  --secret-string '{"slack_webhook_url":"https://hooks.slack.com/services/T.../B.../xxx"}'
+
+# Note the ARN from the output
+```
+
+**Step 3: Configure Terraform**
+
+Add to your `terraform.tfvars`:
+
+```hcl
+alertmanager_slack_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789:secret:mw-prod/monitoring/alertmanager-slack-AbCdEf"
+```
+
+**Step 4: Apply Terraform**
+
+```bash
+cd automated/terraform/environments/prod-aws
+terraform apply
+```
+
+The monitoring server user-data script will:
+1. Fetch the webhook URL from Secrets Manager
+2. Store it in `/etc/alertmanager/secrets/slack-webhook`
+3. Configure AlertManager to use file-based secrets
+4. Start AlertManager with notifications enabled
+
+**Verify Configuration**
+
+```bash
+# SSH to monitoring server
+ssh -i ~/.ssh/ansible_ed25519 ubuntu@$(terraform output -raw monitoring_public_ip)
+
+# Check AlertManager status
+systemctl status alertmanager
+curl http://localhost:9093/-/ready
+
+# Verify webhook is configured
+ls -la /etc/alertmanager/secrets/
+```
+
+**Update Webhook URL**
+
+To update an existing webhook:
+
+```bash
+# Update the secret in AWS
+aws secretsmanager update-secret \
+  --secret-id mw-prod/monitoring/alertmanager-slack \
+  --secret-string '{"slack_webhook_url":"https://hooks.slack.com/services/NEW/WEBHOOK/URL"}'
+
+# SSH to monitoring server and update locally
+ssh ubuntu@<monitoring-ip>
+sudo aws secretsmanager get-secret-value \
+  --secret-id mw-prod/monitoring/alertmanager-slack \
+  --query SecretString --output text | jq -r .slack_webhook_url | \
+  sudo tee /etc/alertmanager/secrets/slack-webhook
+sudo systemctl reload alertmanager
+```
 
 ### Kubernetes
 

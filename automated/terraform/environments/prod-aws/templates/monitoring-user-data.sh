@@ -53,7 +53,7 @@ global:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: []
+        - targets: ['localhost:9093']
 
 rule_files:
   - /etc/prometheus/rules/*.yml
@@ -131,9 +131,10 @@ global:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: []
+        - targets: ['localhost:9093']
 
-rule_files: []
+rule_files:
+  - /etc/prometheus/rules/*.yml
 
 scrape_configs:
   - job_name: 'prometheus'
@@ -233,6 +234,211 @@ systemctl daemon-reload
 systemctl enable prometheus
 systemctl start prometheus
 
+# =============================================================================
+# Install and Configure Alertmanager
+# =============================================================================
+echo "=== Installing Alertmanager ==="
+
+ALERTMANAGER_VERSION="0.27.0"
+cd /tmp
+wget -q https://github.com/prometheus/alertmanager/releases/download/v$${ALERTMANAGER_VERSION}/alertmanager-$${ALERTMANAGER_VERSION}.linux-amd64.tar.gz
+tar xzf alertmanager-$${ALERTMANAGER_VERSION}.linux-amd64.tar.gz
+cd alertmanager-$${ALERTMANAGER_VERSION}.linux-amd64
+
+cp alertmanager amtool /usr/local/bin/
+
+# Create Alertmanager directories
+mkdir -p /etc/alertmanager /var/lib/alertmanager /etc/alertmanager/secrets
+chown -R prometheus:prometheus /etc/alertmanager /var/lib/alertmanager
+chmod 700 /etc/alertmanager/secrets
+
+# Fetch Slack webhook URL from Secrets Manager (if configured)
+echo "Checking for AlertManager Slack webhook in Secrets Manager..."
+ALERTMANAGER_SECRET_ID="${alertmanager_slack_secret_id}"
+
+if [ -n "$ALERTMANAGER_SECRET_ID" ] && [ "$ALERTMANAGER_SECRET_ID" != "null" ]; then
+  SLACK_WEBHOOK=$(/usr/local/bin/aws secretsmanager get-secret-value \
+    --secret-id "$ALERTMANAGER_SECRET_ID" \
+    --region "${aws_region}" \
+    --query SecretString \
+    --output text 2>/dev/null | jq -r '.slack_webhook_url // empty')
+
+  if [ -n "$SLACK_WEBHOOK" ]; then
+    echo "$SLACK_WEBHOOK" > /etc/alertmanager/secrets/slack-webhook
+    chown prometheus:prometheus /etc/alertmanager/secrets/slack-webhook
+    chmod 600 /etc/alertmanager/secrets/slack-webhook
+    echo "Slack webhook configured from Secrets Manager"
+    SLACK_CONFIGURED="true"
+  else
+    echo "WARNING: Slack webhook not found in Secrets Manager"
+    SLACK_CONFIGURED="false"
+  fi
+else
+  echo "WARNING: No AlertManager Slack secret ID configured"
+  SLACK_CONFIGURED="false"
+fi
+
+# Create Alertmanager config
+if [ "$SLACK_CONFIGURED" = "true" ]; then
+cat <<'AMEOF' > /etc/alertmanager/alertmanager.yml
+# =============================================================================
+# AlertManager Configuration - Deployed via Terraform
+# =============================================================================
+# Slack webhook is loaded from: /etc/alertmanager/secrets/slack-webhook
+# To update: Store new webhook in AWS Secrets Manager, then redeploy or manually update the file
+# =============================================================================
+
+global:
+  resolve_timeout: 5m
+  slack_api_url_file: '/etc/alertmanager/secrets/slack-webhook'
+
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    - receiver: 'critical'
+      match:
+        severity: critical
+      continue: false
+
+    - receiver: 'warning'
+      match:
+        severity: warning
+      continue: false
+
+receivers:
+  - name: 'default'
+    slack_configs:
+      - channel: '#middleware-alerts'
+        send_resolved: true
+        title: '{{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *Alert:* {{ .Labels.alertname }}
+          *Severity:* {{ .Labels.severity | default "info" }}
+          *Instance:* {{ .Labels.instance | default "N/A" }}
+          *Description:* {{ .Annotations.description | default .Annotations.summary | default "No description" }}
+          {{ end }}
+
+  - name: 'critical'
+    slack_configs:
+      - channel: '#middleware-critical'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        title: 'CRITICAL: {{ .CommonLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *Alert:* {{ .Labels.alertname }}
+          *Instance:* {{ .Labels.instance | default "N/A" }}
+          *Description:* {{ .Annotations.description | default .Annotations.summary | default "No description" }}
+          {{ end }}
+
+  - name: 'warning'
+    slack_configs:
+      - channel: '#middleware-alerts'
+        send_resolved: true
+        color: 'warning'
+        title: 'WARNING: {{ .CommonLabels.alertname }}'
+
+  - name: 'null'
+
+inhibit_rules:
+  - source_match:
+      alertname: 'LibertyServerDown'
+    target_match_re:
+      alertname: 'Liberty.*'
+    equal: ['instance']
+
+  - source_match:
+      alertname: 'ECSLibertyNoTasks'
+    target_match:
+      alertname: 'ECSLibertyTaskDown'
+    equal: ['job']
+
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname']
+AMEOF
+else
+# No Slack webhook - create minimal config that logs alerts but doesn't send notifications
+cat <<'AMEOF' > /etc/alertmanager/alertmanager.yml
+# =============================================================================
+# AlertManager Configuration - NO WEBHOOK CONFIGURED
+# =============================================================================
+# WARNING: Notifications are DISABLED because no Slack webhook was found.
+#
+# To enable notifications:
+#   1. Create a secret in AWS Secrets Manager with:
+#      {"slack_webhook_url": "https://hooks.slack.com/services/..."}
+#   2. Update terraform.tfvars with the secret ARN
+#   3. Redeploy or manually create /etc/alertmanager/secrets/slack-webhook
+#
+# See docs/ALERTMANAGER_CONFIGURATION.md for detailed setup instructions.
+# =============================================================================
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'null'
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  # Null receiver - alerts are processed but no notifications sent
+  - name: 'null'
+AMEOF
+echo "WARNING: AlertManager installed but notifications are DISABLED (no webhook configured)"
+fi
+
+chown prometheus:prometheus /etc/alertmanager/alertmanager.yml
+chmod 644 /etc/alertmanager/alertmanager.yml
+
+# Create Alertmanager systemd service
+cat <<'AMSVCEOF' > /etc/systemd/system/alertmanager.service
+[Unit]
+Description=Alertmanager
+Documentation=https://prometheus.io/docs/alerting/alertmanager/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=/usr/local/bin/alertmanager \
+  --config.file=/etc/alertmanager/alertmanager.yml \
+  --storage.path=/var/lib/alertmanager \
+  --web.listen-address=0.0.0.0:9093 \
+  --log.level=info
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/alertmanager
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
+AMSVCEOF
+
+systemctl daemon-reload
+systemctl enable alertmanager
+systemctl start alertmanager
+
+echo "Alertmanager installed and started on port 9093"
+
 # Install Grafana
 apt-get install -y software-properties-common
 wget -q -O /usr/share/keyrings/grafana.key https://apt.grafana.com/gpg.key
@@ -314,9 +520,21 @@ chmod 600 /home/ansible/.ssh/authorized_keys
 echo "ansible ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ansible
 
 echo "=== Monitoring Server Setup Complete ==="
-echo "Prometheus: http://<public-ip>:9090"
-echo "Grafana: http://<public-ip>:3000 (credentials stored in Secrets Manager)"
-echo "Retrieve password: aws secretsmanager get-secret-value --secret-id $GRAFANA_SECRET_ID --query SecretString --output text | jq -r .admin_password"
+echo "Prometheus:    http://<public-ip>:9090"
+echo "Alertmanager:  http://<public-ip>:9093"
+echo "Grafana:       http://<public-ip>:3000 (credentials stored in Secrets Manager)"
+echo ""
+echo "Retrieve Grafana password:"
+echo "  aws secretsmanager get-secret-value --secret-id $GRAFANA_SECRET_ID --query SecretString --output text | jq -r .admin_password"
+echo ""
+if [ "$SLACK_CONFIGURED" = "true" ]; then
+  echo "AlertManager: Slack notifications ENABLED"
+else
+  echo "AlertManager: Slack notifications DISABLED (no webhook configured)"
+  echo "  To enable: Create secret in AWS Secrets Manager with slack_webhook_url, then redeploy"
+  echo "  See docs/ALERTMANAGER_CONFIGURATION.md for instructions"
+fi
 %{ if ecs_enabled }
+echo ""
 echo "ECS Discovery: Running via cron every minute"
 %{ endif }

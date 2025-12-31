@@ -34,8 +34,8 @@ resource "aws_appautoscaling_policy" "liberty_cpu" {
       predefined_metric_type = "ECSServiceAverageCPUUtilization"
     }
     target_value       = var.ecs_cpu_target
-    scale_in_cooldown  = 300  # 5 minutes
-    scale_out_cooldown = 60   # 1 minute
+    scale_in_cooldown  = 300 # 5 minutes
+    scale_out_cooldown = 60  # 1 minute
   }
 }
 

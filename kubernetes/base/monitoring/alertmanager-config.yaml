@@ -1,0 +1,196 @@
+# AlertManagerConfig for Liberty Middleware Platform
+# Configures alert routing and notification receivers using Kubernetes secrets.
+#
+# This configuration integrates with kube-prometheus-stack's Prometheus Operator
+# and references webhook URLs from the alertmanager-webhook-secrets Secret.
+#
+# Prerequisites:
+#   - kube-prometheus-stack Helm chart installed
+#   - alertmanager-webhook-secrets Secret created in monitoring namespace
+#
+# Alert Flow:
+#   Prometheus -> AlertManager -> Routes -> Receivers -> Notification Channels
+#
+# Severity Routing:
+#   - critical: PagerDuty (page on-call) + Slack (#middleware-critical)
+#   - warning: Slack (#middleware-alerts)
+#   - info: Slack (#middleware-alerts, batched hourly)
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: liberty-alertmanager-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: config
+    app.kubernetes.io/part-of: middleware-platform
+    # Label for AlertManager to discover this config
+    alertmanagerConfig: liberty
+spec:
+  # Alert routing configuration
+  route:
+    # Default receiver for unmatched alerts
+    receiver: slack-default
+    # Group alerts by these labels to reduce notification noise
+    groupBy:
+      - alertname
+      - severity
+      - namespace
+    # Wait before sending first notification for a group
+    groupWait: 30s
+    # Wait before sending updates to a group
+    groupInterval: 5m
+    # Wait before resending a resolved notification
+    repeatInterval: 4h
+
+    # Child routes for severity-based routing
+    routes:
+      # Critical alerts: PagerDuty + Slack critical channel
+      - receiver: pagerduty-critical
+        matchers:
+          - name: severity
+            value: critical
+            matchType: =
+        # Continue to also send to Slack
+        continue: true
+
+      - receiver: slack-critical
+        matchers:
+          - name: severity
+            value: critical
+            matchType: =
+
+      # Warning alerts: Slack alerts channel
+      - receiver: slack-warnings
+        matchers:
+          - name: severity
+            value: warning
+            matchType: =
+
+      # Info alerts: Slack with longer grouping (reduce noise)
+      - receiver: slack-info
+        matchers:
+          - name: severity
+            value: info
+            matchType: =
+        groupWait: 10m
+        groupInterval: 1h
+        repeatInterval: 24h
+
+  # Notification receivers
+  receivers:
+    # Default Slack receiver
+    - name: slack-default
+      slackConfigs:
+        - apiURL:
+            name: alertmanager-webhook-secrets
+            key: slack-webhook-url
+          channel: '#middleware-alerts'
+          sendResolved: true
+          title: '{{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'
+          text: |-
+            {{ range .Alerts }}
+            *Alert:* {{ .Labels.alertname }}
+            *Severity:* {{ .Labels.severity }}
+            *Namespace:* {{ .Labels.namespace }}
+            *Description:* {{ .Annotations.description }}
+            {{ end }}
+
+    # Critical alerts to Slack
+    - name: slack-critical
+      slackConfigs:
+        - apiURL:
+            name: alertmanager-webhook-secrets
+            key: slack-webhook-url
+          channel: '#middleware-critical'
+          sendResolved: true
+          color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+          title: 'CRITICAL: {{ .CommonLabels.alertname }}'
+          text: |-
+            *Environment:* {{ .CommonLabels.namespace }}
+            *Alert:* {{ .CommonLabels.alertname }}
+            {{ range .Alerts }}
+            *Pod:* {{ .Labels.pod }}
+            *Summary:* {{ .Annotations.summary }}
+            *Description:* {{ .Annotations.description }}
+            *Runbook:* {{ .Annotations.runbook_url }}
+            {{ end }}
+
+    # Warning alerts to Slack
+    - name: slack-warnings
+      slackConfigs:
+        - apiURL:
+            name: alertmanager-webhook-secrets
+            key: slack-webhook-url
+          channel: '#middleware-alerts'
+          sendResolved: true
+          color: 'warning'
+          title: 'WARNING: {{ .CommonLabels.alertname }}'
+          text: |-
+            {{ range .Alerts }}
+            *Alert:* {{ .Labels.alertname }}
+            *Pod:* {{ .Labels.pod }}
+            *Description:* {{ .Annotations.description }}
+            {{ end }}
+
+    # Info alerts to Slack (batched)
+    - name: slack-info
+      slackConfigs:
+        - apiURL:
+            name: alertmanager-webhook-secrets
+            key: slack-webhook-url
+          channel: '#middleware-alerts'
+          sendResolved: false
+          title: 'INFO: {{ len .Alerts }} alerts'
+          text: |-
+            {{ range .Alerts }}
+            - {{ .Labels.alertname }}: {{ .Annotations.summary }}
+            {{ end }}
+
+    # PagerDuty for critical alerts (pages on-call engineer)
+    - name: pagerduty-critical
+      pagerdutyConfigs:
+        - serviceKey:
+            name: alertmanager-webhook-secrets
+            key: pagerduty-service-key
+          severity: '{{ .CommonLabels.severity }}'
+          description: '{{ .CommonAnnotations.summary }}'
+          details:
+            - key: alertname
+              value: '{{ .CommonLabels.alertname }}'
+            - key: namespace
+              value: '{{ .CommonLabels.namespace }}'
+            - key: pod
+              value: '{{ .CommonLabels.pod }}'
+            - key: runbook
+              value: '{{ .CommonAnnotations.runbook_url }}'
+
+  # Inhibition rules to reduce alert noise
+  # When a more severe alert is firing, suppress related lower-severity alerts
+  inhibitRules:
+    # If LibertyServerDown is firing, suppress all other Liberty alerts for same pod
+    - sourceMatch:
+        - name: alertname
+          value: LibertyServerDown
+          matchType: =
+      targetMatch:
+        - name: component
+          value: liberty
+          matchType: =
+      equal:
+        - pod
+        - namespace
+
+    # Critical alerts inhibit warning alerts for the same alertname
+    - sourceMatch:
+        - name: severity
+          value: critical
+          matchType: =
+      targetMatch:
+        - name: severity
+          value: warning
+          matchType: =
+      equal:
+        - alertname
+        - namespace

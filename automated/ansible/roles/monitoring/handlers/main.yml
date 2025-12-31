@@ -21,3 +21,9 @@
   ansible.builtin.systemd:
     name: grafana-server
     state: restarted
+
+- name: Restart Alertmanager
+  ansible.builtin.systemd:
+    name: alertmanager
+    state: restarted
+  when: alertmanager_enabled | default(true) | bool

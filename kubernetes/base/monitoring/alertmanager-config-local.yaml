@@ -1,0 +1,60 @@
+# AlertManagerConfig for Local Development (No External Notifications)
+# Use this configuration when external webhook URLs are not available.
+#
+# This config routes all alerts to a null receiver, which accepts alerts
+# but does not send external notifications. Alerts are still visible in
+# the AlertManager UI at http://<alertmanager-ip>:9093.
+#
+# Usage:
+#   kubectl apply -f alertmanager-config-local.yaml -n monitoring
+#
+# To switch to production notifications:
+#   1. Create alertmanager-webhook-secrets Secret with actual URLs
+#   2. Apply alertmanager-config.yaml instead
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: liberty-alertmanager-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: config
+    app.kubernetes.io/part-of: middleware-platform
+    alertmanagerConfig: liberty
+  annotations:
+    description: "Local development configuration - no external notifications"
+spec:
+  route:
+    receiver: null-receiver
+    groupBy:
+      - alertname
+      - severity
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+
+  receivers:
+    # Null receiver: accepts alerts but sends no notifications
+    # Alerts are still visible in AlertManager UI
+    - name: null-receiver
+      # No configs = null receiver (alerts are accepted but not forwarded)
+
+---
+# Optional: Webhook receiver for local testing
+# Uncomment to receive alerts via HTTP POST to a local endpoint
+# Useful for developing custom alert handlers
+#
+# apiVersion: monitoring.coreos.com/v1alpha1
+# kind: AlertmanagerConfig
+# metadata:
+#   name: liberty-alertmanager-config-dev
+#   namespace: monitoring
+# spec:
+#   route:
+#     receiver: local-webhook
+#   receivers:
+#     - name: local-webhook
+#       webhookConfigs:
+#         - url: 'http://localhost:8080/alerts'
+#           sendResolved: true

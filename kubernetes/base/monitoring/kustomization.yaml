@@ -1,12 +1,23 @@
 # Kustomization for Liberty Monitoring Resources
-# Deploys ServiceMonitor and PrometheusRule for Prometheus Operator integration
+# Deploys ServiceMonitor, PrometheusRule, and AlertManager configuration
+# for Prometheus Operator integration.
 #
 # Usage:
 #   kubectl apply -k kubernetes/base/monitoring/
 #
 # Prerequisites:
-#   - Prometheus Operator CRDs installed
+#   - Prometheus Operator CRDs installed (kube-prometheus-stack)
 #   - Liberty deployment with 'app: liberty' labels
+#   - AlertManager webhook secrets configured (see alertmanager-secrets.yaml)
+#
+# AlertManager Setup:
+#   For production (with notifications):
+#     1. Copy alertmanager-secrets.yaml and replace placeholder values
+#     2. kubectl apply -f alertmanager-secrets.yaml -n monitoring
+#     3. kubectl apply -f alertmanager-config.yaml -n monitoring
+#
+#   For local development (no notifications):
+#     kubectl apply -f alertmanager-config-local.yaml -n monitoring
 ---
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -20,5 +31,16 @@ commonLabels:
   app.kubernetes.io/managed-by: kustomize
 
 resources:
+  # Prometheus scraping configuration
   - liberty-servicemonitor.yaml
+  # Alerting rules for Liberty metrics
   - liberty-prometheusrule.yaml
+  # AlertManager routing and receivers (uses secrets for webhook URLs)
+  - alertmanager-config.yaml
+
+# Note: alertmanager-secrets.yaml is NOT included here intentionally.
+# Secrets should be created manually to avoid committing sensitive URLs.
+# See alertmanager-secrets.yaml for instructions.
+#
+# For local development without webhooks, replace alertmanager-config.yaml
+# with alertmanager-config-local.yaml in the resources list above.

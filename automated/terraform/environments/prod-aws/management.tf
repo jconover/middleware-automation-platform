@@ -218,9 +218,9 @@ resource "aws_iam_role_policy" "management_ecr" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ECRAuthentication"
-        Effect = "Allow"
-        Action = "ecr:GetAuthorizationToken"
+        Sid      = "ECRAuthentication"
+        Effect   = "Allow"
+        Action   = "ecr:GetAuthorizationToken"
         Resource = "*" # GetAuthorizationToken requires wildcard
       },
       {
@@ -269,9 +269,9 @@ resource "aws_iam_role_policy" "management_secrets" {
         Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${local.name_prefix}/*"
       },
       {
-        Sid    = "SecretsManagerList"
-        Effect = "Allow"
-        Action = "secretsmanager:ListSecrets"
+        Sid      = "SecretsManagerList"
+        Effect   = "Allow"
+        Action   = "secretsmanager:ListSecrets"
         Resource = "*" # ListSecrets requires wildcard
       }
     ]
