@@ -29,21 +29,49 @@ resource "aws_iam_role" "ecs_execution" {
   }
 }
 
-# Attach AWS managed policy for ECS task execution
-resource "aws_iam_role_policy_attachment" "ecs_execution" {
-  role       = aws_iam_role.ecs_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# Additional policy for Secrets Manager access
-resource "aws_iam_role_policy" "ecs_execution_secrets" {
-  name = "${local.name_prefix}-ecs-execution-secrets"
+# Custom execution policy - replaces AWS managed policy with scoped permissions
+# The AWS managed AmazonECSTaskExecutionRolePolicy uses Resource = "*" for ECR and logs
+# This custom policy scopes to specific resources for least-privilege
+resource "aws_iam_role_policy" "ecs_execution" {
+  name = "${local.name_prefix}-ecs-execution-policy"
   role = aws_iam_role.ecs_execution.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      # ECR authorization token - must use wildcard per AWS docs
       {
+        Sid    = "ECRAuthToken"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken"
+        ]
+        Resource = "*"
+      },
+      # ECR image pull - scoped to specific repository
+      {
+        Sid    = "ECRImagePull"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage"
+        ]
+        Resource = aws_ecr_repository.liberty.arn
+      },
+      # CloudWatch Logs - scoped to specific log group
+      {
+        Sid    = "CloudWatchLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "${aws_cloudwatch_log_group.ecs_liberty.arn}:*"
+      },
+      # Secrets Manager - scoped to specific secrets
+      {
+        Sid    = "SecretsManagerAccess"
         Effect = "Allow"
         Action = [
           "secretsmanager:GetSecretValue"
@@ -96,7 +124,11 @@ resource "aws_iam_role_policy" "ecs_task" {
         ]
         Resource = "${aws_cloudwatch_log_group.ecs_liberty.arn}:*"
       },
+      # ECS Exec (SSM Session Manager) - wildcard required per AWS docs
+      # These actions do not support resource-level permissions
+      # See: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-exec.html
       {
+        Sid    = "ECSExecSSM"
         Effect = "Allow"
         Action = [
           "ssmmessages:CreateControlChannel",
@@ -105,7 +137,6 @@ resource "aws_iam_role_policy" "ecs_task" {
           "ssmmessages:OpenDataChannel"
         ]
         Resource = "*"
-        # Enables ECS Exec for debugging
       }
     ]
   })

@@ -38,11 +38,13 @@ spec:
         REGISTRY = 'registry.local'
         DEPLOY_START_TIME = ''
 
-        // AWS ECS Configuration (prod-aws)
+        // AWS ECS Configuration - set dynamically in Checkout stage based on ENVIRONMENT
         AWS_REGION = 'us-east-1'
         ECR_REPO = ''  // Set dynamically based on AWS account
-        ECS_CLUSTER = 'mw-prod-cluster'
-        ECS_SERVICE = 'mw-prod-liberty'
+        ECS_CLUSTER = ''  // Set dynamically: mw-{env}-cluster
+        ECS_SERVICE = ''  // Set dynamically: mw-{env}-liberty
+        ALB_NAME = ''     // Set dynamically: mw-{env}-alb
+        ECR_REPO_NAME = '' // Set dynamically: mw-{env}-liberty
 
         // Rollback tracking
         PREVIOUS_TASK_DEF_ARN = ''
@@ -63,9 +65,41 @@ spec:
         choice(name: 'DEPLOY_TYPE', choices: ['full', 'application-only'], description: 'Deployment type')
         booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Dry run mode')
         string(name: 'LIBERTY_VERSION', defaultValue: '24.0.0.1', description: 'Liberty version')
+        string(name: 'AWS_CREDENTIALS_ID', defaultValue: 'aws-prod', description: 'Jenkins AWS credentials ID for AWS deployments')
     }
 
     stages {
+        stage('Validate Parameters') {
+            steps {
+                script {
+                    // Validate ENVIRONMENT parameter to prevent path traversal attacks
+                    // Even though ENVIRONMENT is a choice parameter, validate as defense-in-depth
+                    // since choice constraints can be bypassed via API calls or replay attacks
+                    def allowedEnvironments = ['dev', 'staging', 'prod-aws']
+
+                    if (!params.ENVIRONMENT) {
+                        error("ENVIRONMENT parameter is required")
+                    }
+
+                    if (!allowedEnvironments.contains(params.ENVIRONMENT)) {
+                        error("Invalid environment: '${params.ENVIRONMENT}'. Allowed values: ${allowedEnvironments.join(', ')}")
+                    }
+
+                    // Ensure no path traversal characters (defense-in-depth)
+                    if (params.ENVIRONMENT.contains('/') || params.ENVIRONMENT.contains('\\') || params.ENVIRONMENT.contains('..')) {
+                        error("ENVIRONMENT parameter contains invalid path characters: '${params.ENVIRONMENT}'")
+                    }
+
+                    // Validate LIBERTY_VERSION format (should be like '24.0.0.1')
+                    if (params.LIBERTY_VERSION && !(params.LIBERTY_VERSION ==~ /^\d+\.\d+\.\d+\.\d+$/)) {
+                        error("Invalid LIBERTY_VERSION format: '${params.LIBERTY_VERSION}'. Expected format: XX.X.X.X (e.g., 24.0.0.1)")
+                    }
+
+                    echo "Parameter validation passed: ENVIRONMENT=${params.ENVIRONMENT}, LIBERTY_VERSION=${params.LIBERTY_VERSION}"
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -77,6 +111,15 @@ spec:
                         returnStdout: true
                     ).trim()
                     env.VERSION = "${BUILD_NUMBER}-${env.GIT_COMMIT_SHORT}"
+
+                    // Derive AWS resource names from environment parameter
+                    // For prod-aws, extracts 'prod'; for others uses environment name directly
+                    def envSuffix = params.ENVIRONMENT == 'prod-aws' ? 'prod' : params.ENVIRONMENT
+                    def resourcePrefix = "mw-${envSuffix}"
+                    env.ECS_CLUSTER = "${resourcePrefix}-cluster"
+                    env.ECS_SERVICE = "${resourcePrefix}-liberty"
+                    env.ALB_NAME = "${resourcePrefix}-alb"
+                    env.ECR_REPO_NAME = "${resourcePrefix}-liberty"
                 }
                 echo """
                 ════════════════════════════════════════════════════════════
@@ -85,6 +128,8 @@ spec:
                 Version:     ${env.VERSION}
                 Commit:      ${env.GIT_COMMIT_SHORT}
                 Started:     ${env.DEPLOY_START_TIME}
+                ECS Cluster: ${env.ECS_CLUSTER}
+                ECS Service: ${env.ECS_SERVICE}
                 ════════════════════════════════════════════════════════════
                 """
             }
@@ -246,7 +291,7 @@ spec:
             }
             steps {
                 container('podman') {
-                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod']]) {
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID]]) {
                         sh '''#!/bin/bash
                             set -e
 
@@ -259,7 +304,7 @@ spec:
                                 echo "ERROR: Failed to retrieve AWS account ID"
                                 exit 1
                             fi
-                            ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/mw-prod-liberty"
+                            ECR_REPO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}"
 
                             # Login to ECR (password is masked by redirecting to /dev/null on error)
                             echo "Authenticating with ECR..."
@@ -296,6 +341,14 @@ spec:
         stage('Deploy with Ansible') {
             when { expression { params.ENVIRONMENT != 'prod-aws' } }
             steps {
+                script {
+                    // Verify inventory file exists before attempting deployment
+                    // This provides early failure with clear error message
+                    def inventoryPath = "automated/ansible/inventory/${params.ENVIRONMENT}.yml"
+                    if (!fileExists(inventoryPath)) {
+                        error("Ansible inventory file not found: ${inventoryPath}")
+                    }
+                }
                 container('ansible') {
                     dir('automated/ansible') {
                         sh '''
@@ -323,7 +376,7 @@ spec:
             }
             steps {
                 container('podman') {
-                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod']]) {
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID]]) {
                         script {
                             // Capture the current task definition ARN before deploying for rollback
                             env.PREVIOUS_TASK_DEF_ARN = sh(
@@ -384,7 +437,7 @@ spec:
                         if (env.PREVIOUS_TASK_DEF_ARN && env.PREVIOUS_TASK_DEF_ARN != 'None' && env.PREVIOUS_TASK_DEF_ARN != '') {
                             echo "ECS deployment failed. Initiating rollback to previous task definition..."
                             container('podman') {
-                                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod']]) {
+                                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID]]) {
                                     sh '''#!/bin/bash
                                         set +x
                                         echo "Rolling back to task definition: ${PREVIOUS_TASK_DEF_ARN}"
@@ -429,7 +482,7 @@ spec:
                 script {
                     if (params.ENVIRONMENT == 'prod-aws') {
                         container('podman') {
-                            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-prod']]) {
+                            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID]]) {
                                 sh '''#!/bin/bash
                                     set -e
 
@@ -473,7 +526,7 @@ spec:
 
                                     # Get ALB DNS name from AWS (suppress verbose output)
                                     ALB_DNS=$(aws elbv2 describe-load-balancers \
-                                        --names mw-prod-alb \
+                                        --names ${ALB_NAME} \
                                         --query 'LoadBalancers[0].DNSName' \
                                         --output text \
                                         --region ${AWS_REGION} 2>/dev/null)

@@ -286,15 +286,35 @@ variable "management_instance_type" {
 }
 
 variable "management_allowed_cidrs" {
-  description = "CIDR blocks allowed to access management server web UI and SSH"
+  description = <<-EOT
+    CIDR blocks allowed to access management server (SSH, AWX, Grafana, Prometheus).
+    REQUIRED - You must explicitly set this for security reasons.
+
+    Examples:
+      - Single IP:     ["203.0.113.50/32"]
+      - Office range:  ["203.0.113.0/24"]
+      - VPN + Office:  ["10.0.0.0/8", "203.0.113.0/24"]
+
+    Find your public IP: curl -s ifconfig.me
+  EOT
   type        = list(string)
-  default     = []
+  # No default - force explicit configuration for security
 
   validation {
     condition = alltrue([
       for cidr in var.management_allowed_cidrs : can(cidrhost(cidr, 0))
     ])
     error_message = "All management allowed CIDR blocks must be valid IPv4 CIDR blocks."
+  }
+
+  validation {
+    condition     = length(var.management_allowed_cidrs) > 0
+    error_message = "management_allowed_cidrs must contain at least one CIDR block. Use 'curl -s ifconfig.me' to find your public IP."
+  }
+
+  validation {
+    condition     = !contains(var.management_allowed_cidrs, "0.0.0.0/0")
+    error_message = "management_allowed_cidrs cannot include 0.0.0.0/0 - this would expose management interfaces to the entire internet. Use specific CIDR blocks for your office, VPN, or IP address."
   }
 }
 

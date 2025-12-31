@@ -1,6 +1,10 @@
 package com.example.sample;
 
 import com.example.sample.dto.EchoRequest;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
 import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -10,6 +14,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -155,6 +160,62 @@ class SampleResourceTest {
             Map<String, Object> entity = (Map<String, Object>) response.getEntity();
             assertEquals(input, entity.get("echo"));
             assertEquals(input.length(), entity.get("length"));
+        }
+
+        @Test
+        @DisplayName("rejects messages exceeding size limit via Bean Validation")
+        void echoRejectsOversizedMessage() {
+            // Create a message that exceeds the 10000 character limit
+            String oversizedMessage = "x".repeat(10001);
+            EchoRequest request = new EchoRequest(oversizedMessage);
+
+            // Validate using Bean Validation API
+            try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+                Validator validator = factory.getValidator();
+                Set<ConstraintViolation<EchoRequest>> violations = validator.validate(request);
+
+                assertFalse(violations.isEmpty(), "Should have validation violations for oversized message");
+                assertTrue(violations.stream()
+                        .anyMatch(v -> v.getMessage().contains("10000")),
+                        "Should mention the 10000 character limit");
+            }
+        }
+
+        @Test
+        @DisplayName("accepts messages at maximum size limit")
+        void echoAcceptsMaxSizeMessage() {
+            // Create a message exactly at the 10000 character limit
+            String maxSizeMessage = "x".repeat(10000);
+            EchoRequest request = new EchoRequest(maxSizeMessage);
+
+            // Validate using Bean Validation API
+            try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+                Validator validator = factory.getValidator();
+                Set<ConstraintViolation<EchoRequest>> violations = validator.validate(request);
+
+                assertTrue(violations.isEmpty(), "Should have no validation violations for max size message");
+            }
+
+            // Also verify the endpoint handles it correctly
+            Response response = resource.echo(request);
+            assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+            assertEquals(10000, entity.get("length"));
+        }
+
+        @Test
+        @DisplayName("rejects blank messages via Bean Validation")
+        void echoRejectsBlankMessage() {
+            EchoRequest request = new EchoRequest("");
+
+            try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+                Validator validator = factory.getValidator();
+                Set<ConstraintViolation<EchoRequest>> violations = validator.validate(request);
+
+                assertFalse(violations.isEmpty(), "Should have validation violations for blank message");
+            }
         }
     }
 

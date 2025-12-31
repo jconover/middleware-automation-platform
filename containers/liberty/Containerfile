@@ -1,11 +1,14 @@
-# Open Liberty Container - Multi-Stage Build
+# =============================================================================
+# Liberty Application Container
+# =============================================================================
+# IMPORTANT: Build this container from the REPOSITORY ROOT, not from this directory
 #
-# IMPORTANT: Build from PROJECT ROOT (not from containers/liberty directory)
-# The build context must include both sample-app/ and containers/liberty/
-#
-# Build (full rebuild from source):
-#   cd /path/to/middleware-automation-platform  # Project root
+# Build command:
 #   podman build -t liberty-app:1.0.0 -f containers/liberty/Containerfile .
+#
+# The build context must include sample-app/ for the multi-stage build.
+# This Containerfile compiles the WAR from source - no pre-build step needed.
+# =============================================================================
 #
 # Build with version info:
 #   podman build -t liberty-app:1.0.0 \
