@@ -40,9 +40,32 @@ spec:
           port: 53
 
 ---
+# =============================================================================
 # Allow egress to PostgreSQL database
+# =============================================================================
 # Required for: Application database connections
-# Note: Adjust the CIDR or podSelector based on your database deployment
+#
+# This policy supports three database deployment scenarios:
+#   1. PostgreSQL running in the same namespace (podSelector)
+#   2. PostgreSQL in a dedicated 'database' namespace (namespaceSelector)
+#   3. External database (AWS RDS, Cloud SQL) via IP CIDR
+#
+# ENVIRONMENT-SPECIFIC CUSTOMIZATION:
+#   The IP-based rule for external databases uses a PLACEHOLDER CIDR that
+#   MUST be customized per environment using Kustomize overlays.
+#
+#   Base configuration (this file):
+#     - cidr: 10.0.0.0/8 (broad - allows all 10.x.x.x addresses)
+#     - except: 10.0.0.0/24 (placeholder exclusion)
+#
+#   Production overlays SHOULD restrict to specific database subnets:
+#     - AWS:        10.0.128.0/20 (RDS subnet in your VPC)
+#     - Local:      Not needed (use in-cluster PostgreSQL)
+#
+#   See existing overlays for reference:
+#     - kubernetes/overlays/aws/network-policies-patch.yaml
+#     - kubernetes/overlays/local-homelab/kustomization.yaml
+# =============================================================================
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -51,6 +74,8 @@ metadata:
   labels:
     app.kubernetes.io/part-of: middleware-platform
     app.kubernetes.io/component: network-policy
+  annotations:
+    description: "Database egress - customize CIDR via environment overlays"
 spec:
   podSelector:
     matchLabels:
@@ -77,13 +102,29 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    # AWS RDS (external) - uses private subnet CIDR
-    # Adjust CIDR to match your VPC private subnets
+    # External database (AWS RDS, Cloud SQL, etc.) - IP-based access
+    # IMPORTANT: This is a PLACEHOLDER configuration for the base layer.
+    # The broad 10.0.0.0/8 CIDR should be restricted in production overlays.
+    #
+    # Example overlay patch for AWS (kubernetes/overlays/aws/):
+    #   - to:
+    #       - ipBlock:
+    #           cidr: 10.0.128.0/20  # Your actual RDS subnet CIDR
+    #     ports:
+    #       - protocol: TCP
+    #         port: 5432
     - to:
         - ipBlock:
             cidr: 10.0.0.0/8
             except:
-              - 10.0.0.0/24  # Exclude cluster pod network if overlapping
+              # PLACEHOLDER: This exclusion is an example showing how to prevent
+              # traffic to specific subnets within the 10.0.0.0/8 range.
+              # Common reasons to exclude:
+              #   - Cluster pod CIDR (if using 10.x.x.x for pods)
+              #   - Control plane subnet
+              #   - Other sensitive internal networks
+              # Customize this list in environment-specific overlays.
+              - 10.0.0.0/24
       ports:
         - protocol: TCP
           port: 5432
@@ -162,8 +203,44 @@ spec:
           port: 9443
 
 ---
+# =============================================================================
 # Allow egress to external HTTPS services
+# =============================================================================
+# SECURITY IMPLICATIONS:
+#   This policy allows outbound HTTPS (port 443) to ANY public IP address.
+#   While private RFC 1918 ranges and special-use addresses are excluded,
+#   this is still a broad egress rule.
+#
+# RISK ASSESSMENT:
+#   - Data exfiltration: Pods can send data to any public HTTPS endpoint
+#   - Command & control: Compromised pods could reach external C2 servers
+#   - Credential theft: Stolen credentials could be sent to attacker domains
+#
+# MITIGATION:
+#   For production environments with stricter security requirements, create
+#   environment-specific overlays that restrict egress to known destinations:
+#
+#   Example: Restrict to specific API providers
+#   ---
+#   apiVersion: networking.k8s.io/v1
+#   kind: NetworkPolicy
+#   metadata:
+#     name: allow-egress-to-external-https
+#   spec:
+#     egress:
+#       - to:
+#           - ipBlock:
+#               cidr: 203.0.113.0/24  # Your API provider's IP range
+#         ports:
+#           - protocol: TCP
+#             port: 443
+#
+# See existing overlays for environment-specific configurations:
+#   - kubernetes/overlays/aws/network-policies-patch.yaml
+#   - kubernetes/overlays/local-homelab/kustomization.yaml
+#
 # Required for: Third-party API calls, OAuth providers, external integrations
+# =============================================================================
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -172,6 +249,10 @@ metadata:
   labels:
     app.kubernetes.io/part-of: middleware-platform
     app.kubernetes.io/component: network-policy
+  annotations:
+    security.kubernetes.io/risk-level: "medium"
+    security.kubernetes.io/requires-review: "true"
+    description: "Broad external HTTPS egress - restrict in production overlays"
 spec:
   podSelector:
     matchLabels:
@@ -179,14 +260,25 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Allow HTTPS to any external IP (0.0.0.0/0 minus private ranges)
+    # Allow HTTPS to any external IP (0.0.0.0/0 minus private/special ranges)
+    # PRODUCTION: Override this policy in environment overlays to restrict
+    # to specific known destinations (API providers, OAuth endpoints, etc.)
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
             except:
+              # RFC 1918 private address ranges
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
+              # Loopback addresses - prevent localhost access
+              - 127.0.0.0/8
+              # Link-local addresses (includes cloud metadata services)
+              # CRITICAL: 169.254.169.254 is the cloud metadata endpoint
+              # Excluding this prevents SSRF attacks against cloud metadata
+              - 169.254.0.0/16
+              # Carrier-grade NAT (shared address space)
+              - 100.64.0.0/10
       ports:
         - protocol: TCP
           port: 443

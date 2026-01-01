@@ -94,6 +94,14 @@ resource "aws_iam_role_policy" "monitoring_ecs_discovery" {
     Version = "2012-10-17"
     Statement = [
       {
+        # AWS ECS List/Describe APIs do not support resource-level permissions.
+        # Per AWS documentation, these actions require Resource = "*":
+        # - ecs:ListClusters, ecs:ListTasks - list operations have no ARN
+        # - ecs:DescribeTasks, ecs:DescribeServices - require task/service ARNs
+        #   not known until discovery runs
+        # - ecs:DescribeContainerInstances, ecs:DescribeTaskDefinition - same
+        # See: https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonelasticcontainerservice.html
+        # Mitigation: This role is only attached to the monitoring server instance.
         Sid    = "ECSServiceDiscovery"
         Effect = "Allow"
         Action = [
@@ -105,8 +113,16 @@ resource "aws_iam_role_policy" "monitoring_ecs_discovery" {
           "ecs:DescribeTaskDefinition"
         ]
         Resource = "*"
+        # Condition block not supported for these actions - AWS does not allow
+        # tag-based conditions on ECS describe/list operations
       },
       {
+        # AWS EC2 Describe APIs do not support resource-level permissions.
+        # Per AWS documentation, ec2:DescribeInstances and ec2:DescribeNetworkInterfaces
+        # require Resource = "*" - they are read-only enumeration operations.
+        # See: https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonec2.html
+        # Mitigation: This role is only attached to the monitoring server instance,
+        # and these are read-only operations with no modification capability.
         Sid    = "EC2DescribeForECS"
         Effect = "Allow"
         Action = [

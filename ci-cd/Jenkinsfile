@@ -354,8 +354,82 @@ spec:
                             # Disable command tracing to prevent credential exposure
                             set +x
 
+                            # AWS CLI wrapper with retry logic and exponential backoff
+                            # Handles transient failures, throttling, and provides meaningful error messages
+                            aws_cli_with_retry() {
+                                local max_attempts=5
+                                local base_delay=2
+                                local max_delay=60
+                                local attempt=1
+                                local exit_code=0
+                                local output=""
+                                local error_output=""
+
+                                while [ $attempt -le $max_attempts ]; do
+                                    # Capture both stdout and stderr
+                                    error_output=$(mktemp)
+                                    output=$(aws "$@" 2>"${error_output}") && exit_code=0 || exit_code=$?
+
+                                    if [ $exit_code -eq 0 ]; then
+                                        rm -f "${error_output}"
+                                        echo "${output}"
+                                        return 0
+                                    fi
+
+                                    # Read and analyze error message
+                                    local error_msg=$(cat "${error_output}")
+                                    rm -f "${error_output}"
+
+                                    # Check for specific error types
+                                    if echo "${error_msg}" | grep -qi "ExpiredToken\|ExpiredTokenException"; then
+                                        echo "ERROR: AWS credentials have expired. Please refresh credentials and retry." >&2
+                                        return 1
+                                    fi
+
+                                    if echo "${error_msg}" | grep -qi "InvalidClientTokenId\|UnrecognizedClientException"; then
+                                        echo "ERROR: Invalid AWS credentials. Verify AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY." >&2
+                                        return 1
+                                    fi
+
+                                    if echo "${error_msg}" | grep -qi "AccessDenied\|UnauthorizedAccess"; then
+                                        echo "ERROR: Access denied. The IAM role/user lacks required permissions for: aws $*" >&2
+                                        return 1
+                                    fi
+
+                                    # Retryable errors: throttling, service unavailable, connection issues
+                                    if echo "${error_msg}" | grep -qi "Throttling\|ThrottlingException\|Rate exceeded\|RequestLimitExceeded"; then
+                                        echo "  [RETRY] Request throttled, backing off... (attempt ${attempt}/${max_attempts})" >&2
+                                    elif echo "${error_msg}" | grep -qi "ServiceUnavailable\|InternalError\|ServiceException"; then
+                                        echo "  [RETRY] AWS service temporarily unavailable (attempt ${attempt}/${max_attempts})" >&2
+                                    elif echo "${error_msg}" | grep -qi "Could not connect\|Connection refused\|Network"; then
+                                        echo "  [RETRY] Network connectivity issue (attempt ${attempt}/${max_attempts})" >&2
+                                    else
+                                        # Unknown error - log and fail
+                                        echo "ERROR: AWS CLI command failed: aws $*" >&2
+                                        echo "       Exit code: ${exit_code}" >&2
+                                        echo "       Error: ${error_msg}" >&2
+                                        return $exit_code
+                                    fi
+
+                                    # Calculate delay with exponential backoff and jitter
+                                    local delay=$((base_delay * (2 ** (attempt - 1))))
+                                    [ $delay -gt $max_delay ] && delay=$max_delay
+                                    # Add random jitter (0-25% of delay)
+                                    local jitter=$((RANDOM % (delay / 4 + 1)))
+                                    delay=$((delay + jitter))
+
+                                    echo "  Waiting ${delay}s before retry..." >&2
+                                    sleep $delay
+                                    attempt=$((attempt + 1))
+                                done
+
+                                echo "ERROR: AWS CLI command failed after ${max_attempts} attempts: aws $*" >&2
+                                return 1
+                            }
+
                             # Get AWS account ID and set ECR repository URL
-                            AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null)
+                            echo "Retrieving AWS account ID..."
+                            AWS_ACCOUNT_ID=$(aws_cli_with_retry sts get-caller-identity --query Account --output text)
                             if [ -z "${AWS_ACCOUNT_ID}" ]; then
                                 echo "ERROR: Failed to retrieve AWS account ID"
                                 exit 1
@@ -364,7 +438,7 @@ spec:
 
                             # Login to ECR (password is masked by redirecting to /dev/null on error)
                             echo "Authenticating with ECR..."
-                            ECR_PASSWORD=$(aws ecr get-login-password --region ${AWS_REGION} 2>/dev/null)
+                            ECR_PASSWORD=$(aws_cli_with_retry ecr get-login-password --region ${AWS_REGION})
                             if [ -z "${ECR_PASSWORD}" ]; then
                                 echo "ERROR: Failed to retrieve ECR login password"
                                 exit 1
@@ -438,12 +512,58 @@ spec:
                             env.PREVIOUS_TASK_DEF_ARN = sh(
                                 script: '''#!/bin/bash
                                     set +x
-                                    aws ecs describe-services \
+
+                                    # AWS CLI wrapper with retry logic for this script block
+                                    aws_cli_with_retry() {
+                                        local max_attempts=5
+                                        local base_delay=2
+                                        local max_delay=60
+                                        local attempt=1
+                                        local exit_code=0
+                                        local output=""
+                                        local error_output=""
+
+                                        while [ $attempt -le $max_attempts ]; do
+                                            error_output=$(mktemp)
+                                            output=$(aws "$@" 2>"${error_output}") && exit_code=0 || exit_code=$?
+
+                                            if [ $exit_code -eq 0 ]; then
+                                                rm -f "${error_output}"
+                                                echo "${output}"
+                                                return 0
+                                            fi
+
+                                            local error_msg=$(cat "${error_output}")
+                                            rm -f "${error_output}"
+
+                                            # Non-retryable errors
+                                            if echo "${error_msg}" | grep -qi "ExpiredToken\|InvalidClientTokenId\|AccessDenied"; then
+                                                echo "ERROR: AWS authentication/authorization failed" >&2
+                                                return 1
+                                            fi
+
+                                            # Retryable errors
+                                            if echo "${error_msg}" | grep -qi "Throttling\|ServiceUnavailable\|InternalError\|Could not connect"; then
+                                                local delay=$((base_delay * (2 ** (attempt - 1))))
+                                                [ $delay -gt $max_delay ] && delay=$max_delay
+                                                echo "  [RETRY] Transient error, waiting ${delay}s (attempt ${attempt}/${max_attempts})" >&2
+                                                sleep $delay
+                                                attempt=$((attempt + 1))
+                                                continue
+                                            fi
+
+                                            echo "ERROR: AWS CLI failed: ${error_msg}" >&2
+                                            return $exit_code
+                                        done
+                                        return 1
+                                    }
+
+                                    aws_cli_with_retry ecs describe-services \
                                         --cluster ${ECS_CLUSTER} \
                                         --services ${ECS_SERVICE} \
                                         --region ${AWS_REGION} \
                                         --query 'services[0].taskDefinition' \
-                                        --output text 2>/dev/null
+                                        --output text
                                 ''',
                                 returnStdout: true
                             ).trim()
@@ -458,29 +578,109 @@ spec:
                             # Disable command tracing to prevent credential exposure in AWS CLI output
                             set +x
 
+                            # AWS CLI wrapper with retry logic and exponential backoff
+                            aws_cli_with_retry() {
+                                local max_attempts=5
+                                local base_delay=2
+                                local max_delay=60
+                                local attempt=1
+                                local exit_code=0
+                                local output=""
+                                local error_output=""
+
+                                while [ $attempt -le $max_attempts ]; do
+                                    error_output=$(mktemp)
+                                    output=$(aws "$@" 2>"${error_output}") && exit_code=0 || exit_code=$?
+
+                                    if [ $exit_code -eq 0 ]; then
+                                        rm -f "${error_output}"
+                                        echo "${output}"
+                                        return 0
+                                    fi
+
+                                    local error_msg=$(cat "${error_output}")
+                                    rm -f "${error_output}"
+
+                                    # Non-retryable credential/permission errors
+                                    if echo "${error_msg}" | grep -qi "ExpiredToken\|ExpiredTokenException"; then
+                                        echo "ERROR: AWS credentials have expired. Please refresh credentials and retry." >&2
+                                        return 1
+                                    fi
+
+                                    if echo "${error_msg}" | grep -qi "InvalidClientTokenId\|UnrecognizedClientException"; then
+                                        echo "ERROR: Invalid AWS credentials." >&2
+                                        return 1
+                                    fi
+
+                                    if echo "${error_msg}" | grep -qi "AccessDenied\|UnauthorizedAccess"; then
+                                        echo "ERROR: Access denied for: aws $*" >&2
+                                        return 1
+                                    fi
+
+                                    # Service not found - not retryable
+                                    if echo "${error_msg}" | grep -qi "ServiceNotFound\|ServiceNotFoundException"; then
+                                        echo "ERROR: ECS service not found: ${ECS_SERVICE}" >&2
+                                        return 1
+                                    fi
+
+                                    # Cluster not found - not retryable
+                                    if echo "${error_msg}" | grep -qi "ClusterNotFoundException"; then
+                                        echo "ERROR: ECS cluster not found: ${ECS_CLUSTER}" >&2
+                                        return 1
+                                    fi
+
+                                    # Retryable errors
+                                    if echo "${error_msg}" | grep -qi "Throttling\|ThrottlingException\|Rate exceeded"; then
+                                        echo "  [RETRY] Request throttled (attempt ${attempt}/${max_attempts})" >&2
+                                    elif echo "${error_msg}" | grep -qi "ServiceUnavailable\|InternalError"; then
+                                        echo "  [RETRY] AWS service temporarily unavailable (attempt ${attempt}/${max_attempts})" >&2
+                                    elif echo "${error_msg}" | grep -qi "Could not connect\|Connection refused"; then
+                                        echo "  [RETRY] Network issue (attempt ${attempt}/${max_attempts})" >&2
+                                    else
+                                        echo "ERROR: AWS CLI failed: aws $*" >&2
+                                        echo "       Error: ${error_msg}" >&2
+                                        return $exit_code
+                                    fi
+
+                                    local delay=$((base_delay * (2 ** (attempt - 1))))
+                                    [ $delay -gt $max_delay ] && delay=$max_delay
+                                    local jitter=$((RANDOM % (delay / 4 + 1)))
+                                    delay=$((delay + jitter))
+
+                                    echo "  Waiting ${delay}s before retry..." >&2
+                                    sleep $delay
+                                    attempt=$((attempt + 1))
+                                done
+
+                                echo "ERROR: AWS CLI command failed after ${max_attempts} attempts" >&2
+                                return 1
+                            }
+
                             echo "Deploying to ECS cluster: ${ECS_CLUSTER}, service: ${ECS_SERVICE}"
 
                             # Force new deployment with the latest image
-                            # Redirect verbose output to prevent ARN/account exposure
-                            aws ecs update-service \
+                            if ! aws_cli_with_retry ecs update-service \
                                 --cluster ${ECS_CLUSTER} \
                                 --service ${ECS_SERVICE} \
                                 --force-new-deployment \
                                 --region ${AWS_REGION} \
                                 --output text \
-                                --query 'service.serviceName' 2>/dev/null || {
-                                    echo "ERROR: Failed to update ECS service"
-                                    exit 1
-                                }
+                                --query 'service.serviceName' > /dev/null; then
+                                echo "ERROR: Failed to update ECS service"
+                                exit 1
+                            fi
+                            echo "ECS service update initiated successfully"
 
                             echo "Waiting for ECS service to stabilize (this may take several minutes)..."
-                            aws ecs wait services-stable \
+                            # Note: aws ecs wait has built-in retry, but we wrap for consistent error handling
+                            if ! aws_cli_with_retry ecs wait services-stable \
                                 --cluster ${ECS_CLUSTER} \
                                 --services ${ECS_SERVICE} \
-                                --region ${AWS_REGION} 2>/dev/null || {
-                                    echo "ERROR: ECS service failed to stabilize"
-                                    exit 1
-                                }
+                                --region ${AWS_REGION}; then
+                                echo "ERROR: ECS service failed to stabilize within timeout"
+                                echo "       Check ECS console for deployment status and task health"
+                                exit 1
+                            fi
 
                             echo "ECS deployment complete!"
                         '''
@@ -496,28 +696,78 @@ spec:
                                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID]]) {
                                     sh '''#!/bin/bash
                                         set +x
+
+                                        # AWS CLI wrapper with retry for rollback operations
+                                        aws_cli_with_retry() {
+                                            local max_attempts=5
+                                            local base_delay=2
+                                            local max_delay=60
+                                            local attempt=1
+                                            local exit_code=0
+                                            local output=""
+                                            local error_output=""
+
+                                            while [ $attempt -le $max_attempts ]; do
+                                                error_output=$(mktemp)
+                                                output=$(aws "$@" 2>"${error_output}") && exit_code=0 || exit_code=$?
+
+                                                if [ $exit_code -eq 0 ]; then
+                                                    rm -f "${error_output}"
+                                                    echo "${output}"
+                                                    return 0
+                                                fi
+
+                                                local error_msg=$(cat "${error_output}")
+                                                rm -f "${error_output}"
+
+                                                # Non-retryable errors
+                                                if echo "${error_msg}" | grep -qi "ExpiredToken\|InvalidClientTokenId\|AccessDenied"; then
+                                                    echo "ERROR: AWS authentication/authorization failed during rollback" >&2
+                                                    echo "       Manual intervention required" >&2
+                                                    return 1
+                                                fi
+
+                                                # Retryable errors - critical during rollback
+                                                if echo "${error_msg}" | grep -qi "Throttling\|ServiceUnavailable\|InternalError\|Could not connect"; then
+                                                    local delay=$((base_delay * (2 ** (attempt - 1))))
+                                                    [ $delay -gt $max_delay ] && delay=$max_delay
+                                                    echo "  [RETRY] Transient error during rollback, waiting ${delay}s (attempt ${attempt}/${max_attempts})" >&2
+                                                    sleep $delay
+                                                    attempt=$((attempt + 1))
+                                                    continue
+                                                fi
+
+                                                echo "ERROR: Rollback AWS CLI failed: ${error_msg}" >&2
+                                                return $exit_code
+                                            done
+                                            return 1
+                                        }
+
                                         echo "Rolling back to task definition: ${PREVIOUS_TASK_DEF_ARN}"
 
-                                        aws ecs update-service \
+                                        if ! aws_cli_with_retry ecs update-service \
                                             --cluster ${ECS_CLUSTER} \
                                             --service ${ECS_SERVICE} \
                                             --task-definition ${PREVIOUS_TASK_DEF_ARN} \
                                             --region ${AWS_REGION} \
                                             --output text \
-                                            --query 'service.serviceName' 2>/dev/null || {
-                                                echo "ERROR: Rollback failed - manual intervention required"
-                                                exit 1
-                                            }
+                                            --query 'service.serviceName' > /dev/null; then
+                                            echo "ERROR: Rollback failed - manual intervention required"
+                                            echo "       Task definition to restore: ${PREVIOUS_TASK_DEF_ARN}"
+                                            echo "       Command: aws ecs update-service --cluster ${ECS_CLUSTER} --service ${ECS_SERVICE} --task-definition ${PREVIOUS_TASK_DEF_ARN}"
+                                            exit 1
+                                        fi
 
                                         echo "Waiting for rollback to complete..."
-                                        aws ecs wait services-stable \
+                                        if ! aws_cli_with_retry ecs wait services-stable \
                                             --cluster ${ECS_CLUSTER} \
                                             --services ${ECS_SERVICE} \
-                                            --region ${AWS_REGION} 2>/dev/null || {
-                                                echo "WARNING: Rollback may not have completed successfully"
-                                            }
-
-                                        echo "Rollback completed successfully"
+                                            --region ${AWS_REGION}; then
+                                            echo "WARNING: Rollback may not have completed successfully"
+                                            echo "         Check ECS console: https://console.aws.amazon.com/ecs/home?region=${AWS_REGION}#/clusters/${ECS_CLUSTER}/services/${ECS_SERVICE}"
+                                        else
+                                            echo "Rollback completed successfully"
+                                        fi
                                     '''
                                 }
                             }
@@ -545,11 +795,50 @@ spec:
                                     # Disable command tracing to prevent infrastructure details exposure
                                     set +x
 
+                                    # Validate endpoint path to prevent path traversal and injection attacks
+                                    # Returns 0 if valid, 1 if invalid
+                                    validate_endpoint_path() {
+                                        local path="$1"
+
+                                        # Path must start with /
+                                        if [[ ! "${path}" =~ ^/ ]]; then
+                                            echo "ERROR: Endpoint path must start with '/': ${path}"
+                                            return 1
+                                        fi
+
+                                        # Block path traversal patterns
+                                        if [[ "${path}" =~ \.\. ]]; then
+                                            echo "ERROR: Endpoint path contains suspicious pattern '..': ${path}"
+                                            return 1
+                                        fi
+
+                                        # Block double slashes (could be used for protocol injection)
+                                        if [[ "${path}" =~ // ]]; then
+                                            echo "ERROR: Endpoint path contains suspicious pattern '//': ${path}"
+                                            return 1
+                                        fi
+
+                                        # Only allow alphanumeric characters, /, -, _
+                                        if [[ ! "${path}" =~ ^[a-zA-Z0-9/_-]+$ ]]; then
+                                            echo "ERROR: Endpoint path contains invalid characters: ${path}"
+                                            echo "       Only alphanumeric, '/', '-', and '_' are allowed"
+                                            return 1
+                                        fi
+
+                                        return 0
+                                    }
+
                                     # Health check function with retry logic
                                     check_endpoint() {
                                         local endpoint="$1"
                                         local description="$2"
                                         local attempt=1
+
+                                        # Validate endpoint path before making request
+                                        if ! validate_endpoint_path "${endpoint}"; then
+                                            echo "  [FAIL] ${description} - invalid endpoint path"
+                                            return 1
+                                        fi
 
                                         echo "Checking ${description}..."
                                         while [ $attempt -le ${HEALTH_CHECK_MAX_RETRIES} ]; do
@@ -566,6 +855,56 @@ spec:
                                         return 1
                                     }
 
+                                    # AWS CLI wrapper with retry logic for health check operations
+                                    aws_cli_with_retry() {
+                                        local max_attempts=5
+                                        local base_delay=2
+                                        local max_delay=60
+                                        local attempt=1
+                                        local exit_code=0
+                                        local output=""
+                                        local error_output=""
+
+                                        while [ $attempt -le $max_attempts ]; do
+                                            error_output=$(mktemp)
+                                            output=$(aws "$@" 2>"${error_output}") && exit_code=0 || exit_code=$?
+
+                                            if [ $exit_code -eq 0 ]; then
+                                                rm -f "${error_output}"
+                                                echo "${output}"
+                                                return 0
+                                            fi
+
+                                            local error_msg=$(cat "${error_output}")
+                                            rm -f "${error_output}"
+
+                                            # Non-retryable errors
+                                            if echo "${error_msg}" | grep -qi "ExpiredToken\|InvalidClientTokenId\|AccessDenied"; then
+                                                echo "ERROR: AWS authentication/authorization failed" >&2
+                                                return 1
+                                            fi
+
+                                            if echo "${error_msg}" | grep -qi "LoadBalancerNotFound"; then
+                                                echo "ERROR: ALB not found: ${ALB_NAME}" >&2
+                                                return 1
+                                            fi
+
+                                            # Retryable errors
+                                            if echo "${error_msg}" | grep -qi "Throttling\|ServiceUnavailable\|InternalError\|Could not connect"; then
+                                                local delay=$((base_delay * (2 ** (attempt - 1))))
+                                                [ $delay -gt $max_delay ] && delay=$max_delay
+                                                echo "  [RETRY] Transient error, waiting ${delay}s (attempt ${attempt}/${max_attempts})" >&2
+                                                sleep $delay
+                                                attempt=$((attempt + 1))
+                                                continue
+                                            fi
+
+                                            echo "ERROR: AWS CLI failed: ${error_msg}" >&2
+                                            return $exit_code
+                                        done
+                                        return 1
+                                    }
+
                                     echo "================================================================"
                                     echo "ECS Health Check - Version: ${VERSION}"
                                     echo "Max retries: ${HEALTH_CHECK_MAX_RETRIES}, Delay: ${HEALTH_CHECK_RETRY_DELAY}s"
@@ -573,19 +912,20 @@ spec:
 
                                     # Wait for ECS service to stabilize
                                     echo "Waiting for ECS service to stabilize..."
-                                    aws ecs wait services-stable \
+                                    if ! aws_cli_with_retry ecs wait services-stable \
                                         --cluster ${ECS_CLUSTER} \
                                         --services ${ECS_SERVICE} \
-                                        --region ${AWS_REGION} 2>/dev/null || {
-                                            echo "WARNING: ECS wait timed out, proceeding with health checks..."
-                                        }
+                                        --region ${AWS_REGION}; then
+                                        echo "WARNING: ECS wait timed out or failed, proceeding with health checks..."
+                                    fi
 
-                                    # Get ALB DNS name from AWS (suppress verbose output)
-                                    ALB_DNS=$(aws elbv2 describe-load-balancers \
+                                    # Get ALB DNS name from AWS
+                                    echo "Retrieving ALB DNS name..."
+                                    ALB_DNS=$(aws_cli_with_retry elbv2 describe-load-balancers \
                                         --names ${ALB_NAME} \
                                         --query 'LoadBalancers[0].DNSName' \
                                         --output text \
-                                        --region ${AWS_REGION} 2>/dev/null)
+                                        --region ${AWS_REGION})
 
                                     if [ -z "${ALB_DNS}" ] || [ "${ALB_DNS}" = "None" ]; then
                                         echo "ERROR: Failed to retrieve ALB DNS name"
@@ -631,12 +971,51 @@ spec:
                         sh '''#!/bin/bash
                             set -e
 
+                            # Validate endpoint path to prevent path traversal and injection attacks
+                            # Returns 0 if valid, 1 if invalid
+                            validate_endpoint_path() {
+                                local path="$1"
+
+                                # Path must start with /
+                                if [[ ! "${path}" =~ ^/ ]]; then
+                                    echo "ERROR: Endpoint path must start with '/': ${path}"
+                                    return 1
+                                fi
+
+                                # Block path traversal patterns
+                                if [[ "${path}" =~ \.\. ]]; then
+                                    echo "ERROR: Endpoint path contains suspicious pattern '..': ${path}"
+                                    return 1
+                                fi
+
+                                # Block double slashes (could be used for protocol injection)
+                                if [[ "${path}" =~ // ]]; then
+                                    echo "ERROR: Endpoint path contains suspicious pattern '//': ${path}"
+                                    return 1
+                                fi
+
+                                # Only allow alphanumeric characters, /, -, _
+                                if [[ ! "${path}" =~ ^[a-zA-Z0-9/_-]+$ ]]; then
+                                    echo "ERROR: Endpoint path contains invalid characters: ${path}"
+                                    echo "       Only alphanumeric, '/', '-', and '_' are allowed"
+                                    return 1
+                                fi
+
+                                return 0
+                            }
+
                             # Health check function with retry logic
                             check_endpoint() {
                                 local base_url="$1"
                                 local endpoint="$2"
                                 local description="$3"
                                 local attempt=1
+
+                                # Validate endpoint path before making request
+                                if ! validate_endpoint_path "${endpoint}"; then
+                                    echo "  [FAIL] ${description} - invalid endpoint path"
+                                    return 1
+                                fi
 
                                 echo "Checking ${description}..."
                                 while [ $attempt -le ${HEALTH_CHECK_MAX_RETRIES} ]; do

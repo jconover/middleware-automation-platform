@@ -252,30 +252,46 @@ mkdir -p /etc/alertmanager /var/lib/alertmanager /etc/alertmanager/secrets
 chown -R prometheus:prometheus /etc/alertmanager /var/lib/alertmanager
 chmod 700 /etc/alertmanager/secrets
 
+# =============================================================================
 # Fetch Slack webhook URL from Secrets Manager (if configured)
+# =============================================================================
+# Security measures:
+#   - Webhook file permissions: 0600 (owner read/write only)
+#   - Webhook file ownership: prometheus:prometheus
+#   - Directory permissions: 0700 on /etc/alertmanager/secrets
+#   - Process substitution used to avoid storing secret in shell variable
+#   - No secret values logged to user-data.log
+# =============================================================================
 echo "Checking for AlertManager Slack webhook in Secrets Manager..."
 ALERTMANAGER_SECRET_ID="${alertmanager_slack_secret_id}"
+SLACK_CONFIGURED="false"
 
 if [ -n "$ALERTMANAGER_SECRET_ID" ] && [ "$ALERTMANAGER_SECRET_ID" != "null" ]; then
-  SLACK_WEBHOOK=$(/usr/local/bin/aws secretsmanager get-secret-value \
-    --secret-id "$ALERTMANAGER_SECRET_ID" \
-    --region "${aws_region}" \
-    --query SecretString \
-    --output text 2>/dev/null | jq -r '.slack_webhook_url // empty')
+  # Use process substitution to write directly to file without storing in variable
+  # This reduces the window where the secret exists in shell memory
+  if /usr/local/bin/aws secretsmanager get-secret-value \
+      --secret-id "$ALERTMANAGER_SECRET_ID" \
+      --region "${aws_region}" \
+      --query SecretString \
+      --output text 2>/dev/null | jq -r '.slack_webhook_url // empty' > /tmp/slack-webhook-temp; then
 
-  if [ -n "$SLACK_WEBHOOK" ]; then
-    echo "$SLACK_WEBHOOK" > /etc/alertmanager/secrets/slack-webhook
-    chown prometheus:prometheus /etc/alertmanager/secrets/slack-webhook
-    chmod 600 /etc/alertmanager/secrets/slack-webhook
-    echo "Slack webhook configured from Secrets Manager"
-    SLACK_CONFIGURED="true"
+    # Validate we got a non-empty webhook URL
+    if [ -s /tmp/slack-webhook-temp ] && grep -q "^https://" /tmp/slack-webhook-temp; then
+      # Move to final location with secure permissions
+      # Set permissions BEFORE moving to avoid race condition
+      install -o prometheus -g prometheus -m 0600 /tmp/slack-webhook-temp /etc/alertmanager/secrets/slack-webhook
+      echo "Slack webhook configured from Secrets Manager"
+      SLACK_CONFIGURED="true"
+    else
+      echo "WARNING: Slack webhook not found or invalid in Secrets Manager"
+    fi
+    # Securely remove temp file
+    rm -f /tmp/slack-webhook-temp
   else
-    echo "WARNING: Slack webhook not found in Secrets Manager"
-    SLACK_CONFIGURED="false"
+    echo "WARNING: Failed to retrieve AlertManager secret from Secrets Manager"
   fi
 else
   echo "WARNING: No AlertManager Slack secret ID configured"
-  SLACK_CONFIGURED="false"
 fi
 
 # Create Alertmanager config

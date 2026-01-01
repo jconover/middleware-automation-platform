@@ -712,6 +712,12 @@ echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:300
 
 ## AWS Cost Estimate (Production)
 
+> **Note:** These are the authoritative cost estimates for this project.
+> Actual costs vary based on usage, data transfer, and region.
+> For precise estimates, use the [AWS Pricing Calculator](https://calculator.aws/).
+>
+> *Last updated: January 2026*
+
 ### ECS Fargate (Default)
 
 | Resource | Type | Monthly Cost |

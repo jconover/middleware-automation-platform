@@ -79,11 +79,65 @@
       delegate_to: localhost
       become: false
       no_log: true
+      retries: 3
+      delay: 5
+      until: db_secret_result.rc == 0
+      failed_when: false
+
+    - name: Fail with helpful message if secret not found
+      ansible.builtin.fail:
+        msg: |
+          ERROR: Failed to retrieve database credentials from AWS Secrets Manager.
+
+          Secret ID: mw-prod/database/credentials
+          Region: {{ aws_region | default('us-east-1') }}
+          Exit code: {{ db_secret_result.rc }}
+
+          Common causes and solutions:
+          {% if 'ResourceNotFoundException' in (db_secret_result.stderr | default('')) %}
+          - SECRET NOT FOUND: The secret 'mw-prod/database/credentials' does not exist.
+            Create it with: aws secretsmanager create-secret --name mw-prod/database/credentials --secret-string '{"username":"dbuser","password":"dbpass"}'
+          {% elif 'AccessDeniedException' in (db_secret_result.stderr | default('')) %}
+          - PERMISSION DENIED: The IAM role/user lacks secretsmanager:GetSecretValue permission.
+            Ensure the execution role has access to this secret in Secrets Manager.
+          {% elif 'InvalidRequestException' in (db_secret_result.stderr | default('')) %}
+          - INVALID REQUEST: The secret may be scheduled for deletion or in an invalid state.
+            Check the secret status in AWS Console.
+          {% elif 'UnrecognizedClientException' in (db_secret_result.stderr | default('')) or 'InvalidSignatureException' in (db_secret_result.stderr | default('')) %}
+          - AUTHENTICATION ERROR: AWS credentials are invalid or expired.
+            Run 'aws sts get-caller-identity' to verify credentials.
+          {% else %}
+          - Check AWS CLI configuration: aws configure list
+          - Verify credentials are valid: aws sts get-caller-identity
+          - Test secret access: aws secretsmanager describe-secret --secret-id mw-prod/database/credentials
+          - Check network connectivity to AWS endpoints
+          {% endif %}
+
+          Raw error: {{ db_secret_result.stderr | default('No stderr output') }}
+      when: db_secret_result.rc != 0
+
+    - name: Validate secret response contains expected data
+      ansible.builtin.assert:
+        that:
+          - db_secret_result.stdout is defined
+          - db_secret_result.stdout | length > 0
+          - (db_secret_result.stdout | from_json).password is defined
+          - (db_secret_result.stdout | from_json).username is defined
+        fail_msg: |
+          ERROR: Secret retrieved but missing required fields.
+
+          The secret 'mw-prod/database/credentials' must contain JSON with 'username' and 'password' fields.
+          Expected format: {"username": "dbuser", "password": "dbpassword"}
+
+          Update the secret with: aws secretsmanager put-secret-value --secret-id mw-prod/database/credentials --secret-string '{"username":"user","password":"pass"}'
+      when: db_secret_result.rc == 0
+      no_log: true
 
     - name: Parse database credentials
       ansible.builtin.set_fact:
         postgresql_password: "{{ (db_secret_result.stdout | from_json).password }}"
         postgresql_user: "{{ (db_secret_result.stdout | from_json).username }}"
+      when: db_secret_result.rc == 0
       no_log: true
 
 - name: Warn if database password not available

@@ -228,3 +228,66 @@ spec:
           annotations:
             summary: "High connection pool wait time on {{ $labels.pod }}"
             description: "Applications on {{ $labels.pod }} are waiting {{ $value | printf \"%.2f\" }}s on average for database connections."
+
+        - alert: LibertyDatabaseConnectionFailure
+          # High destroy/create ratio indicates connections are failing
+          # A healthy pool has minimal destroy events; high ratio means connections are being killed
+          # Liberty mpMetrics-5.0: connectionpool_create_total, connectionpool_destroy_total
+          expr: |
+            (
+              rate(connectionpool_destroy_total{job="liberty", mp_scope="vendor"}[5m])
+              / (rate(connectionpool_create_total{job="liberty", mp_scope="vendor"}[5m]) + 0.001)
+            ) > 0.5
+            and rate(connectionpool_destroy_total{job="liberty", mp_scope="vendor"}[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: critical
+            component: liberty
+          annotations:
+            summary: "Database connection failures detected on {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} is experiencing database connection failures. Destroy/create ratio is {{ $value | printf \"%.2f\" }} (>0.5 indicates issues). Check database health, network connectivity, and connection timeout settings."
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/liberty-database-connection-failure.md"
+
+        - alert: LibertyDatabaseConnectionPoolExhausted
+          # Zero free connections means all connections are in use
+          # Liberty mpMetrics-5.0: connectionpool_freeConnections
+          expr: |
+            connectionpool_freeConnections{job="liberty", mp_scope="vendor"} == 0
+            and connectionpool_managedConnections{job="liberty", mp_scope="vendor"} > 0
+          for: 2m
+          labels:
+            severity: critical
+            component: liberty
+          annotations:
+            summary: "Database connection pool exhausted on {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} has zero free database connections. All {{ $labels.datasource }} connections are in use. New requests will queue or fail. Consider increasing pool size or investigating slow queries."
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/liberty-connection-pool-exhausted.md"
+
+        - alert: LibertyDatabaseQueuedRequestsHigh
+          # Requests are queuing for connections when pool is saturated
+          # Liberty mpMetrics-5.0: connectionpool_queuedRequests (gauge of currently queued)
+          # or connectionpool_queuedRequests_total (counter) - use rate on counter
+          expr: |
+            connectionpool_queuedRequests{job="liberty", mp_scope="vendor"} > 5
+          for: 2m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "Database connection requests queuing on {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} has {{ $value | printf \"%.0f\" }} requests waiting for database connections. This indicates connection pool saturation. Consider increasing maxPoolSize or optimizing database queries."
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/liberty-connection-queue-high.md"
+
+        - alert: LibertyDatabaseConnectionChurn
+          # High connection creation rate indicates pool instability
+          # Could mean connections are timing out or being invalidated frequently
+          # Liberty mpMetrics-5.0: connectionpool_create_total
+          expr: |
+            rate(connectionpool_create_total{job="liberty", mp_scope="vendor"}[5m]) > 1
+          for: 10m
+          labels:
+            severity: warning
+            component: liberty
+          annotations:
+            summary: "High database connection churn on {{ $labels.pod }}"
+            description: "Liberty pod {{ $labels.pod }} is creating {{ $value | printf \"%.2f\" }} new connections per second. High churn may indicate connection timeout issues, database restarts, or network instability."

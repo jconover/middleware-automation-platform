@@ -45,6 +45,47 @@
               type="PKCS12" />
 
     <mpHealth authentication="false"/>
+
+    <!-- ===================================================================== -->
+    <!-- Metrics Endpoint Security                                             -->
+    <!-- ===================================================================== -->
+    <!--
+         SECURITY NOTE: Metrics authentication is intentionally disabled.
+
+         WHY AUTHENTICATION IS DISABLED:
+         - Prometheus requires unauthenticated scraping by default
+         - MicroProfile Metrics 5.0+ with authentication requires complex
+           Prometheus configuration (bearer tokens, TLS client certs)
+         - The operational complexity outweighs the security benefit given
+           the network-level protections in place
+
+         SECURITY LAYERS PROTECTING /metrics:
+         1. AWS ALB Rule - Blocks public access to /metrics (returns 403)
+            See: automated/terraform/environments/prod-aws/loadbalancer.tf
+            Rule: path-pattern "/metrics" -> fixed-response 403
+
+         2. Security Groups - Only ALB and monitoring server can reach Liberty
+            - ECS tasks in private subnets, no public IP
+            - EC2 instances in private subnets
+            - Prometheus server whitelisted in security group
+
+         3. Kubernetes NetworkPolicy (local cluster)
+            - Only prometheus namespace can access /metrics
+            See: kubernetes/base/monitoring/liberty-networkpolicy.yaml
+
+         4. VPC Network Isolation
+            - Liberty runs in private subnets (no internet ingress)
+            - NAT gateway for egress only
+
+         WHEN TO ENABLE AUTHENTICATION:
+         - If metrics must traverse untrusted networks
+         - If compliance requires authenticated endpoints
+         - If using a metrics aggregator that supports auth
+
+         TO ENABLE: Set authentication="true" and configure:
+         - <quickStartSecurity userName="metrics" userPassword="${env.METRICS_PASSWORD}"/>
+         - Configure Prometheus with basic_auth in scrape_config
+    -->
     <mpMetrics authentication="false"/>
 
     <logging consoleLogLevel="INFO" consoleFormat="JSON"/>

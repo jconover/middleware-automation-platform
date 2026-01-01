@@ -26,7 +26,7 @@ Services:                            Services:
 • Prometheus (.201)                  • CloudWatch
 • Grafana (.202)
 
-Cost: $0/month                       Cost: ~$152/month
+Cost: $0/month                       Cost: ~$157-170/month
 ```
 
 ## MetalLB IP Assignments
@@ -44,13 +44,23 @@ Cost: $0/month                       Cost: ~$152/month
 
 ## AWS Monthly Cost Breakdown
 
+> **Note:** Cost estimates vary based on compute model and usage patterns.
+> For the most accurate estimate, use the [AWS Pricing Calculator](https://calculator.aws/).
+> See the main [README.md](../../README.md#aws-cost-estimate-production) for detailed breakdowns.
+>
+> *Last updated: January 2026*
+
 | Resource | Type | Cost |
 |----------|------|------|
-| Liberty Servers (x2) | t3.small | ~$30 |
+| Liberty Compute | ECS Fargate or EC2 x2 | ~$30-50 |
 | Management Server (AWX) | t3.medium | ~$30 |
+| Monitoring Server | t3.small | ~$15 |
 | RDS | db.t3.micro | ~$15 |
 | ElastiCache | cache.t3.micro | ~$12 |
 | ALB | - | ~$20 |
 | NAT Gateway | - | ~$35 |
-| Data Transfer | ~10GB | ~$10 |
-| **TOTAL** | | **~$152** |
+| **TOTAL** | | **~$157-170/month** |
+
+**Compute Options:**
+- **ECS Fargate** (default): ~$170/month - serverless, auto-scaling
+- **EC2 Instances**: ~$157/month - traditional, Ansible-managed

@@ -281,7 +281,20 @@ spec:
       app: liberty
 
 ---
-# ServiceAccount with minimal permissions
+# =============================================================================
+# ServiceAccount with Explicit Least-Privilege RBAC
+# =============================================================================
+# Security Design:
+#   - automountServiceAccountToken: false - prevents automatic token mounting
+#   - Empty Role with no rules - explicit deny-all for Kubernetes API access
+#   - RoleBinding documents the security posture for audit purposes
+#
+# This ServiceAccount intentionally has NO permissions. The Liberty application
+# does not require Kubernetes API access. If future requirements change:
+#   1. Document the specific API resources needed
+#   2. Add minimal rules to the Role (not ClusterRole)
+#   3. Follow least-privilege: only verbs and resources actually required
+# =============================================================================
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -291,7 +304,54 @@ metadata:
     app.kubernetes.io/name: liberty
     app.kubernetes.io/component: application-server
     app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "Minimal service account for Liberty pods - no Kubernetes API access"
+    security.kubernetes.io/rbac-posture: "deny-all"
 automountServiceAccountToken: false
+
+---
+# Role with empty rules - explicit deny-all
+# This Role exists to document that Liberty pods have NO Kubernetes API permissions.
+# An empty rules array means no API access is granted.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: liberty-app-role
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "Intentionally empty role - Liberty requires no Kubernetes API access"
+    security.kubernetes.io/rbac-posture: "deny-all"
+# Empty rules array = no permissions granted
+# This is intentional least-privilege security
+rules: []
+
+---
+# RoleBinding to associate the empty Role with the ServiceAccount
+# This binding completes the RBAC chain and makes the security posture auditable.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: liberty-app-rolebinding
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "Binds empty role to liberty-app SA - documents deny-all posture"
+    security.kubernetes.io/rbac-posture: "deny-all"
+subjects:
+  - kind: ServiceAccount
+    name: liberty-app
+    namespace: liberty
+roleRef:
+  kind: Role
+  name: liberty-app-role
+  apiGroup: rbac.authorization.k8s.io
 
 ---
 # NetworkPolicy: Restrict ingress to only allowed sources

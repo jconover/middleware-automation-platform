@@ -314,17 +314,38 @@ terraform destroy
 
 ## Cost Estimates
 
+> **Note:** Estimates based on us-east-1 pricing. Actual costs vary by usage.
+> For accurate estimates, use the [AWS Pricing Calculator](https://calculator.aws/).
+>
+> *Last updated: January 2026*
+
+### ECS Fargate (Default) - ~$170/month
+
 | Service | Monthly Cost |
 |---------|--------------|
-| ECS Fargate (2 tasks) | ~$29 |
+| ECS Fargate (2 tasks, 0.5 vCPU, 1GB) | ~$40-50 |
 | Application Load Balancer | ~$20 |
 | NAT Gateway | ~$35 |
 | RDS db.t3.micro | ~$15 |
 | ElastiCache cache.t3.micro | ~$12 |
-| EC2 Monitoring | ~$30 |
-| EC2 Management (AWX) | ~$30 |
-| S3/CloudWatch/ECR | ~$11 |
-| **Total** | **~$182/month** |
+| EC2 Monitoring (t3.small) | ~$15 |
+| EC2 Management/AWX (t3.medium) | ~$30 |
+| **Total** | **~$170/month** |
+
+### EC2 Instances (Traditional) - ~$157/month
+
+| Service | Monthly Cost |
+|---------|--------------|
+| Liberty EC2 (2x t3.small) | ~$30 |
+| Application Load Balancer | ~$20 |
+| NAT Gateway | ~$35 |
+| RDS db.t3.micro | ~$15 |
+| ElastiCache cache.t3.micro | ~$12 |
+| EC2 Monitoring (t3.small) | ~$15 |
+| EC2 Management/AWX (t3.medium) | ~$30 |
+| **Total** | **~$157/month** |
+
+See the main [README.md](../README.md#aws-cost-estimate-production) for the authoritative cost breakdown.
 
 ### Cost Reduction
 

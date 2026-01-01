@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.time.Duration;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -93,10 +94,10 @@ public class SampleResource {
 
             Map<String, Object> info = new HashMap<>();
             info.put("hostname", hostname);
-            info.put("javaVersion", System.getProperty("java.version"));
-            info.put("javaVendor", System.getProperty("java.vendor"));
-            info.put("osName", System.getProperty("os.name"));
-            info.put("osArch", System.getProperty("os.arch"));
+            info.put("javaVersion", Objects.requireNonNullElse(System.getProperty("java.version"), "unknown"));
+            info.put("javaVendor", Objects.requireNonNullElse(System.getProperty("java.vendor"), "unknown"));
+            info.put("osName", Objects.requireNonNullElse(System.getProperty("os.name"), "unknown"));
+            info.put("osArch", Objects.requireNonNullElse(System.getProperty("os.arch"), "unknown"));
             info.put("availableProcessors", Runtime.getRuntime().availableProcessors());
             info.put("heapMemoryUsed", memory.getHeapMemoryUsage().getUsed() / 1024 / 1024 + " MB");
             info.put("heapMemoryMax", memory.getHeapMemoryUsage().getMax() / 1024 / 1024 + " MB");
