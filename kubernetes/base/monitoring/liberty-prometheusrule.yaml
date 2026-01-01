@@ -96,6 +96,9 @@ spec:
 
         - alert: LibertyThreadPoolExhaustion
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+          # Liberty mpMetrics-5.0 Thread Pool metric names:
+          #   - threadpool_activeThreads (currently active threads)
+          #   - threadpool_size (total pool size)
           expr: |
             threadpool_activeThreads{job="liberty", mp_scope="vendor"}
               / threadpool_size{job="liberty", mp_scope="vendor"} > 0.9
@@ -192,14 +195,20 @@ spec:
             description: "Liberty pod {{ $labels.pod }} is using {{ $value | printf \"%.0f\" }}% of its memory limit."
 
     # Connection Pool Alerts
+    # Liberty mpMetrics-5.0 Connection Pool metric names:
+    #   - connectionpool_freeConnections (available connections in the pool)
+    #   - connectionpool_managedConnections (total pool size)
+    #   - connectionpool_waitTime_total_seconds (cumulative wait time)
+    #   - connectionpool_inUseTime_total_seconds (cumulative in-use time)
     - name: liberty.connections
       interval: 30s
       rules:
         - alert: LibertyDatabaseConnectionPoolLow
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
+          # Uses connectionpool_freeConnections / connectionpool_managedConnections
           expr: |
-            connectionpool_freeConnectionCount{job="liberty", mp_scope="vendor"}
-              / connectionpool_size{job="liberty", mp_scope="vendor"} < 0.1
+            connectionpool_freeConnections{job="liberty", mp_scope="vendor"}
+              / connectionpool_managedConnections{job="liberty", mp_scope="vendor"} < 0.1
           for: 5m
           labels:
             severity: warning

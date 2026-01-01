@@ -2383,7 +2383,7 @@ helm upgrade --install jenkins jenkins/jenkins \
 echo "[8/8] Deploying Liberty application..."
 kubectl create configmap liberty-config \
   --namespace=liberty \
-  --from-file=server.xml=containers/liberty/config/server.xml \
+  --from-file=server.xml=containers/liberty/server.xml \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f kubernetes/base/liberty-deployment.yaml -n liberty
 

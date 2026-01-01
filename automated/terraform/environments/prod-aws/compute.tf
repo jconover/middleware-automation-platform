@@ -60,11 +60,13 @@ resource "aws_iam_role_policy" "liberty_secrets" {
       {
         Effect = "Allow"
         Action = [
-          "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource = "*"
+        Resource = [
+          aws_cloudwatch_log_group.liberty.arn,
+          "${aws_cloudwatch_log_group.liberty.arn}:*"
+        ]
       }
     ]
   })

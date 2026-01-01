@@ -226,8 +226,64 @@ spec:
                     sh '''#!/bin/bash
                         set -e
 
-                        echo "Installing Trivy vulnerability scanner..."
-                        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                        # Trivy version and checksum configuration
+                        # Update these values when upgrading Trivy
+                        # Checksums available at: https://github.com/aquasecurity/trivy/releases
+                        TRIVY_VERSION="0.48.3"
+                        TRIVY_CHECKSUM="af0e3ac0c3f9ff5bd40a98063ea3e6bc0c7c99cd85ce22de3d38ed4dc8091e3d"
+
+                        TRIVY_TARBALL="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+                        TRIVY_URL="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TRIVY_TARBALL}"
+                        INSTALL_DIR="/usr/local/bin"
+                        TEMP_DIR=$(mktemp -d)
+
+                        # Cleanup function to remove temporary files
+                        cleanup() {
+                            rm -rf "${TEMP_DIR}"
+                        }
+                        trap cleanup EXIT
+
+                        echo "Installing Trivy vulnerability scanner v${TRIVY_VERSION}..."
+                        echo "Download URL: ${TRIVY_URL}"
+
+                        # Download the release tarball
+                        echo "Downloading Trivy tarball..."
+                        if ! curl -fsSL -o "${TEMP_DIR}/${TRIVY_TARBALL}" "${TRIVY_URL}"; then
+                            echo "ERROR: Failed to download Trivy from ${TRIVY_URL}"
+                            exit 1
+                        fi
+
+                        # Verify SHA256 checksum
+                        echo "Verifying SHA256 checksum..."
+                        ACTUAL_CHECKSUM=$(sha256sum "${TEMP_DIR}/${TRIVY_TARBALL}" | awk '{print $1}')
+
+                        if [ "${ACTUAL_CHECKSUM}" != "${TRIVY_CHECKSUM}" ]; then
+                            echo "ERROR: Checksum verification failed!"
+                            echo "  Expected: ${TRIVY_CHECKSUM}"
+                            echo "  Actual:   ${ACTUAL_CHECKSUM}"
+                            echo "This could indicate a corrupted download or supply chain attack."
+                            exit 1
+                        fi
+                        echo "Checksum verified successfully"
+
+                        # Extract and install
+                        echo "Extracting Trivy..."
+                        if ! tar -xzf "${TEMP_DIR}/${TRIVY_TARBALL}" -C "${TEMP_DIR}"; then
+                            echo "ERROR: Failed to extract Trivy tarball"
+                            exit 1
+                        fi
+
+                        if ! mv "${TEMP_DIR}/trivy" "${INSTALL_DIR}/trivy"; then
+                            echo "ERROR: Failed to install Trivy to ${INSTALL_DIR}"
+                            exit 1
+                        fi
+
+                        chmod +x "${INSTALL_DIR}/trivy"
+
+                        # Verify installation
+                        INSTALLED_VERSION=$(trivy --version 2>/dev/null | head -1 || echo "unknown")
+                        echo "Trivy installed successfully: ${INSTALLED_VERSION}"
+                        echo ""
 
                         echo "Scanning container image for vulnerabilities..."
                         echo "Image: liberty-app:${VERSION}"

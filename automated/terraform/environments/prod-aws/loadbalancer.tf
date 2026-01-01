@@ -203,6 +203,66 @@ resource "aws_lb_target_group_attachment" "liberty_admin" {
 }
 
 # -----------------------------------------------------------------------------
+# SECURITY: Block /metrics endpoint from public access
+# -----------------------------------------------------------------------------
+# Metrics endpoint exposes internal application metrics (Prometheus format).
+# Only the monitoring server should access this endpoint directly via VPC.
+# Public requests to /metrics receive a 403 Forbidden response.
+# -----------------------------------------------------------------------------
+resource "aws_lb_listener_rule" "block_metrics" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 1 # Highest priority - evaluated before all other rules
+
+  action {
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Forbidden"
+      status_code  = "403"
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/metrics", "/metrics/*"]
+    }
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-block-metrics-rule"
+  }
+}
+
+# Block /metrics on HTTPS listener as well (if certificate exists)
+resource "aws_lb_listener_rule" "block_metrics_https" {
+  count = local.has_certificate ? 1 : 0
+
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 1 # Highest priority - evaluated before all other rules
+
+  action {
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Forbidden"
+      status_code  = "403"
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/metrics", "/metrics/*"]
+    }
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-block-metrics-https-rule"
+  }
+}
+
+# -----------------------------------------------------------------------------
 # HTTP Listener (Redirect to HTTPS if cert exists, otherwise forward)
 # -----------------------------------------------------------------------------
 resource "aws_lb_listener" "http" {

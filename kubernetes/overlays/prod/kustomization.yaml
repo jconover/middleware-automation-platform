@@ -58,15 +58,6 @@ patches:
             memory: "4Gi"
             ephemeral-storage: "2Gi"
 
-  # Production image (use specific version, not latest)
-  - target:
-      kind: Deployment
-      name: liberty-app
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: icr.io/appcafe/open-liberty:24.0.0.12-kernel-slim-java17-openj9-ubi
-
   # Enforce ImagePullPolicy Always in production
   - target:
       kind: Deployment
@@ -120,7 +111,10 @@ configMapGenerator:
       - db.host=postgres-prod.database.svc.cluster.local
       - log.level=INFO
 
-# Images - use digest for immutability in production
+# Images - transform base image reference to ECR for production
+# NOTE: Replace <AWS_ACCOUNT_ID> with your actual AWS account ID
+# This transforms the base deployment's docker.io/jconover/liberty-app image to ECR
 images:
-  - name: icr.io/appcafe/open-liberty
-    newTag: 24.0.0.12-kernel-slim-java17-openj9-ubi
+  - name: docker.io/jconover/liberty-app
+    newName: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/mw-prod-liberty
+    newTag: "1.0.0"

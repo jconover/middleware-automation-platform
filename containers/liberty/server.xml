@@ -18,6 +18,32 @@
         <httpOptions maxPostSize="1048576" />
     </httpEndpoint>
 
+    <!-- ===================================================================== -->
+    <!-- SSL/TLS Configuration                                                 -->
+    <!-- ===================================================================== -->
+    <!--
+         HTTPS on port 9443 requires a keystore to be mounted at runtime.
+
+         For container deployments:
+         1. Mount your PKCS12 keystore to /config/resources/security/key.p12
+         2. Set environment variable KEYSTORE_PASSWORD with the keystore password
+
+         Example:
+           podman run -d \
+             -v /path/to/key.p12:/config/resources/security/key.p12:ro \
+             -e KEYSTORE_PASSWORD=your_password \
+             liberty-app:1.0.0
+
+         For development/testing without HTTPS, access the application via port 9080.
+         Liberty will start successfully but HTTPS will be unavailable until configured.
+    -->
+    <ssl id="defaultSSLConfig" keyStoreRef="defaultKeyStore" />
+
+    <keyStore id="defaultKeyStore"
+              location="${server.config.dir}/resources/security/key.p12"
+              password="${env.KEYSTORE_PASSWORD}"
+              type="PKCS12" />
+
     <mpHealth authentication="false"/>
     <mpMetrics authentication="false"/>
 
