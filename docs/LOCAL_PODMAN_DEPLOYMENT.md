@@ -2867,7 +2867,7 @@ echo "Grafana: $grafana"
 | Document | Path | Description |
 |----------|------|-------------|
 | Kubernetes Deployment | [LOCAL_KUBERNETES_DEPLOYMENT.md](LOCAL_KUBERNETES_DEPLOYMENT.md) | Multi-node Kubernetes deployment guide |
-| AWS Production | [../CLAUDE.md](../CLAUDE.md) | AWS ECS and EC2 deployment options |
+| AWS Production | [../README.md](../README.md) | AWS ECS and EC2 deployment options |
 | ECS Migration Plan | [plans/ecs-migration-plan.md](plans/ecs-migration-plan.md) | Migration from EC2 to ECS |
 | Terraform Troubleshooting | [troubleshooting/terraform-aws.md](troubleshooting/terraform-aws.md) | AWS infrastructure issues |
 | Containerfile | [../containers/liberty/Containerfile](../containers/liberty/Containerfile) | Liberty container build definition |

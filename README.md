@@ -38,6 +38,52 @@ This project demonstrates the transformation of manual middleware deployment pro
 
 ---
 
+## Screenshots
+
+> **Note:** Screenshots coming soon. This section will be populated with visual documentation of the platform.
+
+### Monitoring Dashboards
+
+<!-- TODO: Add screenshot - Grafana Liberty dashboard showing request rates, response times, and JVM metrics -->
+![Grafana Liberty Dashboard](docs/screenshots/grafana-liberty-dashboard.png)
+*Grafana dashboard displaying Liberty application metrics including request throughput, response latency percentiles, and JVM memory usage.*
+
+<!-- TODO: Add screenshot - Prometheus targets page showing healthy Liberty endpoints -->
+![Prometheus Targets](docs/screenshots/prometheus-targets.png)
+*Prometheus targets view showing all Liberty instances reporting healthy with their /metrics endpoints.*
+
+### AWS Console Views
+
+<!-- TODO: Add screenshot - ECS service showing running tasks with health status -->
+![ECS Service Console](docs/screenshots/ecs-service-console.png)
+*AWS ECS console showing the Liberty service with running Fargate tasks and deployment status.*
+
+<!-- TODO: Add screenshot - ALB target group with healthy targets -->
+![ALB Health Checks](docs/screenshots/alb-health-checks.png)
+*Application Load Balancer target group showing all Liberty targets passing health checks.*
+
+<!-- TODO: Add screenshot - CloudWatch metrics for ECS service -->
+![CloudWatch ECS Metrics](docs/screenshots/cloudwatch-ecs-metrics.png)
+*CloudWatch dashboard displaying ECS service CPU utilization, memory usage, and task count.*
+
+### Deployment Output
+
+<!-- TODO: Add screenshot - Terminal output from successful terraform apply -->
+![Terraform Apply Output](docs/screenshots/terraform-apply-success.png)
+*Terminal output from a successful `terraform apply` showing infrastructure provisioning completion.*
+
+<!-- TODO: Add screenshot - Terminal output from successful Ansible playbook run -->
+![Ansible Deployment Output](docs/screenshots/ansible-deployment-success.png)
+*Ansible playbook execution showing successful Liberty server configuration across all hosts.*
+
+### Architecture Diagrams
+
+<!-- TODO: Add diagram - High-level architecture showing AWS components -->
+![AWS Architecture](docs/screenshots/aws-architecture-diagram.png)
+*High-level AWS architecture diagram showing VPC, subnets, ECS cluster, ALB, RDS, and monitoring components.*
+
+---
+
 ## Architecture Overview
 
 ### Hybrid Deployment Model

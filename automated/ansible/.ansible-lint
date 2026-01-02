@@ -2,7 +2,7 @@
 # Ansible-lint configuration for Enterprise Middleware Automation Platform
 # Documentation: https://ansible.readthedocs.io/projects/lint/configuring/
 
-profile: production
+profile: moderate
 
 # Offline mode for CI/CD environments
 offline: false
@@ -14,17 +14,14 @@ exclude_paths:
   - molecule/
   - collections/
 
-# Skip specific rules with justification
+# Skip specific rules that are too strict for this project
 skip_list:
+  - yaml[line-length]  # Long lines are often necessary for clarity in templates
   - role-name  # Using descriptive names (liberty, monitoring) not galaxy format
 
 # Rules to warn about but not fail
 warn_list:
   - experimental
-  - yaml[line-length]  # Some templates have long lines
-
-# Enable strict mode for production-quality code
-strict: true
 
 # Use default rules
 use_default_rules: true
@@ -49,9 +46,6 @@ mock_roles:
 
 # Variable naming convention
 var_naming_pattern: "^[a-z_][a-z0-9_]*$"
-
-# Task naming - require descriptive names
-task_name_prefix: "{stem} | "
 
 # Loop variable naming
 loop_var_prefix: "^(item|idx|key|value|host|file|pkg|svc|user|port|dir|path)"

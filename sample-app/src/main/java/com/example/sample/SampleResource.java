@@ -213,7 +213,7 @@ public class SampleResource {
         requestCount.incrementAndGet();
 
         try {
-            String message = request.getMessage();
+            String message = request.message();
             logger.log(Level.FINE, "Echo request received, message length: {0}", message.length());
             return Response.ok(Map.of(
                 "echo", message,

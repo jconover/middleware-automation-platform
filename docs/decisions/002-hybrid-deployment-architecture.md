@@ -123,4 +123,4 @@ Use lightweight Kubernetes distributions for local development.
 - Local Kubernetes guide: `docs/LOCAL_KUBERNETES_DEPLOYMENT.md`
 - Local Podman guide: `docs/LOCAL_PODMAN_DEPLOYMENT.md`
 - Architecture diagram: `docs/architecture/HYBRID_ARCHITECTURE.md`
-- MetalLB IP assignments documented in `CLAUDE.md`
+- MetalLB IP assignments documented in `docs/LOCAL_KUBERNETES_DEPLOYMENT.md`

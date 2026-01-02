@@ -355,7 +355,7 @@ Current configuration in `/containers/liberty/jvm.options`:
    podman build -t liberty-app:1.0.1 -f containers/liberty/Containerfile .
 
    # Push to registry and deploy
-   # (see CLAUDE.md for ECR/Docker Hub push commands)
+   # (see README.md for ECR/Docker Hub push commands)
    ```
 
 3. Update container resource limits to match:

@@ -23,7 +23,7 @@ What do you want to do?
 │    └─► END_TO_END_TESTING.md (90 min)
 │
 └─► "Understand the project"
-     └─► Main README.md + CLAUDE.md
+     └─► Main README.md
 ```
 
 ---
