@@ -10,6 +10,14 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import com.example.sample.dto.EchoRequest;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponses;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.RuntimeMXBean;
@@ -42,6 +50,18 @@ public class SampleResource {
      */
     @GET
     @Path("/hello")
+    @Tag(name = "Greeting")
+    @Operation(
+        summary = "Simple greeting",
+        description = "Returns a simple greeting message with timestamp"
+    )
+    @APIResponses({
+        @APIResponse(
+            responseCode = "200",
+            description = "Successful greeting response",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON)
+        )
+    })
     public Response hello() {
         logger.log(Level.FINE, "Hello endpoint called");
         requestCount.incrementAndGet();
@@ -57,7 +77,28 @@ public class SampleResource {
      */
     @GET
     @Path("/hello/{name}")
+    @Tag(name = "Greeting")
+    @Operation(
+        summary = "Personalized greeting",
+        description = "Returns a personalized greeting for the specified name"
+    )
+    @APIResponses({
+        @APIResponse(
+            responseCode = "200",
+            description = "Successful personalized greeting",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON)
+        ),
+        @APIResponse(
+            responseCode = "400",
+            description = "Invalid name parameter (blank or exceeds 100 characters)"
+        )
+    })
     public Response helloName(
+            @Parameter(
+                description = "Name to greet",
+                required = true,
+                example = "World"
+            )
             @PathParam("name")
             @NotBlank(message = "Name cannot be blank")
             @Size(min = 1, max = 100, message = "Name must be between 1 and 100 characters")
@@ -76,6 +117,22 @@ public class SampleResource {
      */
     @GET
     @Path("/info")
+    @Tag(name = "System")
+    @Operation(
+        summary = "Server information",
+        description = "Returns detailed information about the server including JVM, OS, memory usage, and uptime"
+    )
+    @APIResponses({
+        @APIResponse(
+            responseCode = "200",
+            description = "Server information retrieved successfully",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON)
+        ),
+        @APIResponse(
+            responseCode = "500",
+            description = "Failed to retrieve system information"
+        )
+    })
     public Response info() {
         logger.log(Level.FINE, "Info endpoint called");
         requestCount.incrementAndGet();
@@ -122,7 +179,36 @@ public class SampleResource {
     @POST
     @Path("/echo")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response echo(@Valid EchoRequest request) {
+    @Tag(name = "Load Testing")
+    @Operation(
+        summary = "Echo message",
+        description = "Echoes back the message sent in the request body. Useful for testing request/response payloads."
+    )
+    @APIResponses({
+        @APIResponse(
+            responseCode = "200",
+            description = "Message echoed successfully",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON)
+        ),
+        @APIResponse(
+            responseCode = "400",
+            description = "Invalid request body (message blank or exceeds 10000 characters)"
+        ),
+        @APIResponse(
+            responseCode = "500",
+            description = "Failed to process echo request"
+        )
+    })
+    public Response echo(
+            @RequestBody(
+                description = "Message to echo",
+                required = true,
+                content = @Content(
+                    mediaType = MediaType.APPLICATION_JSON,
+                    schema = @Schema(implementation = EchoRequest.class)
+                )
+            )
+            @Valid EchoRequest request) {
         logger.log(Level.FINE, "Echo endpoint called");
         requestCount.incrementAndGet();
 
@@ -148,7 +234,31 @@ public class SampleResource {
      */
     @GET
     @Path("/slow")
+    @Tag(name = "Load Testing")
+    @Operation(
+        summary = "Simulated slow response",
+        description = "Delays the response by the specified number of milliseconds. Useful for testing timeouts and slow responses."
+    )
+    @APIResponses({
+        @APIResponse(
+            responseCode = "200",
+            description = "Slow response completed successfully",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON)
+        ),
+        @APIResponse(
+            responseCode = "400",
+            description = "Invalid delay parameter (negative or exceeds 10000ms)"
+        ),
+        @APIResponse(
+            responseCode = "503",
+            description = "Request was interrupted during delay"
+        )
+    })
     public Response slow(
+            @Parameter(
+                description = "Delay in milliseconds (0-10000)",
+                example = "1000"
+            )
             @QueryParam("delay")
             @DefaultValue("1000")
             @Min(value = 0, message = "Delay must be non-negative")
@@ -181,7 +291,31 @@ public class SampleResource {
      */
     @GET
     @Path("/compute")
+    @Tag(name = "Load Testing")
+    @Operation(
+        summary = "CPU-intensive computation",
+        description = "Performs a CPU-intensive calculation with the specified number of iterations. Useful for load testing and CPU profiling."
+    )
+    @APIResponses({
+        @APIResponse(
+            responseCode = "200",
+            description = "Computation completed successfully",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON)
+        ),
+        @APIResponse(
+            responseCode = "400",
+            description = "Invalid iterations parameter (less than 1 or exceeds 10000000)"
+        ),
+        @APIResponse(
+            responseCode = "500",
+            description = "Computation failed"
+        )
+    })
     public Response compute(
+            @Parameter(
+                description = "Number of iterations to perform (1-10000000)",
+                example = "1000000"
+            )
             @QueryParam("iterations")
             @DefaultValue("1000000")
             @Min(value = 1, message = "Iterations must be at least 1")
@@ -223,6 +357,22 @@ public class SampleResource {
      */
     @GET
     @Path("/stats")
+    @Tag(name = "Statistics")
+    @Operation(
+        summary = "Application statistics",
+        description = "Returns application statistics including total request count and uptime"
+    )
+    @APIResponses({
+        @APIResponse(
+            responseCode = "200",
+            description = "Statistics retrieved successfully",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON)
+        ),
+        @APIResponse(
+            responseCode = "500",
+            description = "Failed to retrieve statistics"
+        )
+    })
     public Response stats() {
         logger.log(Level.FINE, "Stats endpoint called");
         try {
@@ -248,6 +398,22 @@ public class SampleResource {
      */
     @POST
     @Path("/stats/reset")
+    @Tag(name = "Statistics")
+    @Operation(
+        summary = "Reset statistics",
+        description = "Resets the request counter to zero and returns the previous count"
+    )
+    @APIResponses({
+        @APIResponse(
+            responseCode = "200",
+            description = "Statistics reset successfully",
+            content = @Content(mediaType = MediaType.APPLICATION_JSON)
+        ),
+        @APIResponse(
+            responseCode = "500",
+            description = "Failed to reset statistics"
+        )
+    })
     public Response resetStats() {
         logger.log(Level.INFO, "Statistics reset requested");
         try {
