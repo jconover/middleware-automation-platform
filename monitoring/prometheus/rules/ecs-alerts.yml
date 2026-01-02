@@ -1,3 +1,6 @@
+# ECS Liberty Alert Rules
+# Runbook URL base: Update YOUR_ORG to your GitHub organization
+# Example: https://github.com/YOUR_ORG/middleware-automation-platform/blob/main/docs/runbooks/
 groups:
   - name: ecs-liberty
     rules:
@@ -9,6 +12,7 @@ groups:
         annotations:
           summary: "ECS Liberty task {{ $labels.ecs_task_id }} is down"
           description: "Liberty container in ECS cluster {{ $labels.ecs_cluster }} is not responding."
+          runbook_url: "docs/runbooks/liberty-server-down.md"
 
       - alert: ECSLibertyNoTasks
         expr: count(up{job="ecs-liberty"}) == 0 or absent(up{job="ecs-liberty"})
@@ -18,6 +22,7 @@ groups:
         annotations:
           summary: "No ECS Liberty tasks are running"
           description: "Prometheus cannot find any running Liberty tasks in ECS. Check ECS service status."
+          runbook_url: "docs/runbooks/liberty-server-down.md"
 
       - alert: ECSLibertyHighHeapUsage
         # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -28,6 +33,7 @@ groups:
         annotations:
           summary: "High heap usage on ECS task {{ $labels.ecs_task_id }}"
           description: "Liberty heap usage is above 85% on task {{ $labels.ecs_task_id }}."
+          runbook_url: "docs/runbooks/liberty-high-heap.md"
 
       - alert: ECSLibertyHighErrorRate
         # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -41,6 +47,7 @@ groups:
         annotations:
           summary: "High 5xx error rate on ECS Liberty tasks"
           description: "More than 5% of requests are returning 5xx errors."
+          runbook_url: "docs/runbooks/liberty-high-error-rate.md"
 
       - alert: ECSLibertySlowResponses
         # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -54,6 +61,7 @@ groups:
         annotations:
           summary: "Slow responses from ECS Liberty tasks"
           description: "95th percentile response time is above 2 seconds."
+          runbook_url: "docs/runbooks/liberty-slow-responses.md"
 
       - alert: ECSLibertyTaskRestarts
         expr: |
@@ -64,3 +72,4 @@ groups:
         annotations:
           summary: "ECS Liberty tasks restarting frequently"
           description: "Task {{ $labels.ecs_task_id }} has restarted multiple times in the last 10 minutes."
+          runbook_url: "docs/runbooks/liberty-server-down.md"

@@ -1,3 +1,6 @@
+# Liberty and Infrastructure Alert Rules
+# Runbook URL base: Update YOUR_ORG to your GitHub organization
+# Example: https://github.com/YOUR_ORG/middleware-automation-platform/blob/main/docs/runbooks/
 groups:
   - name: liberty
     rules:
@@ -8,6 +11,8 @@ groups:
           severity: critical
         annotations:
           summary: "Liberty server {{ $labels.instance }} is down"
+          description: "Liberty server {{ $labels.instance }} has been unreachable for more than 1 minute."
+          runbook_url: "docs/runbooks/liberty-server-down.md"
 
       - alert: LibertyHighHeapUsage
         # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -17,6 +22,8 @@ groups:
           severity: warning
         annotations:
           summary: "High heap usage on {{ $labels.instance }}"
+          description: "Liberty server {{ $labels.instance }} heap usage is above 85%."
+          runbook_url: "docs/runbooks/liberty-high-heap.md"
 
       - alert: LibertyHighErrorRate
         # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -26,6 +33,8 @@ groups:
           severity: warning
         annotations:
           summary: "High error rate on Liberty servers"
+          description: "Liberty servers are returning 5xx errors at more than 5% rate."
+          runbook_url: "docs/runbooks/liberty-high-error-rate.md"
 
   - name: infrastructure
     rules:
@@ -36,6 +45,7 @@ groups:
           severity: warning
         annotations:
           summary: "High CPU on {{ $labels.instance }}"
+          description: "Instance {{ $labels.instance }} CPU usage is above 80% for 10 minutes."
 
       - alert: HighMemoryUsage
         expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
@@ -44,3 +54,4 @@ groups:
           severity: warning
         annotations:
           summary: "High memory on {{ $labels.instance }}"
+          description: "Instance {{ $labels.instance }} memory usage is above 85%."

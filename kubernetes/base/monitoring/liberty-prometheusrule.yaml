@@ -30,7 +30,7 @@ spec:
           annotations:
             summary: "Liberty server {{ $labels.pod }} is down"
             description: "Liberty pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has been unreachable for more than 1 minute."
-            runbook_url: "https://github.com/your-org/runbooks/blob/main/liberty-server-down.md"
+            runbook_url: "docs/runbooks/liberty-server-down.md"
 
         - alert: LibertyHighRestartCount
           expr: increase(kube_pod_container_status_restarts_total{container="liberty"}[1h]) > 3
@@ -41,6 +41,7 @@ spec:
           annotations:
             summary: "Liberty pod {{ $labels.pod }} restarting frequently"
             description: "Liberty container in pod {{ $labels.pod }} has restarted {{ $value }} times in the last hour."
+            runbook_url: "docs/runbooks/liberty-server-down.md"
 
         - alert: LibertyReadinessFailure
           expr: kube_pod_status_ready{condition="true", pod=~"liberty.*"} == 0
@@ -51,6 +52,7 @@ spec:
           annotations:
             summary: "Liberty pod {{ $labels.pod }} not ready"
             description: "Liberty pod {{ $labels.pod }} has been in non-ready state for more than 5 minutes."
+            runbook_url: "docs/runbooks/liberty-server-down.md"
 
     # JVM Performance Alerts
     - name: liberty.jvm
@@ -68,6 +70,7 @@ spec:
           annotations:
             summary: "High heap usage on Liberty pod {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} heap usage is {{ $value | printf \"%.1f\" }}% (threshold: 85%)."
+            runbook_url: "docs/runbooks/liberty-high-heap.md"
 
         - alert: LibertyCriticalHeapUsage
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -81,6 +84,7 @@ spec:
           annotations:
             summary: "Critical heap usage on Liberty pod {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} heap usage is {{ $value | printf \"%.1f\" }}% - OOM risk imminent."
+            runbook_url: "docs/runbooks/liberty-high-heap.md"
 
         - alert: LibertyHighGCTime
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -93,6 +97,7 @@ spec:
           annotations:
             summary: "High GC time on Liberty pod {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} is spending {{ $value | printf \"%.2f\" }} seconds per second in garbage collection."
+            runbook_url: "docs/runbooks/liberty-high-heap.md"
 
         - alert: LibertyThreadPoolExhaustion
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -109,6 +114,7 @@ spec:
           annotations:
             summary: "Thread pool near exhaustion on {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} thread pool is {{ $value | printf \"%.0f\" }}% utilized."
+            runbook_url: "docs/runbooks/liberty-slow-responses.md"
 
     # Request and Response Alerts
     - name: liberty.requests
@@ -126,6 +132,7 @@ spec:
           annotations:
             summary: "High 5xx error rate on Liberty cluster"
             description: "Liberty servers are returning 5xx errors at {{ $value | printf \"%.1f\" }}% rate (threshold: 5%)."
+            runbook_url: "docs/runbooks/liberty-high-error-rate.md"
 
         - alert: LibertyCriticalErrorRate
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -139,6 +146,7 @@ spec:
           annotations:
             summary: "Critical error rate on Liberty cluster"
             description: "Liberty servers are returning 5xx errors at {{ $value | printf \"%.1f\" }}% rate - immediate attention required."
+            runbook_url: "docs/runbooks/liberty-high-error-rate.md"
 
         - alert: LibertyHighLatency
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -153,6 +161,7 @@ spec:
           annotations:
             summary: "High request latency on Liberty cluster"
             description: "95th percentile request latency is {{ $value | printf \"%.2f\" }} seconds (threshold: 2s)."
+            runbook_url: "docs/runbooks/liberty-slow-responses.md"
 
         - alert: LibertyNoRequests
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -165,6 +174,7 @@ spec:
           annotations:
             summary: "No requests to Liberty cluster"
             description: "Liberty cluster has not received any requests in the last 10 minutes - possible routing or connectivity issue."
+            runbook_url: "docs/runbooks/liberty-server-down.md"
 
     # Resource Utilization Alerts
     - name: liberty.resources
@@ -181,6 +191,7 @@ spec:
           annotations:
             summary: "High CPU usage on Liberty pod {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} CPU usage is above 90% of its limit for 10 minutes."
+            runbook_url: "docs/runbooks/liberty-slow-responses.md"
 
         - alert: LibertyHighMemoryUsage
           expr: |
@@ -193,6 +204,7 @@ spec:
           annotations:
             summary: "High memory usage on Liberty pod {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} is using {{ $value | printf \"%.0f\" }}% of its memory limit."
+            runbook_url: "docs/runbooks/liberty-high-heap.md"
 
     # Connection Pool Alerts
     # Liberty mpMetrics-5.0 Connection Pool metric names:
@@ -216,6 +228,7 @@ spec:
           annotations:
             summary: "Database connection pool running low on {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} has only {{ $value | printf \"%.0f\" }}% free database connections."
+            runbook_url: "docs/runbooks/liberty-connection-pool.md"
 
         - alert: LibertyConnectionPoolWaitTime
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
@@ -228,6 +241,7 @@ spec:
           annotations:
             summary: "High connection pool wait time on {{ $labels.pod }}"
             description: "Applications on {{ $labels.pod }} are waiting {{ $value | printf \"%.2f\" }}s on average for database connections."
+            runbook_url: "docs/runbooks/liberty-connection-pool.md"
 
         - alert: LibertyDatabaseConnectionFailure
           # High destroy/create ratio indicates connections are failing
@@ -246,7 +260,7 @@ spec:
           annotations:
             summary: "Database connection failures detected on {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} is experiencing database connection failures. Destroy/create ratio is {{ $value | printf \"%.2f\" }} (>0.5 indicates issues). Check database health, network connectivity, and connection timeout settings."
-            runbook_url: "https://github.com/your-org/runbooks/blob/main/liberty-database-connection-failure.md"
+            runbook_url: "docs/runbooks/liberty-connection-pool.md"
 
         - alert: LibertyDatabaseConnectionPoolExhausted
           # Zero free connections means all connections are in use
@@ -261,7 +275,7 @@ spec:
           annotations:
             summary: "Database connection pool exhausted on {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} has zero free database connections. All {{ $labels.datasource }} connections are in use. New requests will queue or fail. Consider increasing pool size or investigating slow queries."
-            runbook_url: "https://github.com/your-org/runbooks/blob/main/liberty-connection-pool-exhausted.md"
+            runbook_url: "docs/runbooks/liberty-connection-pool.md"
 
         - alert: LibertyDatabaseQueuedRequestsHigh
           # Requests are queuing for connections when pool is saturated
@@ -276,7 +290,7 @@ spec:
           annotations:
             summary: "Database connection requests queuing on {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} has {{ $value | printf \"%.0f\" }} requests waiting for database connections. This indicates connection pool saturation. Consider increasing maxPoolSize or optimizing database queries."
-            runbook_url: "https://github.com/your-org/runbooks/blob/main/liberty-connection-queue-high.md"
+            runbook_url: "docs/runbooks/liberty-connection-pool.md"
 
         - alert: LibertyDatabaseConnectionChurn
           # High connection creation rate indicates pool instability
@@ -291,3 +305,4 @@ spec:
           annotations:
             summary: "High database connection churn on {{ $labels.pod }}"
             description: "Liberty pod {{ $labels.pod }} is creating {{ $value | printf \"%.2f\" }} new connections per second. High churn may indicate connection timeout issues, database restarts, or network instability."
+            runbook_url: "docs/runbooks/liberty-connection-pool.md"
