@@ -1,237 +1,258 @@
 # Monitoring Stack
 
-Comprehensive observability stack for the Enterprise Middleware Automation Platform. Provides metrics collection, visualization, and alerting for Liberty application servers across AWS (ECS/EC2) and local Kubernetes deployments.
-
-## Overview
-
-This directory contains configuration files and dashboards for a complete monitoring solution built on three core components:
-
-- **Prometheus**: Time-series database for metrics collection and alerting
-- **Grafana**: Visualization platform for dashboards and analytics
-- **Alertmanager**: Alert routing and notification management
-
-The monitoring stack supports multiple deployment environments:
-- **AWS Production**: ECS Fargate and EC2 instances with file-based service discovery
-- **Local Kubernetes**: 3-node homelab cluster with Prometheus Operator
-- **Local Development**: Podman containers with static configuration
-
-## Architecture
-
-```
-Liberty Apps --> Prometheus --> Grafana
-                    |
-              Alertmanager --> Slack/Email
-```
-
-**Key Features:**
-- 15-second scrape intervals for real-time metrics
-- Pre-configured alert rules for Liberty health and performance
-- Auto-discovery of ECS tasks via AWS API (file-based)
-- Kubernetes ServiceMonitor for automatic target discovery
-- Production-ready dashboards for Liberty and infrastructure metrics
-
-For detailed architecture diagrams, see [docs/architecture/diagrams/monitoring-architecture.md](../docs/architecture/diagrams/monitoring-architecture.md)
+Prometheus, Grafana, and AlertManager configuration for Open Liberty monitoring across AWS (ECS/EC2) and local Kubernetes deployments.
 
 ## Directory Structure
 
 ```
 monitoring/
-├── README.md                           # This file
-├── prometheus/                         # Prometheus configuration
-│   ├── prometheus.yml                  # Main Prometheus config (static targets)
-│   └── rules/                          # Alert rule definitions
-│       ├── liberty-alerts.yml          # Liberty-specific alerts
-│       └── ecs-alerts.yml              # ECS-specific alerts
-├── alertmanager/                       # Alertmanager configuration
-│   └── alertmanager.yml                # Routing and receiver config
-└── grafana/                            # Grafana dashboards
-    └── dashboards/                     # Pre-built dashboard JSON
-        ├── ecs-liberty.json            # AWS ECS Liberty dashboard
-        └── k8s-liberty.json            # Kubernetes Liberty dashboard
+├── prometheus/
+│   ├── prometheus.yml                # Main config with scrape targets
+│   └── rules/
+│       ├── liberty-alerts.yml        # Liberty and infrastructure alerts
+│       └── ecs-alerts.yml            # ECS-specific alerts
+├── alertmanager/
+│   └── alertmanager.yml              # Alert routing and Slack receivers
+└── grafana/
+    └── dashboards/
+        ├── ecs-liberty.json          # AWS ECS/EC2 dashboard
+        └── k8s-liberty.json          # Kubernetes dashboard
 ```
 
-## Deployment
+**Kubernetes Monitoring Resources**: See `kubernetes/base/monitoring/` for ServiceMonitor and PrometheusRule definitions used with Prometheus Operator.
 
-### 1. AWS Production (ECS/EC2)
+## Prometheus Configuration
 
-The monitoring stack is deployed automatically via Terraform when `create_monitoring_server = true`.
+### prometheus.yml
+
+The main configuration file defines:
+
+- **Global settings**: 15-second scrape and evaluation intervals
+- **AlertManager connection**: Static target at `alertmanager:9093`
+- **Rule files**: Loaded from `/etc/prometheus/rules/*.yml`
+- **Scrape jobs**:
+  - `prometheus` - Self-monitoring
+  - `liberty` - Liberty application metrics from `/metrics`
+  - `node` - Node Exporter for infrastructure metrics
+  - `jenkins` - CI/CD metrics from `/prometheus`
+
+**AWS ECS Note**: Since official Prometheus binaries lack `ecs_sd_configs`, AWS deployments use file-based service discovery. A cron job runs `ecs-discovery.sh` every 60 seconds to update `/etc/prometheus/targets/ecs-liberty.json`.
+
+### Alert Rules
+
+**liberty-alerts.yml** - Core application and infrastructure alerts:
+
+| Alert | Condition | Severity | Duration |
+|-------|-----------|----------|----------|
+| LibertyServerDown | `up{job="liberty"} == 0` | critical | 1m |
+| LibertyHighHeapUsage | Heap > 85% | warning | 5m |
+| LibertyHighErrorRate | 5xx rate > 5% | warning | 5m |
+| HighCPUUsage | CPU > 80% | warning | 10m |
+| HighMemoryUsage | Memory > 85% | warning | 5m |
+
+**ecs-alerts.yml** - ECS-specific alerts:
+
+| Alert | Condition | Severity | Duration |
+|-------|-----------|----------|----------|
+| ECSLibertyTaskDown | `up{job="ecs-liberty"} == 0` | critical | 1m |
+| ECSLibertyNoTasks | No tasks running | critical | 2m |
+| ECSLibertyHighHeapUsage | Heap > 85% | warning | 5m |
+| ECSLibertyHighErrorRate | 5xx rate > 5% | warning | 5m |
+| ECSLibertySlowResponses | p95 > 2s | warning | 5m |
+| ECSLibertyTaskRestarts | > 2 restarts in 10m | warning | 1m |
+
+## AlertManager Configuration
+
+The `alertmanager.yml` file routes alerts to Slack channels based on severity.
+
+### Webhook Setup Required
+
+Notifications will not work until you configure a webhook. The configuration uses file-based secrets:
+
+```yaml
+global:
+  slack_api_url_file: '/etc/alertmanager/secrets/slack-webhook'
+```
+
+**Setup Methods**:
 
 ```bash
-cd automated/terraform/environments/prod-aws
-terraform apply -var="create_monitoring_server=true"
+# Local/EC2: Create the secrets file
+mkdir -p /etc/alertmanager/secrets
+echo 'https://hooks.slack.com/services/T.../B.../xxx' > /etc/alertmanager/secrets/slack-webhook
+chmod 600 /etc/alertmanager/secrets/slack-webhook
+
+# Kubernetes: Create a secret
+kubectl create secret generic alertmanager-secrets \
+  --from-literal=slack-webhook='https://hooks.slack.com/services/T.../B.../xxx' \
+  -n monitoring
 ```
 
-**What Gets Deployed:**
-- Dedicated EC2 instance for Prometheus and Grafana
-- ECS service discovery script (`/usr/local/bin/ecs-discovery.sh`)
-- Cron job updating ECS targets every 60 seconds
-- Alert rules automatically loaded from `monitoring/prometheus/rules/`
+For AWS production deployment with Secrets Manager, see [docs/ALERTMANAGER_CONFIGURATION.md](../docs/ALERTMANAGER_CONFIGURATION.md).
 
-**ECS Service Discovery:**
+### Routing Configuration
 
-Since official Prometheus binaries don't include `ecs_sd_configs`, we use a file-based approach:
-```
-Cron (60s) --> ecs-discovery.sh --> AWS ECS API
-                    |
-        /etc/prometheus/targets/ecs-liberty.json
-                    |
-              Prometheus scrapes
-```
+| Receiver | Channel | Severity Match |
+|----------|---------|----------------|
+| critical | #middleware-critical | severity: critical |
+| warning | #middleware-alerts | severity: warning |
+| default | #middleware-alerts | Unmatched alerts |
 
-**Access Information:**
-```bash
-# Get monitoring server IP
-terraform output monitoring_server_public_ip
+### Inhibition Rules
 
-# Retrieve Grafana credentials
-aws secretsmanager get-secret-value \
-    --secret-id mw-prod-grafana-credentials \
-    --query SecretString --output text | jq -r .admin_password
+Reduces alert noise by suppressing related alerts:
 
-# URLs
-# Prometheus: http://<monitoring-ip>:9090
-# Grafana:    http://<monitoring-ip>:3000
-```
+- `LibertyServerDown` suppresses all other Liberty alerts for the same instance
+- `ECSLibertyNoTasks` suppresses individual `ECSLibertyTaskDown` alerts
+- Critical severity suppresses warning severity for the same alert name
 
-### 2. Local Kubernetes (Homelab)
-
-Uses Prometheus Operator for automatic service discovery.
+### Validation and Testing
 
 ```bash
-# Install kube-prometheus-stack
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm install prometheus prometheus-community/kube-prometheus-stack \
-    -n monitoring --create-namespace
+# Validate configuration
+amtool check-config /etc/alertmanager/alertmanager.yml
 
-# Apply Liberty monitoring
-kubectl apply -f kubernetes/base/monitoring/liberty-servicemonitor.yaml
-kubectl apply -f kubernetes/base/monitoring/liberty-prometheusrule.yaml
+# Send test alert
+curl -X POST http://alertmanager:9093/api/v1/alerts \
+  -H "Content-Type: application/json" \
+  -d '[{"labels":{"alertname":"TestAlert","severity":"warning"}}]'
 ```
 
-**Access (MetalLB IPs):**
-| Service | IP | Port |
-|---------|-----|------|
-| Prometheus | 192.168.68.201 | 9090 |
-| Grafana | 192.168.68.202 | 3000 |
-| Alertmanager | 192.168.68.203 | 9093 |
+## Grafana Dashboards
 
-```bash
-# Get Grafana password
-kubectl get secret -n monitoring prometheus-grafana \
-    -o jsonpath='{.data.admin-password}' | base64 -d
-```
+### Available Dashboards
 
-### 3. Local Development (Podman)
+| Dashboard | File | Use Case |
+|-----------|------|----------|
+| ECS Liberty Monitoring | `ecs-liberty.json` | AWS ECS and EC2 deployments |
+| Kubernetes Liberty Monitoring | `k8s-liberty.json` | Local K8s homelab cluster |
 
-```bash
-# Run Prometheus
-podman run -d --name prometheus \
-    -p 9090:9090 \
-    -v $(pwd)/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:Z \
-    -v $(pwd)/monitoring/prometheus/rules:/etc/prometheus/rules:Z \
-    prom/prometheus:v2.54.1
+### Dashboard Panels
 
-# Run Grafana
-podman run -d --name grafana \
-    -p 3000:3000 \
-    -e GF_SECURITY_ADMIN_PASSWORD=admin \
-    grafana/grafana:10.1.0
-```
+Both dashboards include:
 
-## Key Metrics
+- **Service Health**: Healthy/unhealthy instance counts, up/down status timeline
+- **Request Metrics**: Request rate, 2xx/4xx/5xx response rates
+- **JVM Metrics**: Heap usage percentage, heap memory (used vs max)
+- **ECS vs EC2 Comparison** (ECS dashboard only): Side-by-side request rate and heap usage
 
-### Liberty Application (MicroProfile Metrics 5.0)
+The Kubernetes dashboard adds:
+- Namespace filtering variable
+- Thread count by pod
+- GC time rate
+- Container CPU and memory vs limits
 
-MicroProfile Metrics 5.0 uses `mp_scope` label instead of metric prefixes:
+### Importing Dashboards
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `servlet_request_total{mp_scope="base"}` | Counter | Total HTTP requests |
-| `servlet_request_elapsedTime_seconds{mp_scope="base"}` | Histogram | Request duration |
-| `memory_usedHeap_bytes{mp_scope="base"}` | Gauge | JVM heap usage |
-| `cpu_processCpuLoad{mp_scope="base"}` | Gauge | CPU utilization |
-| `thread_count{mp_scope="base"}` | Gauge | Active threads |
+1. Log in to Grafana (default: admin/admin for local, see Secrets Manager for AWS)
+2. Navigate to Dashboards > Import
+3. Upload the JSON file or paste its contents
+4. Select your Prometheus datasource
+5. Click Import
 
-### Infrastructure (Node Exporter)
+## Metric Naming Conventions
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `node_cpu_seconds_total` | Counter | CPU time per mode |
-| `node_memory_MemAvailable_bytes` | Gauge | Available memory |
-| `node_disk_io_time_seconds_total` | Counter | Disk I/O time |
-| `node_network_receive_bytes_total` | Counter | Network RX |
+MicroProfile Metrics 5.0 uses the `mp_scope` label instead of metric name prefixes.
 
-## Pre-configured Alerts
+### Liberty Application Metrics
 
-| Alert | Condition | Severity |
-|-------|-----------|----------|
-| LibertyServerDown | `up == 0` for 1m | critical |
-| LibertyHighHeapUsage | Heap > 85% for 5m | warning |
-| LibertyHighErrorRate | 5xx > 5% for 5m | warning |
-| ECSLibertyTaskDown | Task unreachable for 1m | critical |
-| ECSLibertyNoTasks | No tasks for 2m | critical |
-| ECSLibertySlowResponses | p95 > 2s for 5m | warning |
+| Metric | Scope | Type | Description |
+|--------|-------|------|-------------|
+| `servlet_request_total` | base | Counter | HTTP request count by status |
+| `servlet_request_elapsedTime_seconds` | base | Histogram | Request duration |
+| `memory_usedHeap_bytes` | base | Gauge | Current heap usage |
+| `memory_maxHeap_bytes` | base | Gauge | Maximum heap size |
+| `thread_count` | base | Gauge | Active thread count |
+| `gc_time_total_seconds` | base | Counter | Cumulative GC time |
+| `connectionpool_freeConnections` | vendor | Gauge | Available DB connections |
+| `threadpool_activeThreads` | vendor | Gauge | Active threads in pool |
 
-## Common Tasks
+### Query Examples
 
-### Import Grafana Dashboard
-1. Log in to Grafana
-2. Dashboards > Import > Upload JSON file
-3. Select `monitoring/grafana/dashboards/ecs-liberty.json` or `k8s-liberty.json`
-
-### Query Metrics (Prometheus)
 ```promql
-# Request rate (MicroProfile Metrics 5.0 uses mp_scope label)
+# Request rate per second
 rate(servlet_request_total{mp_scope="base"}[5m])
-
-# 95th percentile response time
-histogram_quantile(0.95, rate(servlet_request_elapsedTime_seconds_bucket{mp_scope="base"}[5m]))
 
 # Heap usage percentage
 memory_usedHeap_bytes{mp_scope="base"} / memory_maxHeap_bytes{mp_scope="base"} * 100
+
+# 95th percentile response time
+histogram_quantile(0.95,
+  rate(servlet_request_elapsedTime_seconds_bucket{mp_scope="base"}[5m]))
+
+# Error rate percentage
+sum(rate(servlet_request_total{mp_scope="base", status=~"5.."}[5m]))
+/ sum(rate(servlet_request_total{mp_scope="base"}[5m])) * 100
 ```
 
-### Validate Alert Rules
+### Job Labels by Environment
+
+| Environment | Job Label |
+|-------------|-----------|
+| Local development | `liberty` |
+| AWS ECS | `ecs-liberty` |
+| AWS EC2 | `ec2-liberty` |
+| Kubernetes | `liberty` (with namespace label) |
+
+## Kubernetes Monitoring Resources
+
+For Prometheus Operator deployments, additional resources are in `kubernetes/base/monitoring/`:
+
+| Resource | File | Purpose |
+|----------|------|---------|
+| ServiceMonitor | `liberty-servicemonitor.yaml` | Auto-discovers Liberty services |
+| PodMonitor | `liberty-servicemonitor.yaml` | Direct pod scraping alternative |
+| PrometheusRule | `liberty-prometheusrule.yaml` | Alert rules for K8s deployments |
+| AlertManager Config | `alertmanager-config.yaml` | K8s-specific routing |
+| Secrets | `alertmanager-secrets.yaml` | Webhook secret template |
+
+### ServiceMonitor Configuration
+
+The ServiceMonitor matches Liberty services across namespaces (default, liberty, middleware) with the label `app: liberty`. It scrapes the `/metrics` endpoint on port `http` every 15 seconds and adds `pod`, `node`, and `namespace` labels to metrics.
+
+### PrometheusRule Alerts
+
+The Kubernetes PrometheusRule includes additional alerts beyond the base set:
+
+- **Health**: LibertyHighRestartCount, LibertyReadinessFailure
+- **JVM**: LibertyCriticalHeapUsage (>95%), LibertyHighGCTime, LibertyThreadPoolExhaustion
+- **Requests**: LibertyCriticalErrorRate (>10%), LibertyHighLatency, LibertyNoRequests
+- **Resources**: LibertyHighCPUUsage, LibertyHighMemoryUsage
+- **Connections**: ConnectionPoolLow, ConnectionPoolWaitTime, ConnectionFailure, PoolExhausted
+
+## Quick Reference
+
+### Common Operations
+
 ```bash
+# Reload Prometheus config
+curl -X POST http://localhost:9090/-/reload
+
+# Check Prometheus targets
+curl http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job, health}'
+
+# Reload AlertManager config
+curl -X POST http://localhost:9093/-/reload
+
+# Query active alerts
+curl http://localhost:9093/api/v1/alerts
+
+# Validate alert rules
 promtool check rules /etc/prometheus/rules/*.yml
 ```
 
-### Reload Configuration
-```bash
-curl -X POST http://localhost:9090/-/reload
-```
+### Default Ports
 
-## Troubleshooting
-
-### Prometheus Not Scraping Targets
-```bash
-# Check target status
-curl http://prometheus-ip:9090/api/v1/targets | jq '.data.activeTargets[] | {job, health}'
-
-# Test metrics endpoint
-curl http://target-ip:9080/metrics
-```
-
-### Alerts Not Firing
-```bash
-# Check alert rules loaded
-curl http://prometheus-ip:9090/api/v1/rules
-
-# Verify Alertmanager connection
-curl http://prometheus-ip:9090/api/v1/alertmanagers
-```
-
-### ECS Discovery Not Working (AWS)
-```bash
-# SSH to monitoring server
-sudo -u prometheus /usr/local/bin/ecs-discovery.sh
-cat /etc/prometheus/targets/ecs-liberty.json
-```
+| Service | Port |
+|---------|------|
+| Prometheus | 9090 |
+| AlertManager | 9093 |
+| Grafana | 3000 |
+| Liberty metrics | 9080 |
+| Node Exporter | 9100 |
 
 ## Related Documentation
 
-- [Monitoring Architecture](../docs/architecture/diagrams/monitoring-architecture.md)
-- [End-to-End Testing](../docs/END_TO_END_TESTING.md)
-- [AWS Deployment](../docs/AWS_DEPLOYMENT.md)
-- [Local Kubernetes Deployment](../docs/LOCAL_KUBERNETES_DEPLOYMENT.md)
-- [AlertManager Configuration](../docs/ALERTMANAGER_CONFIGURATION.md)
+- [AlertManager Configuration Guide](../docs/ALERTMANAGER_CONFIGURATION.md) - Detailed webhook setup
+- [Local Kubernetes Deployment](../docs/LOCAL_KUBERNETES_DEPLOYMENT.md) - K8s cluster setup
+- [End-to-End Testing](../docs/END_TO_END_TESTING.md) - Monitoring verification steps

@@ -48,7 +48,12 @@ check_http "AWX" "http://192.168.68.205/api/v2/ping/" || true
 echo ""
 echo -e "${YELLOW}=== AWS (if deployed) ===${NC}"
 if command -v terraform &>/dev/null; then
-    cd /home/justin/Projects/middleware-automation-platform/automated/terraform/environments/prod-aws
+    # Get project root dynamically for portability
+    PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+        echo -e "${YELLOW}[SKIP]${NC} Not in a git repository, cannot locate Terraform directory"
+        exit 0
+    }
+    cd "${PROJECT_ROOT}/automated/terraform/environments/prod-aws"
     ALB_DNS=$(terraform output -raw alb_dns_name 2>/dev/null || echo "")
     if [ -n "$ALB_DNS" ]; then
         check_http "ALB Health" "http://$ALB_DNS/health/ready" || true
