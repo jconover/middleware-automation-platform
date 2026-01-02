@@ -4,7 +4,15 @@
 # =============================================================================
 # Starts AWS services that were stopped by aws-stop.sh
 #
-# Usage: ./aws-start.sh
+# Usage: ./aws-start.sh [OPTIONS]
+#
+# Options:
+#   -h, --help     Show this help message and exit
+#   -d, --dry-run  Preview operations without executing them
+#
+# Examples:
+#   ./aws-start.sh              # Start all AWS services
+#   ./aws-start.sh --dry-run    # Preview what would be started
 # =============================================================================
 
 set -euo pipefail
@@ -20,11 +28,43 @@ NC='\033[0m'
 AWS_REGION="${AWS_REGION:-us-east-1}"
 NAME_PREFIX="mw-prod"
 ECS_DESIRED_COUNT="${ECS_DESIRED_COUNT:-2}"
+DRY_RUN=false
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 log_step() { echo -e "\n${BLUE}▶ $1${NC}"; }
+log_dry_run() { echo -e "${YELLOW}[DRY-RUN]${NC} $1"; }
+
+usage() {
+    # Extract usage from header comments (lines 2-16)
+    sed -n '2,16p' "$0" | grep '^#' | sed 's/^# //' | sed 's/^#//'
+    exit 0
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                usage
+                ;;
+            -d|--dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                echo "Use --help for usage information."
+                exit 1
+                ;;
+            *)
+                log_error "Unexpected argument: $1"
+                echo "Use --help for usage information."
+                exit 1
+                ;;
+        esac
+    done
+}
 
 print_banner() {
     echo -e "${GREEN}"
@@ -61,6 +101,10 @@ start_rds() {
         --output text 2>/dev/null || echo "not-found")
 
     if [[ "$DB_STATUS" == "stopped" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_dry_run "Would start RDS instance: $DB_IDENTIFIER"
+            return
+        fi
         aws rds start-db-instance \
             --region "$AWS_REGION" \
             --db-instance-identifier "$DB_IDENTIFIER" \
@@ -78,6 +122,10 @@ start_rds() {
         log_warn "RDS instance not found. May need to run terraform apply."
     else
         log_info "RDS instance in state: $DB_STATUS (waiting...)"
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_dry_run "Would wait for RDS instance to become available: $DB_IDENTIFIER"
+            return
+        fi
         aws rds wait db-instance-available \
             --region "$AWS_REGION" \
             --db-instance-identifier "$DB_IDENTIFIER" 2>/dev/null || true
@@ -97,6 +145,10 @@ start_ec2_instances() {
 
     if [[ -n "$INSTANCE_IDS" ]]; then
         log_info "Found stopped instances: $INSTANCE_IDS"
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_dry_run "Would start EC2 instances: $INSTANCE_IDS"
+            return
+        fi
         aws ec2 start-instances --region "$AWS_REGION" --instance-ids $INSTANCE_IDS
         log_info "Start command sent. Waiting for instances to run..."
         aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids $INSTANCE_IDS
@@ -116,6 +168,10 @@ scale_up_ecs() {
 
     # Check if cluster exists
     if aws ecs describe-clusters --region "$AWS_REGION" --clusters "${NAME_PREFIX}-cluster" --query 'clusters[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_dry_run "Would scale ECS service ${NAME_PREFIX}-liberty to ${ECS_DESIRED_COUNT} tasks"
+            return
+        fi
         # Scale service up
         aws ecs update-service \
             --region "$AWS_REGION" \
@@ -140,6 +196,13 @@ scale_up_ecs() {
 }
 
 check_health() {
+    # Skip health check in dry-run mode since nothing was actually started
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_step "Checking service health..."
+        log_dry_run "Would check service health (skipped in dry-run mode)"
+        return
+    fi
+
     log_step "Checking service health..."
 
     # Get ALB DNS name
@@ -156,7 +219,7 @@ check_health() {
         log_info "Checking ECS target health..."
         sleep 10
         if curl -sf "http://${ALB_DNS}/health/ready" > /dev/null 2>&1; then
-            log_info "✓ ECS targets healthy"
+            log_info "ECS targets healthy"
         else
             log_warn "ECS targets not yet healthy (may need more time)"
         fi
@@ -183,6 +246,20 @@ check_health() {
 
 print_summary() {
     echo ""
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo -e "${YELLOW}╔═══════════════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${YELLOW}║                     DRY-RUN COMPLETE                                      ║${NC}"
+        echo -e "${YELLOW}╚═══════════════════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        log_info "Dry run complete. No changes were made."
+        echo ""
+        echo "To execute the start, run without --dry-run:"
+        echo "  $0"
+        echo ""
+        return
+    fi
+
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║                     ALL SERVICES STARTED                                  ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════════╝${NC}"
@@ -221,7 +298,14 @@ print_summary() {
 }
 
 main() {
+    parse_args "$@"
+
     print_banner
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_warn "Running in DRY-RUN mode - no changes will be made"
+    fi
+
     check_aws_cli
 
     # Start RDS first (takes longest)

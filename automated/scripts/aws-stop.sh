@@ -5,8 +5,17 @@
 # Stops/scales down AWS services to minimize costs when not in use.
 # Run aws-start.sh to bring everything back up.
 #
-# Usage: ./aws-stop.sh [--destroy]
+# Usage: ./aws-stop.sh [OPTIONS]
+#
+# Options:
+#   --dry-run  Preview operations without executing them
 #   --destroy  Fully destroy infrastructure (terraform destroy)
+#   -h, --help Show this help message and exit
+#
+# Examples:
+#   ./aws-stop.sh              # Stop all services
+#   ./aws-stop.sh --dry-run    # Preview what would be stopped
+#   ./aws-stop.sh --destroy    # Fully destroy infrastructure
 # =============================================================================
 
 set -euo pipefail
@@ -22,11 +31,34 @@ NC='\033[0m'
 AWS_REGION="${AWS_REGION:-us-east-1}"
 NAME_PREFIX="mw-prod"
 TERRAFORM_DIR="$(dirname "$0")/../terraform/environments/prod-aws"
+DRY_RUN=false
+DESTROY_MODE=false
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 log_step() { echo -e "\n${BLUE}▶ $1${NC}"; }
+log_dry_run() { echo -e "${YELLOW}[DRY-RUN]${NC} $1"; }
+
+usage() {
+    echo "AWS Services Stop Script"
+    echo ""
+    echo "Stops/scales down AWS services to minimize costs when not in use."
+    echo "Run aws-start.sh to bring everything back up."
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --dry-run  Preview operations without executing them"
+    echo "  --destroy  Fully destroy infrastructure (terraform destroy)"
+    echo "  -h, --help Show this help message and exit"
+    echo ""
+    echo "Examples:"
+    echo "  $0              # Stop all services"
+    echo "  $0 --dry-run    # Preview what would be stopped"
+    echo "  $0 --destroy    # Fully destroy infrastructure"
+    exit 0
+}
 
 print_banner() {
     echo -e "${YELLOW}"
@@ -71,6 +103,12 @@ stop_ec2_instances() {
 
     if [[ ${#instance_ids[@]} -gt 0 ]]; then
         log_info "Found running instances: ${instance_ids[*]}"
+
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_dry_run "Would stop EC2 instances: ${instance_ids[*]}"
+            return
+        fi
+
         aws ec2 stop-instances --region "$AWS_REGION" --instance-ids "${instance_ids[@]}"
         log_info "Stop command sent. Waiting for instances to stop..."
         aws ec2 wait instance-stopped --region "$AWS_REGION" --instance-ids "${instance_ids[@]}"
@@ -85,6 +123,11 @@ scale_down_ecs() {
 
     # Check if cluster exists
     if aws ecs describe-clusters --region "$AWS_REGION" --clusters "${NAME_PREFIX}-cluster" --query 'clusters[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_dry_run "Would scale ECS service ${NAME_PREFIX}-liberty to 0 tasks"
+            return
+        fi
+
         # Scale service to 0
         aws ecs update-service \
             --region "$AWS_REGION" \
@@ -111,28 +154,34 @@ scale_down_ecs() {
 stop_rds() {
     log_step "Stopping RDS instance..."
 
-    DB_IDENTIFIER="${NAME_PREFIX}-postgres"
+    local db_identifier="${NAME_PREFIX}-postgres"
 
     # Check if RDS exists and is available
-    DB_STATUS=$(aws rds describe-db-instances \
+    local db_status
+    db_status=$(aws rds describe-db-instances \
         --region "$AWS_REGION" \
-        --db-instance-identifier "$DB_IDENTIFIER" \
+        --db-instance-identifier "$db_identifier" \
         --query 'DBInstances[0].DBInstanceStatus' \
         --output text 2>/dev/null || echo "not-found")
 
-    if [[ "$DB_STATUS" == "available" ]]; then
+    if [[ "$db_status" == "available" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_dry_run "Would stop RDS instance: $db_identifier"
+            return
+        fi
+
         aws rds stop-db-instance \
             --region "$AWS_REGION" \
-            --db-instance-identifier "$DB_IDENTIFIER" \
+            --db-instance-identifier "$db_identifier" \
             --no-cli-pager
         log_info "RDS stop command sent. (Takes a few minutes)"
         log_warn "Note: RDS auto-restarts after 7 days if not manually started."
-    elif [[ "$DB_STATUS" == "stopped" ]]; then
+    elif [[ "$db_status" == "stopped" ]]; then
         log_info "RDS instance already stopped."
-    elif [[ "$DB_STATUS" == "not-found" ]]; then
+    elif [[ "$db_status" == "not-found" ]]; then
         log_info "RDS instance not found."
     else
-        log_warn "RDS instance in state: $DB_STATUS (cannot stop)"
+        log_warn "RDS instance in state: $db_status (cannot stop)"
     fi
 }
 
@@ -202,18 +251,72 @@ print_restart_instructions() {
     echo ""
 }
 
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                usage
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --destroy)
+                DESTROY_MODE=true
+                shift
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                echo "Use --help for usage information."
+                exit 1
+                ;;
+            *)
+                log_error "Unexpected argument: $1"
+                echo "Use --help for usage information."
+                exit 1
+                ;;
+        esac
+    done
+}
+
+print_dry_run_summary() {
+    echo ""
+    log_info "Dry run complete. No changes were made."
+    echo ""
+    echo "To execute the stop operations, run without --dry-run:"
+    echo "  $0"
+    echo ""
+}
+
 main() {
+    parse_args "$@"
+
     print_banner
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_warn "Running in DRY-RUN mode - no changes will be made"
+    fi
+
     check_aws_cli
 
-    if [[ "${1:-}" == "--destroy" ]]; then
+    if [[ "$DESTROY_MODE" == "true" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_dry_run "Would run terraform destroy in $TERRAFORM_DIR"
+            print_dry_run_summary
+            exit 0
+        fi
         terraform_destroy
     else
         stop_ec2_instances
         scale_down_ecs
         stop_rds
-        print_cost_summary
-        print_restart_instructions
+
+        if [[ "$DRY_RUN" == "true" ]]; then
+            print_dry_run_summary
+        else
+            print_cost_summary
+            print_restart_instructions
+        fi
     fi
 
     log_info "Done!"
