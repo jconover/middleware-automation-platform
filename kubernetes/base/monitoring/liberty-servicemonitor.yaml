@@ -60,13 +60,12 @@ spec:
         - sourceLabels: [__meta_kubernetes_namespace]
           targetLabel: namespace
       # Metric relabeling for consistency with existing dashboards
-      metricRelabelings:
-        # Drop high-cardinality metrics if needed (example pattern)
-        # Uncomment to exclude specific metric patterns
-        # - sourceLabels: [__name__]
-        #   regex: 'vendor_.*_histogram_bucket'
-        #   action: drop
-        []
+      # Drop high-cardinality metrics if needed (example pattern)
+      # Uncomment and add to metricRelabelings to exclude specific metric patterns:
+      # metricRelabelings:
+      #   - sourceLabels: [__name__]
+      #     regex: 'vendor_.*_histogram_bucket'
+      #     action: drop
 
 ---
 # PodMonitor as an alternative for direct pod scraping

@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -137,6 +138,12 @@ public class SampleResource {
         logger.log(Level.FINE, "Info endpoint called");
         requestCount.incrementAndGet();
 
+        // Check if debug endpoints are enabled (default: disabled in production)
+        String debugEnabled = System.getenv().getOrDefault("ENABLE_DEBUG_ENDPOINTS", "false");
+        if (!"true".equalsIgnoreCase(debugEnabled)) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
         try {
             RuntimeMXBean runtime = ManagementFactory.getRuntimeMXBean();
             MemoryMXBean memory = ManagementFactory.getMemoryMXBean();
@@ -208,9 +215,16 @@ public class SampleResource {
                     schema = @Schema(implementation = EchoRequest.class)
                 )
             )
-            @Valid EchoRequest request) {
+            @Valid @NotNull EchoRequest request) {
         logger.log(Level.FINE, "Echo endpoint called");
         requestCount.incrementAndGet();
+
+        // Defensive null check (in addition to @NotNull annotation)
+        if (request == null) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                .entity(Map.of("error", "Request body is required"))
+                .build();
+        }
 
         try {
             String message = request.message();
@@ -414,8 +428,20 @@ public class SampleResource {
             description = "Failed to reset statistics"
         )
     })
-    public Response resetStats() {
+    public Response resetStats(@HeaderParam("X-Admin-Key") String adminKey) {
         logger.log(Level.INFO, "Statistics reset requested");
+
+        // In production, protect this endpoint via:
+        // 1. Network policy (recommended)
+        // 2. @RolesAllowed("admin") with appSecurity feature
+        // 3. Admin key header check (basic protection shown below)
+        String expectedKey = System.getenv("ADMIN_API_KEY");
+        if (expectedKey != null && !expectedKey.equals(adminKey)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                .entity(Map.of("error", "Unauthorized"))
+                .build();
+        }
+
         try {
             long previousCount = requestCount.getAndSet(0);
             logger.log(Level.INFO, "Statistics reset completed, previous request count: {0}", previousCount);

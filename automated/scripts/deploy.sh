@@ -21,6 +21,7 @@ BOLD='\033[1m'
 # Defaults
 ENVIRONMENT="dev"
 DRY_RUN=false
+FORCE=false
 PHASE="all"
 
 # Timing
@@ -83,15 +84,28 @@ check_prerequisites() {
 deploy_infrastructure() {
     log_phase "Phase 1: Infrastructure"
     start_timer "infrastructure"
-    
+
     if [[ "$ENVIRONMENT" == "prod-aws" ]]; then
         cd "${PROJECT_ROOT}/automated/terraform/environments/prod-aws"
         terraform init -input=false
-        [[ "$DRY_RUN" == true ]] && terraform plan || terraform apply -auto-approve
+        if [[ "$DRY_RUN" == true ]]; then
+            terraform plan
+        else
+            terraform plan
+            if [[ "$FORCE" != true ]]; then
+                echo ""
+                read -p "Apply these changes? (yes/no): " confirm
+                if [[ "$confirm" != "yes" ]]; then
+                    echo "Aborted."
+                    exit 1
+                fi
+            fi
+            terraform apply -auto-approve
+        fi
     else
         log_info "Using existing local infrastructure"
     fi
-    
+
     stop_timer "infrastructure"
 }
 
@@ -153,6 +167,7 @@ show_help() {
     echo "  -e, --environment   Environment (dev, staging, prod-aws)"
     echo "  -p, --phase         Phase (all, infrastructure, liberty, monitoring)"
     echo "  -d, --dry-run       Dry run mode"
+    echo "  -f, --force         Skip confirmation prompts (use with caution)"
     echo "  -h, --help          Show help"
 }
 
@@ -162,8 +177,17 @@ main() {
             -e|--environment) ENVIRONMENT="$2"; shift 2 ;;
             -p|--phase) PHASE="$2"; shift 2 ;;
             -d|--dry-run) DRY_RUN=true; shift ;;
+            -f|--force) FORCE=true; shift ;;
             -h|--help) show_help; exit 0 ;;
-            *) shift ;;
+            -*)
+                echo -e "${RED}[ERROR]${NC} Unknown option: $1"
+                echo "Use --help for usage information."
+                exit 1
+                ;;
+            *)
+                echo -e "${RED}[ERROR]${NC} Unexpected argument: $1"
+                exit 1
+                ;;
         esac
     done
     

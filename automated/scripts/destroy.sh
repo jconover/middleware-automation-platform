@@ -242,7 +242,15 @@ main() {
             -p|--phase) PHASE="$2"; shift 2 ;;
             -f|--force) FORCE=true; shift ;;
             -h|--help) show_help; exit 0 ;;
-            *) shift ;;
+            -*)
+                echo "ERROR: Unknown option: $1"
+                echo "Use --help for usage information."
+                exit 1
+                ;;
+            *)
+                echo "ERROR: Unexpected argument: $1"
+                exit 1
+                ;;
         esac
     done
 

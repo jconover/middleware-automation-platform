@@ -116,4 +116,4 @@
     - name: Fail if any server is unhealthy
       ansible.builtin.fail:
         msg: "Health check failed: {{ healthy_count }}/{{ total_count }} servers healthy"
-      when: healthy_count != total_count
+      when: healthy_count | int != total_count | int

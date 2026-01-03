@@ -97,6 +97,7 @@
       register: health_results
       retries: 5
       delay: 10
+      until: health_results is success
 
     - name: Display summary
       ansible.builtin.debug:

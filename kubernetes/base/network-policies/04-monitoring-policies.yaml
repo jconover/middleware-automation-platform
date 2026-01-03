@@ -76,6 +76,13 @@ spec:
         - protocol: TCP
           port: 53
     # Kubernetes API for service discovery
+    # NOTE: This IP is k3s-specific (default API service ClusterIP).
+    # Update for other Kubernetes distributions:
+    #   - EKS: Run `kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}'`
+    #   - GKE: Typically 10.0.0.1 or check with kubectl command above
+    #   - AKS: Check with kubectl command above
+    #   - kubeadm: Usually 10.96.0.1
+    # Alternatively, use a Kustomize overlay to patch this for each environment.
     - to:
         - ipBlock:
             cidr: 10.43.0.1/32

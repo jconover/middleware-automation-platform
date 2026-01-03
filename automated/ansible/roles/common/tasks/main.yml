@@ -19,9 +19,8 @@
     state: present
 
 - name: Configure timezone
-  ansible.builtin.command:
-    cmd: timedatectl set-timezone {{ timezone | default('UTC') }}
-  changed_when: false
+  community.general.timezone:
+    name: "{{ timezone | default('UTC') }}"
 
 - name: Set hostname
   ansible.builtin.hostname:

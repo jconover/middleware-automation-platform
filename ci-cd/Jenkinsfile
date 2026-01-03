@@ -46,7 +46,9 @@ spec:
         DEPLOY_START_TIME = ''
 
         // AWS ECS Configuration - set dynamically in Checkout stage based on ENVIRONMENT
-        AWS_REGION = 'us-east-1'
+        // AWS_REGION can be overridden via Jenkins environment variables, job parameters,
+        // or global configuration. Falls back to 'us-east-1' if not set.
+        AWS_REGION = "${env.AWS_REGION ?: 'us-east-1'}"
         ECR_REPO = ''  // Set dynamically based on AWS account
         ECS_CLUSTER = ''  // Set dynamically: mw-{env}-cluster
         ECS_SERVICE = ''  // Set dynamically: mw-{env}-liberty
@@ -212,9 +214,21 @@ spec:
             steps {
                 container('podman') {
                     dir('containers/liberty') {
-                        sh '''
+                        sh '''#!/bin/bash
+                            set -e
                             mkdir -p apps
-                            cp ../../sample-app/target/*.war apps/ 2>/dev/null || true
+
+                            WAR_COUNT=$(ls ../../sample-app/target/*.war 2>/dev/null | wc -l)
+                            if [[ "$WAR_COUNT" -eq 0 ]]; then
+                                echo "ERROR: No WAR files found in sample-app/target/"
+                                echo "Ensure the Build Application stage completed successfully."
+                                exit 1
+                            fi
+
+                            cp ../../sample-app/target/*.war apps/
+                            echo "Copied WAR files:"
+                            ls -la apps/
+
                             podman build -t liberty-app:${VERSION} -f Containerfile .
                             echo "Built container image: liberty-app:${VERSION}"
                         '''

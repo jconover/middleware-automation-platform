@@ -137,13 +137,62 @@ resource "aws_flow_log" "main" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# KMS Key for CloudWatch Logs Encryption
+# -----------------------------------------------------------------------------
+resource "aws_kms_key" "logs" {
+  description             = "KMS key for CloudWatch logs encryption"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+
+  tags = {
+    Name = "${local.name_prefix}-logs-key"
+  }
+}
+
+resource "aws_kms_key_policy" "logs" {
+  key_id = aws_kms_key.logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM policies"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow CloudWatch Logs"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${var.aws_region}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "flow_logs" {
   name              = "/aws/vpc/${local.name_prefix}-flow-logs"
   retention_in_days = 30
+  kms_key_id        = aws_kms_key.logs.arn
 
   tags = {
     Name = "${local.name_prefix}-flow-logs"
   }
+
+  depends_on = [aws_kms_key_policy.logs]
 }
 
 resource "aws_iam_role" "flow_logs" {

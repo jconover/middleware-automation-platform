@@ -284,8 +284,27 @@ spec:
           port: 443
 
 ---
+# =============================================================================
 # Allow egress to Kubernetes API server
+# =============================================================================
 # Required for: Service discovery, ConfigMap/Secret watch, health reporting
+#
+# IMPORTANT: This policy may be UNNECESSARY if your deployment sets
+#   automountServiceAccountToken: false
+# The Liberty deployment in this project disables service account token mounting,
+# meaning pods cannot authenticate to the Kubernetes API. If your deployment
+# truly does not need API access, you can safely remove this policy.
+#
+# Keep this policy if:
+#   - You enable automountServiceAccountToken for API-dependent features
+#   - You use Kubernetes-native service discovery
+#   - Your application watches ConfigMaps/Secrets for live config updates
+#
+# Remove this policy if:
+#   - automountServiceAccountToken: false (no API authentication)
+#   - Application uses DNS-based service discovery only
+#   - No ConfigMap/Secret watching is required
+# =============================================================================
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -294,6 +313,8 @@ metadata:
   labels:
     app.kubernetes.io/part-of: middleware-platform
     app.kubernetes.io/component: network-policy
+  annotations:
+    description: "K8s API egress - may be unnecessary if automountServiceAccountToken: false"
 spec:
   podSelector:
     matchLabels:
@@ -309,10 +330,17 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    # Direct API server access (adjust IP based on cluster)
+    # Direct API server access
+    # NOTE: This IP is k3s-specific (default API service ClusterIP).
+    # Update for other Kubernetes distributions:
+    #   - EKS: Run `kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}'`
+    #   - GKE: Typically 10.0.0.1 or check with kubectl command above
+    #   - AKS: Check with kubectl command above
+    #   - kubeadm: Usually 10.96.0.1
+    # Alternatively, use a Kustomize overlay to patch this for each environment.
     - to:
         - ipBlock:
-            cidr: 10.43.0.1/32  # Default k3s API service IP
+            cidr: 10.43.0.1/32
       ports:
         - protocol: TCP
           port: 443

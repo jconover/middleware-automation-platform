@@ -88,8 +88,8 @@
 {% endif %}
         />
         <connectionManager
-            maxPoolSize="{{ liberty_db_pool_max | default(20) }}"
-            minPoolSize="{{ liberty_db_pool_min | default(5) }}"
+            maxPoolSize="{{ liberty_db_pool_max_size | default(20) }}"
+            minPoolSize="{{ liberty_db_pool_min_size | default(5) }}"
             connectionTimeout="30s"
             maxIdleTime="10m"
             agedTimeout="30m" />

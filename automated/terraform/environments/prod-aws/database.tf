@@ -11,6 +11,14 @@ resource "random_password" "db" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
+# -----------------------------------------------------------------------------
+# Redis AUTH Token
+# -----------------------------------------------------------------------------
+resource "random_password" "redis_auth" {
+  length  = 32
+  special = false # Redis auth token has character restrictions
+}
+
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${local.name_prefix}/database/credentials"
   description = "Database credentials for ${local.name_prefix}"
@@ -150,6 +158,9 @@ resource "aws_elasticache_replication_group" "main" {
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
 
+  # AUTH token for Redis authentication
+  auth_token = random_password.redis_auth.result
+
   snapshot_retention_limit = 1
   snapshot_window          = "05:00-06:00"
   maintenance_window       = "sun:06:00-sun:07:00"
@@ -157,4 +168,26 @@ resource "aws_elasticache_replication_group" "main" {
   tags = {
     Name = "${local.name_prefix}-redis"
   }
+}
+
+# -----------------------------------------------------------------------------
+# Redis AUTH Token Secret (for application access)
+# -----------------------------------------------------------------------------
+resource "aws_secretsmanager_secret" "redis_auth" {
+  name        = "${local.name_prefix}/redis/auth-token"
+  description = "Redis AUTH token for ${local.name_prefix}"
+
+  tags = {
+    Name = "${local.name_prefix}-redis-auth"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "redis_auth" {
+  secret_id = aws_secretsmanager_secret.redis_auth.id
+
+  secret_string = jsonencode({
+    auth_token = random_password.redis_auth.result
+    host       = aws_elasticache_replication_group.main.primary_endpoint_address
+    port       = 6379
+  })
 }

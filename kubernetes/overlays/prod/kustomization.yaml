@@ -111,10 +111,25 @@ configMapGenerator:
       - db.host=postgres-prod.database.svc.cluster.local
       - log.level=INFO
 
+# =============================================================================
 # Images - transform base image reference to ECR for production
-# NOTE: Replace <AWS_ACCOUNT_ID> with your actual AWS account ID
+# =============================================================================
+# REQUIRED: Replace AWS_ACCOUNT_ID placeholder before applying!
+#
+# Option 1: Manual replacement
+#   sed -i 's/AWS_ACCOUNT_ID/123456789012/g' kustomization.yaml
+#
+# Option 2: Use envsubst (set AWS_ACCOUNT_ID environment variable)
+#   export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+#   envsubst < kustomization.yaml > kustomization-resolved.yaml
+#
+# Option 3: Get account ID from Terraform
+#   terraform -chdir=automated/terraform/environments/prod-aws output -raw aws_account_id
+#
 # This transforms the base deployment's docker.io/jconover/liberty-app image to ECR
+# =============================================================================
 images:
   - name: docker.io/jconover/liberty-app
-    newName: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/mw-prod-liberty
+    # TODO: Replace AWS_ACCOUNT_ID with your 12-digit AWS account ID
+    newName: AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/mw-prod-liberty
     newTag: "1.0.0"

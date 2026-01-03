@@ -60,6 +60,17 @@ resource "aws_s3_bucket" "alb_logs" {
 }
 
 # -----------------------------------------------------------------------------
+# ALB Access Logs Bucket - Versioning (for forensic analysis)
+# -----------------------------------------------------------------------------
+resource "aws_s3_bucket_versioning" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# -----------------------------------------------------------------------------
 # ALB Access Logs Bucket - Server-Side Encryption
 # Uses AES256 (SSE-S3) as ALB access logs do not support SSE-KMS
 # See: https://docs.aws.amazon.com/elasticloadbalancing/latest/application/enable-access-logging.html
