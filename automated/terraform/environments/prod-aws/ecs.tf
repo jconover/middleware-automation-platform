@@ -80,7 +80,7 @@ resource "aws_ecs_task_definition" "liberty" {
         { name = "DB_HOST", value = aws_db_instance.main.address },
         { name = "DB_PORT", value = tostring(aws_db_instance.main.port) },
         { name = "DB_NAME", value = var.db_name },
-        { name = "REDIS_HOST", value = aws_elasticache_cluster.main.cache_nodes[0].address },
+        { name = "REDIS_HOST", value = aws_elasticache_replication_group.main.primary_endpoint_address },
         { name = "REDIS_PORT", value = "6379" }
       ]
 

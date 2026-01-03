@@ -82,11 +82,11 @@ resource "aws_db_instance" "main" {
   monitoring_role_arn = aws_iam_role.rds_monitoring.arn
 
   # Other settings
-  multi_az                  = false # Set to true for production HA
+  multi_az                  = true
   publicly_accessible       = false
   skip_final_snapshot       = false
   final_snapshot_identifier = "${local.name_prefix}-postgres-final"
-  deletion_protection       = false # Set to true for production
+  deletion_protection       = true
 
   tags = {
     Name = "${local.name_prefix}-postgres"
@@ -130,19 +130,25 @@ resource "aws_elasticache_subnet_group" "main" {
 }
 
 # -----------------------------------------------------------------------------
-# ElastiCache Redis
+# ElastiCache Redis (Replication Group for encryption support)
 # -----------------------------------------------------------------------------
-resource "aws_elasticache_cluster" "main" {
-  cluster_id           = "${local.name_prefix}-redis"
+resource "aws_elasticache_replication_group" "main" {
+  replication_group_id = "${local.name_prefix}-redis"
+  description          = "Redis cluster for ${local.name_prefix}"
+
   engine               = "redis"
   engine_version       = "7.0"
   node_type            = var.cache_node_type
-  num_cache_nodes      = 1
+  num_cache_clusters   = 1
   parameter_group_name = "default.redis7"
   port                 = 6379
 
   subnet_group_name  = aws_elasticache_subnet_group.main.name
   security_group_ids = [aws_security_group.cache.id]
+
+  # Encryption settings
+  at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
 
   snapshot_retention_limit = 1
   snapshot_window          = "05:00-06:00"

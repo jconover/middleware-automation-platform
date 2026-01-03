@@ -29,8 +29,38 @@ configMapGenerator:
       labels:
         app: liberty
 
-# Secret generator placeholder (use external secrets in production)
+# =============================================================================
+# IMPORTANT: Secret Configuration Required
+# =============================================================================
+# The liberty-secrets Secret MUST be created before deploying Liberty.
+# The deployment references this secret for database credentials.
+#
+# See liberty-secrets.yaml.template for detailed instructions on creating
+# the secret using one of these methods:
+#
+#   1. kubectl create secret (development)
+#   2. Apply template file with replaced values
+#   3. Bitnami Sealed Secrets (GitOps)
+#   4. External Secrets Operator (production - AWS/Vault/GCP)
+#
+# Quick start for development:
+#   kubectl create secret generic liberty-secrets \
+#     --namespace=liberty \
+#     --from-literal=db.password='devpassword123' \
+#     --from-literal=db.username='liberty' \
+#     --from-literal=keystore.password='keystorepass'
+#
+# The secret is NOT managed by Kustomize to prevent credentials in Git.
+# =============================================================================
+
+# Secret generator - DEVELOPMENT ONLY (uncomment for local testing)
+# WARNING: Do not commit with real values - use external secrets in production
 # secretGenerator:
 #   - name: liberty-secrets
 #     literals:
-#       - db.password=REPLACE_WITH_EXTERNAL_SECRET
+#       - db.password=REPLACE_WITH_ACTUAL_PASSWORD
+#       - db.username=liberty
+#       - keystore.password=REPLACE_WITH_ACTUAL_PASSWORD
+#     options:
+#       labels:
+#         app: liberty

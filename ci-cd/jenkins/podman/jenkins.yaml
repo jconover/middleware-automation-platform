@@ -8,12 +8,15 @@ jenkins:
   systemMessage: "Middleware Automation Platform - Jenkins CI/CD (Standalone)"
 
   # Security settings
+  # IMPORTANT: JENKINS_ADMIN_PASSWORD environment variable MUST be set before starting Jenkins.
+  # The container will fail to start properly if this variable is not configured.
+  # Example: export JENKINS_ADMIN_PASSWORD='your-secure-password-here'
   securityRealm:
     local:
       allowsSignup: false
       users:
         - id: "admin"
-          password: "${JENKINS_ADMIN_PASSWORD:-JenkinsAdmin2024!}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
           properties:
             - mailer:
                 emailAddress: "admin@localhost"

@@ -19,7 +19,14 @@ spec:
     command: [cat]
     tty: true
     securityContext:
-      privileged: true
+      runAsUser: 1000
+      runAsGroup: 1000
+    volumeMounts:
+    - name: podman-storage
+      mountPath: /home/podman/.local/share/containers
+  volumes:
+  - name: podman-storage
+    emptyDir: {}
   - name: ansible
     image: cytopia/ansible:latest
     command: [cat]

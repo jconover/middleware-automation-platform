@@ -93,6 +93,9 @@ temp/
 # Kubernetes
 kubeconfig
 *.kubeconfig
+# Actual secrets files (templates end in .template)
+kubernetes/**/alertmanager-secrets.yaml
+kubernetes/**/liberty-secrets.yaml
 
 # AWS
 .aws/

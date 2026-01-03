@@ -72,7 +72,8 @@ redis_port: 6379
 prometheus_liberty_targets: "{{ groups['liberty_servers'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '$', ':9080') | list }}"
 
 # SSH settings for AWS
-ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+# Using accept-new to accept first connection but detect MITM on subsequent connections
+ansible_ssh_common_args: '-o StrictHostKeyChecking=accept-new'
 
 # CloudWatch agent (optional)
 install_cloudwatch_agent: true

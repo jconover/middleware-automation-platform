@@ -35,7 +35,7 @@ resource "aws_lb" "main" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
 
-  enable_deletion_protection = false # Set to true for production
+  enable_deletion_protection = true
 
   access_logs {
     bucket  = aws_s3_bucket.alb_logs.id

@@ -40,7 +40,7 @@ resources:
 
 # Note: alertmanager-secrets.yaml is NOT included here intentionally.
 # Secrets should be created manually to avoid committing sensitive URLs.
-# See alertmanager-secrets.yaml for instructions.
+# See alertmanager-secrets.yaml.template for instructions.
 #
 # For local development without webhooks, replace alertmanager-config.yaml
 # with alertmanager-config-local.yaml in the resources list above.

@@ -9,8 +9,16 @@ services:
   jenkins:
     image: jenkins/jenkins:lts-jdk17
     container_name: jenkins
-    user: root
-    privileged: true
+    # Run as jenkins user (UID 1000) - matches default jenkins image user
+    user: "1000:1000"
+    # Security hardening - disable privilege escalation
+    security_opt:
+      - no-new-privileges:true
+    # NOTE: Privileged mode removed for security. For container builds, use one of:
+    #   1. Rootless Podman socket (configured below) - RECOMMENDED
+    #   2. Docker-in-Docker sidecar (see commented section below)
+    #   3. Kubernetes pod agents with kaniko for image builds
+    #   4. External container registry builds via webhook
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -18,14 +26,22 @@ services:
     environment:
       - JAVA_OPTS=-Xms1g -Xmx2g -Djenkins.install.runSetupWizard=false
       - CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs
+      # REQUIRED: Set JENKINS_ADMIN_PASSWORD before starting
+      # Example: JENKINS_ADMIN_PASSWORD='your-secure-password' podman-compose up -d
+      - JENKINS_ADMIN_PASSWORD=${JENKINS_ADMIN_PASSWORD:?JENKINS_ADMIN_PASSWORD environment variable is required}
     volumes:
       # Jenkins home for persistence
+      # NOTE: Ensure jenkins_home volume is owned by UID 1000:1000
+      # Initialize with: podman volume create jenkins_home
+      # Or: mkdir -p ./jenkins_home && chown 1000:1000 ./jenkins_home
       - jenkins_home:/var/jenkins_home
       # JCasC configuration
       - ./jenkins.yaml:/var/jenkins_home/casc_configs/jenkins.yaml:ro
-      # Podman socket for container builds (rootless)
+      # Podman socket for container builds (rootless) - RECOMMENDED approach
+      # The jenkins user (UID 1000) needs access to the host's rootless podman socket
+      # Ensure socket permissions allow group access: chmod 660 /run/user/1000/podman/podman.sock
       - /run/user/1000/podman/podman.sock:/var/run/docker.sock
-      # Or use root podman socket
+      # Or use root podman socket (less secure, requires adding jenkins to docker/podman group)
       # - /run/podman/podman.sock:/var/run/docker.sock
     networks:
       - jenkins-net

@@ -95,12 +95,12 @@ output "db_credentials_secret_arn" {
 # -----------------------------------------------------------------------------
 output "redis_endpoint" {
   description = "ElastiCache Redis endpoint"
-  value       = aws_elasticache_cluster.main.cache_nodes[0].address
+  value       = aws_elasticache_replication_group.main.primary_endpoint_address
 }
 
 output "redis_port" {
   description = "ElastiCache Redis port"
-  value       = aws_elasticache_cluster.main.cache_nodes[0].port
+  value       = 6379
 }
 
 # -----------------------------------------------------------------------------
@@ -211,7 +211,7 @@ output "ansible_inventory" {
     db_name=${var.db_name}
 
     # Redis connection
-    redis_host=${aws_elasticache_cluster.main.cache_nodes[0].address}
+    redis_host=${aws_elasticache_replication_group.main.primary_endpoint_address}
     redis_port=6379
 
   EOT

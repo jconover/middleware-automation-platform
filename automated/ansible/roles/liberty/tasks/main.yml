@@ -322,11 +322,12 @@
 
 - name: Generate SSL certificates
   ansible.builtin.command:
-    cmd: >
-      {{ liberty_install_dir }}/bin/securityUtility createSSLCertificate
-      --server={{ liberty_server_name }}
-      --password={{ liberty_keystore_password }}
-      --validity=365
+    argv:
+      - "{{ liberty_install_dir }}/bin/securityUtility"
+      - createSSLCertificate
+      - "--server={{ liberty_server_name }}"
+      - "--password={{ liberty_keystore_password }}"
+      - "--validity=365"
     creates: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/resources/security/key.p12"
   become: true
   become_user: "{{ liberty_user }}"
