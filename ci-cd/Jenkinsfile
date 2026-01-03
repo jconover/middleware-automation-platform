@@ -24,13 +24,13 @@ spec:
     volumeMounts:
     - name: podman-storage
       mountPath: /home/podman/.local/share/containers
-  volumes:
-  - name: podman-storage
-    emptyDir: {}
   - name: ansible
     image: cytopia/ansible:latest
     command: [cat]
     tty: true
+  volumes:
+  - name: podman-storage
+    emptyDir: {}
 '''
         }
     }

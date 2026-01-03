@@ -56,6 +56,23 @@ stop_timer() {
     log_info "Completed: $1 in ${duration}s"
 }
 
+validate_environment() {
+    local allowed_environments=("dev" "staging" "prod-aws")
+    local valid=false
+    for env in "${allowed_environments[@]}"; do
+        [[ "$ENVIRONMENT" == "$env" ]] && valid=true && break
+    done
+    if [[ "$valid" != true ]]; then
+        echo -e "${RED}[ERROR]${NC} Invalid environment '$ENVIRONMENT'. Allowed: ${allowed_environments[*]}"
+        exit 1
+    fi
+    # Path traversal check
+    if [[ "$ENVIRONMENT" == *".."* ]] || [[ "$ENVIRONMENT" == *"/"* ]]; then
+        echo -e "${RED}[ERROR]${NC} Environment contains invalid characters"
+        exit 1
+    fi
+}
+
 check_prerequisites() {
     log_phase "Checking Prerequisites"
     command -v ansible-playbook &>/dev/null || { echo "ansible required"; exit 1; }
@@ -152,7 +169,8 @@ main() {
     
     print_banner
     TOTAL_START=$(date +%s)
-    
+
+    validate_environment
     check_prerequisites
     
     case $PHASE in

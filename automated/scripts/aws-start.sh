@@ -137,26 +137,33 @@ start_ec2_instances() {
 
     # Find all stopped instances with our name prefix (management, monitoring)
     # Note: Liberty EC2 instances have been decommissioned in favor of ECS
-    INSTANCE_IDS=$(aws ec2 describe-instances \
+    local instance_ids_raw
+    instance_ids_raw=$(aws ec2 describe-instances \
         --region "$AWS_REGION" \
         --filters "Name=tag:Name,Values=${NAME_PREFIX}-*" "Name=instance-state-name,Values=stopped" \
         --query 'Reservations[].Instances[].InstanceId' \
         --output text)
 
-    if [[ -n "$INSTANCE_IDS" ]]; then
-        log_info "Found stopped instances: $INSTANCE_IDS"
+    # Convert to array safely to avoid word splitting issues
+    local -a instance_ids=()
+    if [[ -n "$instance_ids_raw" ]]; then
+        read -ra instance_ids <<< "$instance_ids_raw"
+    fi
+
+    if [[ ${#instance_ids[@]} -gt 0 ]]; then
+        log_info "Found stopped instances: ${instance_ids[*]}"
         if [[ "$DRY_RUN" == "true" ]]; then
-            log_dry_run "Would start EC2 instances: $INSTANCE_IDS"
+            log_dry_run "Would start EC2 instances: ${instance_ids[*]}"
             return
         fi
-        aws ec2 start-instances --region "$AWS_REGION" --instance-ids $INSTANCE_IDS
+        aws ec2 start-instances --region "$AWS_REGION" --instance-ids "${instance_ids[@]}"
         log_info "Start command sent. Waiting for instances to run..."
-        aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids $INSTANCE_IDS
+        aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids "${instance_ids[@]}"
         log_info "All EC2 instances running."
 
         # Wait for status checks
         log_info "Waiting for instance status checks..."
-        aws ec2 wait instance-status-ok --region "$AWS_REGION" --instance-ids $INSTANCE_IDS
+        aws ec2 wait instance-status-ok --region "$AWS_REGION" --instance-ids "${instance_ids[@]}"
         log_info "All EC2 instances passed status checks."
     else
         log_info "No stopped EC2 instances found."

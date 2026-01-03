@@ -136,6 +136,22 @@ variable "ecs_enabled" {
   default     = true
 }
 
+variable "container_image_tag" {
+  description = "Container image tag to deploy (use semantic versioning for traceability)"
+  type        = string
+  default     = "1.0.0"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$", var.container_image_tag))
+    error_message = "Container image tag must be a valid Docker tag (alphanumeric, dots, hyphens, underscores, max 128 chars)."
+  }
+
+  validation {
+    condition     = var.container_image_tag != "latest"
+    error_message = "Using 'latest' tag is not allowed for production deployments. Use a specific version tag for deterministic deployments and rollbacks."
+  }
+}
+
 variable "ecs_task_cpu" {
   description = "CPU units for ECS task (256, 512, 1024, 2048, 4096)"
   type        = number

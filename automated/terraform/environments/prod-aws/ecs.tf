@@ -63,7 +63,7 @@ resource "aws_ecs_task_definition" "liberty" {
   container_definitions = jsonencode([
     {
       name  = "liberty"
-      image = "${aws_ecr_repository.liberty.repository_url}:latest"
+      image = "${aws_ecr_repository.liberty.repository_url}:${var.container_image_tag}"
 
       portMappings = [
         {

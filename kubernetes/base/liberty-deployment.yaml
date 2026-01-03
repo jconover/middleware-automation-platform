@@ -40,7 +40,6 @@ spec:
         prometheus.io/path: "/metrics"
         # Security annotations
         container.apparmor.security.beta.kubernetes.io/liberty: runtime/default
-        seccomp.security.alpha.kubernetes.io/pod: runtime/default
     spec:
       # Pod-level security context
       securityContext:
@@ -347,7 +346,6 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: liberty-app
-    namespace: liberty
 roleRef:
   kind: Role
   name: liberty-app-role
