@@ -31,13 +31,22 @@ create_secure_temp_dir() {
     chmod 700 "$TEMP_DIR"
 }
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-BOLD='\033[1m'
+# Detect if stdout is a terminal for color support
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    CYAN='\033[0;36m'
+    NC='\033[0m'
+    BOLD='\033[1m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    CYAN=''
+    NC=''
+    BOLD=''
+fi
 
 # Defaults
 ENVIRONMENT="dev"

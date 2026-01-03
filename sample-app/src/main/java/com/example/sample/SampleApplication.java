@@ -30,9 +30,7 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
         )
     ),
     servers = {
-        @Server(url = "/api", description = "Current server"),
-        @Server(url = "http://localhost:9080/api", description = "Local development"),
-        @Server(url = "http://192.168.68.200:9080/api", description = "Local Kubernetes (MetalLB)")
+        @Server(url = "/api", description = "Current server (relative path)")
     },
     tags = {
         @Tag(name = "Greeting", description = "Simple greeting endpoints"),

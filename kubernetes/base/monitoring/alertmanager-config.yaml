@@ -16,6 +16,8 @@
 #   - warning: Slack (#middleware-alerts)
 #   - info: Slack (#middleware-alerts, batched hourly)
 ---
+# NOTE: v1alpha1 is the current stable API for AlertmanagerConfig
+# Monitor Prometheus Operator releases for API graduation to v1beta1/v1
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: AlertmanagerConfig
 metadata:

@@ -300,8 +300,16 @@ public class SampleResource {
     }
 
     /**
-     * CPU-intensive endpoint for load testing
+     * CPU-intensive endpoint for load testing.
      * GET /api/compute?iterations=1000000
+     *
+     * WARNING: This endpoint can consume significant CPU resources.
+     * In production, consider:
+     * - Disabling via ENABLE_DEBUG_ENDPOINTS=false
+     * - Rate limiting at ALB/API Gateway level
+     * - Adding @RolesAllowed for access control
+     *
+     * Max iterations: 10,000,000
      */
     @GET
     @Path("/compute")

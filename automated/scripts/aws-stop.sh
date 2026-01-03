@@ -8,9 +8,9 @@
 # Usage: ./aws-stop.sh [OPTIONS]
 #
 # Options:
-#   --dry-run  Preview operations without executing them
-#   --destroy  Fully destroy infrastructure (terraform destroy)
-#   -h, --help Show this help message and exit
+#   -d, --dry-run  Preview operations without executing them
+#   --destroy      Fully destroy infrastructure (terraform destroy)
+#   -h, --help     Show this help message and exit
 #
 # Examples:
 #   ./aws-stop.sh              # Stop all services
@@ -20,12 +20,20 @@
 
 set -euo pipefail
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Detect if stdout is a terminal for color support
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    NC=''
+fi
 
 # Configuration
 AWS_REGION="${AWS_REGION:-us-east-1}"
@@ -49,9 +57,9 @@ usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --dry-run  Preview operations without executing them"
-    echo "  --destroy  Fully destroy infrastructure (terraform destroy)"
-    echo "  -h, --help Show this help message and exit"
+    echo "  -d, --dry-run  Preview operations without executing them"
+    echo "  --destroy      Fully destroy infrastructure (terraform destroy)"
+    echo "  -h, --help     Show this help message and exit"
     echo ""
     echo "Examples:"
     echo "  $0              # Stop all services"
@@ -257,7 +265,7 @@ parse_args() {
             -h|--help)
                 usage
                 ;;
-            --dry-run)
+            -d|--dry-run)
                 DRY_RUN=true
                 shift
                 ;;

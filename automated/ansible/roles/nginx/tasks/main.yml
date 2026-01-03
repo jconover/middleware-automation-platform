@@ -1,9 +1,22 @@
 ---
-# NGINX Role - Stub for AWS (using ALB)
-# This role is only used for on-premise deployments.
-# For AWS, ALB is provisioned via Terraform.
+# This role is intentionally a stub/no-op.
+# In AWS deployments, we use managed services:
+# - ALB for load balancing (instead of nginx)
+#
+# This role exists for:
+# 1. Documentation of the component's purpose
+# 2. Future on-premises deployments
+# 3. Local development environments
+#
+# To enable, set the appropriate variable:
+#   nginx_managed: false  (for self-hosted nginx)
 
-- name: NGINX stub (AWS uses ALB)
+- name: NGINX stub notice
   ansible.builtin.debug:
-    msg: "Skipping NGINX installation - using AWS ALB"
-  when: false  # Never runs, just prevents empty role error
+    msg: "NGINX role is a stub - AWS deployments use ALB (managed via Terraform)"
+  when: nginx_managed | default(true)
+
+- name: Install NGINX (on-premises only)
+  ansible.builtin.debug:
+    msg: "NGINX on-premises installation would run here"
+  when: not (nginx_managed | default(true))

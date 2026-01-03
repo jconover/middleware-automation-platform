@@ -1,9 +1,22 @@
 ---
-# PostgreSQL Role - Stub for AWS (using RDS)
-# This role is only used for on-premise deployments.
-# For AWS, RDS is provisioned via Terraform.
+# This role is intentionally a stub/no-op.
+# In AWS deployments, we use managed services:
+# - RDS for PostgreSQL
+#
+# This role exists for:
+# 1. Documentation of the component's purpose
+# 2. Future on-premises deployments
+# 3. Local development environments
+#
+# To enable, set the appropriate variable:
+#   postgresql_managed: false  (for self-hosted PostgreSQL)
 
-- name: PostgreSQL stub (AWS uses RDS)
+- name: PostgreSQL stub notice
   ansible.builtin.debug:
-    msg: "Skipping PostgreSQL installation - using AWS RDS"
-  when: false  # Never runs, just prevents empty role error
+    msg: "PostgreSQL role is a stub - AWS deployments use RDS (managed via Terraform)"
+  when: postgresql_managed | default(true)
+
+- name: Install PostgreSQL (on-premises only)
+  ansible.builtin.debug:
+    msg: "PostgreSQL on-premises installation would run here"
+  when: not (postgresql_managed | default(true))

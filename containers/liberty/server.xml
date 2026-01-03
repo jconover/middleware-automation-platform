@@ -12,6 +12,14 @@
         <feature>ssl-1.0</feature>
     </featureManager>
 
+    <!--
+      HTTPS redirect is handled at the load balancer level (ALB/Ingress).
+      In AWS: ALB listener rule redirects HTTP:80 to HTTPS:443
+      In K8s: Ingress annotation nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+      To disable HTTP entirely in Liberty (HTTPS-only):
+      <httpEndpoint id="defaultHttpEndpoint" host="*" httpPort="-1" httpsPort="9443">
+    -->
     <httpEndpoint id="defaultHttpEndpoint" host="*"
                   httpPort="9080"
                   httpsPort="9443">

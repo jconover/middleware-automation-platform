@@ -340,9 +340,9 @@ resource "aws_lb_listener" "admin_console" {
 # Self-signed Certificate for Admin Console (if no other cert available)
 # -----------------------------------------------------------------------------
 resource "tls_private_key" "admin" {
-  count     = local.certificate_arn == "" ? 1 : 0
-  algorithm = "RSA"
-  rsa_bits  = 2048
+  count       = local.certificate_arn == "" ? 1 : 0
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P384"
 }
 
 resource "tls_self_signed_cert" "admin" {

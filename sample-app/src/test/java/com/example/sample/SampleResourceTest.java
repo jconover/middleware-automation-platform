@@ -20,6 +20,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests for SampleResource REST endpoints.
+ *
+ * TODO: Add edge case tests for:
+ * - echo() with null request body
+ * - slow() with thread interruption
+ * - compute() exception scenarios
+ * - helloName() with null/empty name parameter
  */
 class SampleResourceTest {
 

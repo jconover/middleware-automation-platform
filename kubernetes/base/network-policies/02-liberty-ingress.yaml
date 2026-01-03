@@ -25,6 +25,8 @@ spec:
     - Ingress
   ingress:
     - from:
+        # OR logic: traffic allowed from namespaces matching EITHER label
+        # (different ingress-nginx installations use different labels)
         - namespaceSelector:
             matchLabels:
               name: ingress-nginx

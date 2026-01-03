@@ -10,19 +10,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-BOLD='\033[1m'
+# Detect if stdout is a terminal for color support
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    CYAN='\033[0;36m'
+    NC='\033[0m'
+    BOLD='\033[1m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    CYAN=''
+    NC=''
+    BOLD=''
+fi
 
 # Defaults
 ENVIRONMENT="dev"
 DRY_RUN=false
 FORCE=false
 PHASE="all"
+VERSION=""
 
 # Timing
 declare -A PHASE_TIMES
@@ -74,6 +84,13 @@ validate_environment() {
     fi
 }
 
+validate_version() {
+    local version="$1"
+    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+        echo -e "${YELLOW}[WARN]${NC} Version '$version' doesn't follow semver format (x.y.z)"
+    fi
+}
+
 check_prerequisites() {
     log_phase "Checking Prerequisites"
     command -v ansible-playbook &>/dev/null || { echo "ansible required"; exit 1; }
@@ -118,6 +135,7 @@ deploy_liberty() {
     local args="-i inventory/${ENVIRONMENT}.yml playbooks/site.yml --tags common,liberty"
     [[ "$DRY_RUN" == true ]] && args+=" --check"
 
+    # shellcheck disable=SC2086 # Intentional word splitting for ansible args
     ansible-playbook $args
     cd "${PROJECT_ROOT}"
 
@@ -132,6 +150,7 @@ deploy_monitoring() {
     local args="-i inventory/${ENVIRONMENT}.yml playbooks/site.yml --tags monitoring"
     [[ "$DRY_RUN" == true ]] && args+=" --check"
 
+    # shellcheck disable=SC2086 # Intentional word splitting for ansible args
     ansible-playbook $args
     cd "${PROJECT_ROOT}"
 
@@ -166,6 +185,7 @@ show_help() {
     echo "Options:"
     echo "  -e, --environment   Environment (dev, staging, prod-aws)"
     echo "  -p, --phase         Phase (all, infrastructure, liberty, monitoring)"
+    echo "  -v, --version       Liberty version to deploy (e.g., 1.0.0)"
     echo "  -d, --dry-run       Dry run mode"
     echo "  -f, --force         Skip confirmation prompts (use with caution)"
     echo "  -h, --help          Show help"
@@ -176,6 +196,7 @@ main() {
         case $1 in
             -e|--environment) ENVIRONMENT="$2"; shift 2 ;;
             -p|--phase) PHASE="$2"; shift 2 ;;
+            -v|--version) VERSION="$2"; shift 2 ;;
             -d|--dry-run) DRY_RUN=true; shift ;;
             -f|--force) FORCE=true; shift ;;
             -h|--help) show_help; exit 0 ;;
@@ -195,6 +216,9 @@ main() {
     TOTAL_START=$(date +%s)
 
     validate_environment
+    if [[ -n "$VERSION" ]]; then
+        validate_version "$VERSION"
+    fi
     check_prerequisites
     
     case $PHASE in
