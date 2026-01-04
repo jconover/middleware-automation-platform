@@ -1,0 +1,8 @@
+# ShellCheck configuration for middleware-automation-platform
+# https://github.com/koalaman/shellcheck/wiki/Ignore
+
+# SC1091: Not following sourced files
+# Reason: ShellCheck cannot follow dynamic source paths or files outside the repository
+# (e.g., /etc/profile, ~/.bashrc, sourced scripts with variable paths)
+# This is expected in deployment scripts that source environment-specific configs.
+disable=SC1091

@@ -199,6 +199,17 @@ variable "ecs_min_capacity" {
   }
 }
 
+variable "fargate_spot_weight" {
+  description = "Weight for FARGATE_SPOT capacity provider (0-80). Tasks above baseline use this ratio of Spot vs On-Demand. Default 70 means 70% Spot, 30% On-Demand for scaling tasks."
+  type        = number
+  default     = 70
+
+  validation {
+    condition     = var.fargate_spot_weight >= 0 && var.fargate_spot_weight <= 80
+    error_message = "Fargate Spot weight must be between 0 and 80. Values above 80 risk insufficient on-demand capacity during Spot interruptions."
+  }
+}
+
 variable "ecs_max_capacity" {
   description = "Maximum number of ECS tasks"
   type        = number
@@ -409,6 +420,12 @@ variable "cache_node_type" {
     condition     = can(regex("^cache\\.[a-z][0-9][a-z]?\\.(micro|small|medium|large|[0-9]*xlarge)$", var.cache_node_type))
     error_message = "Cache node type must be a valid ElastiCache format (e.g., cache.t3.micro)."
   }
+}
+
+variable "cache_multi_az" {
+  description = "Enable Multi-AZ for ElastiCache Redis (adds replica in second AZ for automatic failover)"
+  type        = bool
+  default     = true
 }
 
 # -----------------------------------------------------------------------------

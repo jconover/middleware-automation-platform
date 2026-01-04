@@ -79,6 +79,7 @@ CLAUDE*
 GEMINI*
 .gemini*
 docs/PROJECT_REVIEW_FINDINGS.md
+DEVOPS_REVIEW.md
 
 # Logs
 logs/

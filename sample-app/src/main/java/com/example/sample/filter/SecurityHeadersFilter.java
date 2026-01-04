@@ -13,6 +13,7 @@ import jakarta.ws.rs.ext.Provider;
  * - X-Frame-Options: DENY - Prevents clickjacking attacks
  * - Cache-Control: no-store - Prevents caching of sensitive data
  * - X-XSS-Protection: 1; mode=block - Enables XSS filtering in older browsers
+ * - Content-Security-Policy: default-src 'none'; frame-ancestors 'none' - Strict CSP for JSON APIs
  */
 @Provider
 public class SecurityHeadersFilter implements ContainerResponseFilter {
@@ -31,5 +32,10 @@ public class SecurityHeadersFilter implements ContainerResponseFilter {
 
         // Enable XSS protection in older browsers
         response.getHeaders().add("X-XSS-Protection", "1; mode=block");
+
+        // Content Security Policy - strict policy appropriate for JSON APIs
+        // default-src 'none' blocks all content loading (no scripts, styles, images, etc.)
+        // frame-ancestors 'none' prevents embedding in iframes (similar to X-Frame-Options)
+        response.getHeaders().add("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
     }
 }

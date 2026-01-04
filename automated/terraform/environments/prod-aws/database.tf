@@ -147,12 +147,16 @@ resource "aws_elasticache_replication_group" "main" {
   engine               = "redis"
   engine_version       = "7.0"
   node_type            = var.cache_node_type
-  num_cache_clusters   = 1
+  num_cache_clusters   = var.cache_multi_az ? 2 : 1
   parameter_group_name = "default.redis7"
   port                 = 6379
 
   subnet_group_name  = aws_elasticache_subnet_group.main.name
   security_group_ids = [aws_security_group.cache.id]
+
+  # Multi-AZ configuration for high availability
+  automatic_failover_enabled = var.cache_multi_az
+  multi_az_enabled           = var.cache_multi_az
 
   # Encryption settings
   at_rest_encryption_enabled = true
@@ -161,7 +165,8 @@ resource "aws_elasticache_replication_group" "main" {
   # AUTH token for Redis authentication
   auth_token = random_password.redis_auth.result
 
-  snapshot_retention_limit = 1
+  # Increased snapshot retention when multi-az is enabled for DR
+  snapshot_retention_limit = var.cache_multi_az ? 7 : 1
   snapshot_window          = "05:00-06:00"
   maintenance_window       = "sun:06:00-sun:07:00"
 

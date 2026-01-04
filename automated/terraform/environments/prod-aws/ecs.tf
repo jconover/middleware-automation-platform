@@ -39,10 +39,22 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
   cluster_name       = aws_ecs_cluster.main[0].name
   capacity_providers = ["FARGATE", "FARGATE_SPOT"]
 
+  # Baseline tasks run on FARGATE (on-demand) for reliability
   default_capacity_provider_strategy {
-    base              = 1
-    weight            = 100
+    base              = var.ecs_min_capacity
+    weight            = 100 - var.fargate_spot_weight
     capacity_provider = "FARGATE"
+  }
+
+  # Tasks above baseline use FARGATE_SPOT for cost savings (up to 70% cheaper)
+  # Spot tasks may be interrupted with 2-minute warning when AWS needs capacity
+  dynamic "default_capacity_provider_strategy" {
+    for_each = var.fargate_spot_weight > 0 ? [1] : []
+    content {
+      base              = 0
+      weight            = var.fargate_spot_weight
+      capacity_provider = "FARGATE_SPOT"
+    }
   }
 }
 

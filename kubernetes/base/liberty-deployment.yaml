@@ -175,6 +175,15 @@ spec:
             failureThreshold: 3
             successThreshold: 1
 
+          # Graceful shutdown: allow load balancer to drain connections before SIGTERM
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 15
+
           volumeMounts:
             - name: config
               mountPath: /config/server.xml

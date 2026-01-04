@@ -29,7 +29,7 @@
         <jacoco.plugin.version>0.8.11</jacoco.plugin.version>
 
         <!-- Coverage thresholds -->
-        <jacoco.line.coverage>0.50</jacoco.line.coverage>
+        <jacoco.line.coverage>0.80</jacoco.line.coverage>
     </properties>
 
     <dependencies>

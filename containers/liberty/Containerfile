@@ -44,7 +44,10 @@ RUN mvn clean package -DskipTests -B
 # =============================================================================
 # Stage 2: Runtime - Minimal Liberty image with application
 # =============================================================================
-FROM icr.io/appcafe/open-liberty:kernel-slim-java17-openj9-ubi AS runtime
+# Pin base image version for reproducible builds. Update deliberately after testing.
+# Check for new versions: https://github.com/OpenLiberty/ci.docker/releases
+ARG LIBERTY_VERSION=24.0.0.12-kernel-slim-java17-openj9-ubi
+FROM icr.io/appcafe/open-liberty:${LIBERTY_VERSION} AS runtime
 
 # Build-time arguments for versioning
 ARG VERSION=1.0.0
