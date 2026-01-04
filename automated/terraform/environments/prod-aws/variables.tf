@@ -466,6 +466,60 @@ variable "certificate_arn" {
 }
 
 # -----------------------------------------------------------------------------
+# CloudTrail
+# -----------------------------------------------------------------------------
+variable "enable_cloudtrail" {
+  description = "Enable AWS CloudTrail for audit logging and compliance"
+  type        = bool
+  default     = true
+}
+
+variable "cloudtrail_log_retention_days" {
+  description = "Number of days to retain CloudTrail logs in CloudWatch before transitioning to Glacier"
+  type        = number
+  default     = 90
+
+  validation {
+    condition     = var.cloudtrail_log_retention_days >= 30 && var.cloudtrail_log_retention_days <= 365
+    error_message = "CloudTrail log retention must be between 30 and 365 days."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Security Services (GuardDuty / Security Hub)
+# -----------------------------------------------------------------------------
+variable "enable_guardduty" {
+  description = <<-EOT
+    Enable AWS GuardDuty and Security Hub for threat detection and security posture management.
+    This creates:
+    - GuardDuty Detector with S3 logs and EBS malware protection
+    - Security Hub with CIS AWS Foundations and AWS Foundational Security benchmarks
+    - EventBridge rules for alerting on high-severity findings
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "security_alert_email" {
+  description = <<-EOT
+    Email address for security alerts from GuardDuty and Security Hub.
+    Leave empty to disable email notifications (GuardDuty/Security Hub will still be enabled).
+    The email will receive notifications for:
+    - GuardDuty findings with severity >= 7 (High/Critical)
+    - Security Hub findings with CRITICAL or HIGH severity
+
+    IMPORTANT: The subscriber must confirm the email subscription after deployment.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.security_alert_email == "" || can(regex("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$", var.security_alert_email))
+    error_message = "security_alert_email must be empty or a valid email address format."
+  }
+}
+
+# -----------------------------------------------------------------------------
 # Tagging
 # -----------------------------------------------------------------------------
 variable "additional_tags" {

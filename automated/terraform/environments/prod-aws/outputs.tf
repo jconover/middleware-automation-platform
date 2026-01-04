@@ -245,3 +245,40 @@ output "estimated_monthly_cost" {
 
   EOT
 }
+
+# -----------------------------------------------------------------------------
+# GuardDuty and Security Hub Outputs
+# -----------------------------------------------------------------------------
+output "guardduty_detector_id" {
+  description = "ID of the GuardDuty detector"
+  value       = var.enable_guardduty ? aws_guardduty_detector.main[0].id : null
+}
+
+output "securityhub_enabled" {
+  description = "Whether Security Hub is enabled"
+  value       = var.enable_guardduty
+}
+
+output "security_alerts_topic_arn" {
+  description = "ARN of the SNS topic for security alerts"
+  value       = var.enable_guardduty && var.security_alert_email != "" ? aws_sns_topic.security_alerts[0].arn : null
+}
+
+output "security_configuration" {
+  description = "Summary of security services configuration"
+  value = var.enable_guardduty ? {
+    guardduty_enabled        = true
+    guardduty_detector_id    = aws_guardduty_detector.main[0].id
+    s3_protection_enabled    = true
+    ebs_malware_protection   = true
+    finding_frequency        = "FIFTEEN_MINUTES"
+    securityhub_enabled      = true
+    cis_benchmark_enabled    = true
+    aws_foundational_enabled = true
+    alerts_email             = var.security_alert_email != "" ? var.security_alert_email : "not configured"
+    alert_severity_threshold = "High (>=7) for GuardDuty, CRITICAL/HIGH for Security Hub"
+    } : {
+    guardduty_enabled = false
+    message           = "GuardDuty and Security Hub are disabled. Set enable_guardduty = true to enable."
+  }
+}
