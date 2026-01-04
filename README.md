@@ -694,11 +694,11 @@ After deployment, verify all services are running:
 curl -s http://192.168.68.86:9080/health/ready   # Liberty Server 01
 curl -s http://192.168.68.88:9080/health/ready   # Liberty Server 02
 
-# Prometheus
-curl -s http://192.168.68.82:9090/-/ready
+# Prometheus (MetalLB LoadBalancer IP)
+curl -s http://192.168.68.201:9090/-/ready
 
-# Grafana
-curl -s http://192.168.68.82:3000/api/health
+# Grafana (MetalLB LoadBalancer IP)
+curl -s http://192.168.68.202:3000/api/health
 ```
 
 ### AWS Production Health Checks
@@ -735,8 +735,8 @@ for ip in 192.168.68.86 192.168.68.88; do
 done
 
 echo "=== Monitoring ==="
-echo "Prometheus: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:9090/-/ready)"
-echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:3000/api/health)"
+echo "Prometheus: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.201:9090/-/ready)"
+echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.202:3000/api/health)"
 ```
 
 ### Web Console URLs
@@ -747,8 +747,8 @@ echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:300
 | **Liberty Server 02** | http://192.168.68.88:9080 | - |
 | **Liberty Health** | http://192.168.68.86:9080/health/ready | - |
 | **Liberty Metrics** | http://192.168.68.86:9080/metrics | - |
-| **Prometheus** | http://192.168.68.82:9090 | - |
-| **Grafana** | http://192.168.68.82:3000 | See [Credential Setup](./docs/CREDENTIAL_SETUP.md) |
+| **Prometheus** | http://192.168.68.201:9090 | - |
+| **Grafana** | http://192.168.68.202:3000 | See [Credential Setup](./docs/CREDENTIAL_SETUP.md) |
 | **AWX** | http://192.168.68.205 | (configured separately) |
 | **Jenkins** | http://192.168.68.206:8080 | (configured separately) |
 

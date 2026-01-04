@@ -215,65 +215,42 @@ cd middleware-automation-platform
 
 This section walks through building the Liberty container image with the sample application.
 
-### Step 1: Build the Sample Application WAR File
+### Step 1: Build the Liberty Container Image
 
-The sample application is a Jakarta EE 10 REST API that demonstrates Liberty's MicroProfile capabilities.
+The Containerfile uses a **multi-stage build** that compiles the sample application from source automatically. No separate Maven build or WAR copy is required.
 
 ```bash
-# Navigate to project root
+# Build from project root (multi-stage build compiles app from source)
 cd /home/justin/Projects/middleware-automation-platform
-
-# Build the WAR file
-mvn -f sample-app/pom.xml clean package
-
-# Verify the WAR was created
-ls -la sample-app/target/sample-app.war
+podman build -t liberty-app:1.0.0 -f containers/liberty/Containerfile .
 ```
 
 **Expected output:**
 
 ```
--rw-r--r-- 1 user user 12345 Dec 26 12:00 sample-app/target/sample-app.war
-```
-
-The build produces `sample-app.war` containing:
-- **Jakarta EE 10 Web Profile** - Modern enterprise Java APIs
-- **MicroProfile 6.0** - Cloud-native features (Health, Metrics, Config)
-- **Java 17** - Latest LTS Java version
-
-### Step 2: Copy WAR to Container Build Directory
-
-The Containerfile expects application WAR files in the `apps/` subdirectory:
-
-```bash
-# Copy the WAR file to the container build context
-cp sample-app/target/sample-app.war containers/liberty/apps/
-```
-
-### Step 3: Build the Liberty Container Image
-
-Navigate to the container build directory and build the image:
-
-```bash
-# Change to the Liberty container directory
-cd /home/justin/Projects/middleware-automation-platform/containers/liberty
-
-# Build the container image
-podman build -t liberty-app:1.0.0 -f Containerfile .
-```
-
-**Expected output:**
-
-```
-STEP 1/9: FROM icr.io/appcafe/open-liberty:kernel-slim-java17-openj9-ubi
+STEP 1/12: FROM docker.io/library/maven:3.9-eclipse-temurin-17 AS builder
 ...
-STEP 9/9: EXPOSE 9080 9443
+STEP 6/12: RUN mvn clean package -DskipTests -B
+[INFO] Building sample-app 1.0.0
+[INFO] BUILD SUCCESS
+...
+STEP 7/12: FROM icr.io/appcafe/open-liberty:24.0.0.12-kernel-slim-java17-openj9-ubi AS runtime
+...
 COMMIT liberty-app:1.0.0
 --> abc123def456
 Successfully tagged localhost/liberty-app:1.0.0
 ```
 
-### Step 4: Verify the Image Was Created
+The multi-stage build:
+1. **Stage 1 (Builder)** - Uses Maven to compile the sample-app WAR from source
+2. **Stage 2 (Runtime)** - Copies the WAR into the Liberty runtime image
+
+The sample application includes:
+- **Jakarta EE 10 Web Profile** - Modern enterprise Java APIs
+- **MicroProfile 6.0** - Cloud-native features (Health, Metrics, Config, OpenAPI)
+- **Java 17** - Latest LTS Java version
+
+### Step 2: Verify the Image Was Created
 
 Confirm the image exists in your local Podman image store:
 

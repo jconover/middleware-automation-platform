@@ -120,39 +120,14 @@ export AWX_ADMIN_PASSWORD="your-secure-password"
 
 This section covers building and deploying the Open Liberty application to the local Kubernetes cluster.
 
-#### Step 1: Build the Sample Application
+#### Step 1: Build the Liberty Container Image
 
-Build the WAR file from the sample-app directory using Maven:
+The Containerfile uses a multi-stage build that compiles the sample application from source, so no separate Maven build is required.
 
 ```bash
-# Navigate to project root
+# Build the image from project root (multi-stage build compiles app from source)
 cd /home/justin/Projects/middleware-automation-platform
-
-# Build the WAR file
-mvn -f sample-app/pom.xml clean package
-
-# Verify the WAR was created
-ls -la sample-app/target/sample-app.war
-```
-
-The build produces `sample-app.war` containing a demo REST API using:
-- Jakarta EE 10 Web Profile
-- MicroProfile 6.0 (Health, Metrics, Config)
-- Java 17
-
-#### Step 2: Copy WAR to Container Build Directory
-
-```bash
-cp sample-app/target/sample-app.war containers/liberty/apps/
-```
-
-#### Step 3: Build the Liberty Container Image
-
-```bash
-cd /home/justin/Projects/middleware-automation-platform/containers/liberty
-
-# Build the image
-podman build -t liberty-app:1.0.0 -f Containerfile .
+podman build -t liberty-app:1.0.0 -f containers/liberty/Containerfile .
 
 # Verify the image was created
 podman images | grep liberty-app
@@ -163,7 +138,7 @@ The Containerfile uses the official Open Liberty base image (`icr.io/appcafe/ope
 - **jvm.options** for JVM tuning
 - Built-in health check using `/health/ready` endpoint
 
-#### Step 4: Load Image into Kubernetes Cluster
+#### Step 2: Load Image into Kubernetes Cluster
 
 For the Beelink kubeadm cluster, import the image directly on each node:
 
@@ -186,7 +161,7 @@ ssh 192.168.68.88 "sudo ctr -n k8s.io images import /tmp/liberty-app.tar"
 sudo crictl images | grep liberty-app
 ```
 
-#### Step 5: Create Namespace and Secrets
+#### Step 3: Create Namespace and Secrets
 
 ```bash
 # Create the liberty namespace
@@ -207,7 +182,7 @@ kubectl create secret generic liberty-secrets \
 kubectl get configmap,secret -n liberty
 ```
 
-#### Step 6: Create Kustomize Overlay for Local Deployment
+#### Step 4: Create Kustomize Overlay for Local Deployment
 
 ```bash
 # Create overlay directory
@@ -227,7 +202,7 @@ images:
 EOF
 ```
 
-#### Step 7: Apply the Deployment
+#### Step 5: Apply the Deployment
 
 ```bash
 cd /home/justin/Projects/middleware-automation-platform
@@ -245,7 +220,7 @@ This creates the following resources:
 | HorizontalPodAutoscaler | liberty-hpa | Scales 3-10 replicas based on CPU |
 | PodDisruptionBudget | liberty-pdb | Minimum 2 pods during disruptions |
 
-#### Step 8: Verify Pods Are Running
+#### Step 6: Verify Pods Are Running
 
 ```bash
 # Watch pod creation
@@ -266,7 +241,7 @@ liberty-app-7d8f9b6c5-def34   1/1     Running   0          2m
 liberty-app-7d8f9b6c5-ghi56   1/1     Running   0          2m
 ```
 
-#### Step 9: Access the Application
+#### Step 7: Access the Application
 
 **Option A: Port Forward (Quick Testing)**
 
