@@ -7,22 +7,22 @@
 # -----------------------------------------------------------------------------
 output "vpc_id" {
   description = "ID of the VPC"
-  value       = aws_vpc.main.id
+  value       = module.networking.vpc_id
 }
 
 output "vpc_cidr" {
   description = "CIDR block of the VPC"
-  value       = aws_vpc.main.cidr_block
+  value       = module.networking.vpc_cidr
 }
 
 output "public_subnet_ids" {
   description = "IDs of the public subnets"
-  value       = aws_subnet.public[*].id
+  value       = module.networking.public_subnet_ids
 }
 
 output "private_subnet_ids" {
   description = "IDs of the private subnets"
-  value       = aws_subnet.private[*].id
+  value       = module.networking.private_subnet_ids
 }
 
 # -----------------------------------------------------------------------------
@@ -88,6 +88,45 @@ output "db_credentials_secret_arn" {
   description = "ARN of the Secrets Manager secret containing DB credentials"
   value       = aws_secretsmanager_secret.db_credentials.arn
   sensitive   = true
+}
+
+# -----------------------------------------------------------------------------
+# RDS Proxy Outputs
+# -----------------------------------------------------------------------------
+output "rds_proxy_endpoint" {
+  description = "RDS Proxy endpoint (use this instead of direct RDS endpoint when proxy is enabled)"
+  value       = var.enable_rds_proxy ? aws_db_proxy.main[0].endpoint : null
+}
+
+output "rds_proxy_arn" {
+  description = "ARN of the RDS Proxy"
+  value       = var.enable_rds_proxy ? aws_db_proxy.main[0].arn : null
+}
+
+output "rds_proxy_read_endpoint" {
+  description = "RDS Proxy read-only endpoint (for read scaling)"
+  value       = var.enable_rds_proxy && var.enable_rds_proxy_read_endpoint ? aws_db_proxy_endpoint.read_only[0].endpoint : null
+}
+
+output "rds_proxy_configuration" {
+  description = "RDS Proxy configuration summary"
+  value = var.enable_rds_proxy ? {
+    enabled                   = true
+    endpoint                  = aws_db_proxy.main[0].endpoint
+    read_endpoint             = var.enable_rds_proxy_read_endpoint ? aws_db_proxy_endpoint.read_only[0].endpoint : null
+    iam_auth_required         = var.rds_proxy_require_iam
+    idle_timeout_seconds      = var.rds_proxy_idle_timeout
+    max_connections_percent   = var.rds_proxy_max_connections_percent
+    tls_required              = true
+    } : {
+    enabled = false
+    message = "RDS Proxy is disabled. Set enable_rds_proxy = true to enable connection pooling and IAM authentication."
+  }
+}
+
+output "db_effective_endpoint" {
+  description = "Effective database endpoint (RDS Proxy if enabled, otherwise direct RDS)"
+  value       = var.enable_rds_proxy ? aws_db_proxy.main[0].endpoint : aws_db_instance.main.address
 }
 
 # -----------------------------------------------------------------------------

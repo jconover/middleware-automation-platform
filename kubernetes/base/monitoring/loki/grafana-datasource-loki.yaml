@@ -1,0 +1,98 @@
+# =============================================================================
+# Grafana Datasource Configuration for Loki
+# =============================================================================
+# This ConfigMap configures Grafana to use Loki as a datasource for log queries.
+#
+# Installation Methods:
+#
+# 1. For kube-prometheus-stack (Helm):
+#    Add to your values.yaml:
+#    grafana:
+#      additionalDataSources:
+#        - name: Loki
+#          type: loki
+#          url: http://loki:3100
+#          access: proxy
+#          isDefault: false
+#
+# 2. For standalone Grafana (this ConfigMap):
+#    Mount this ConfigMap as a datasource provisioning file.
+#    The grafana-sidecar will pick this up if using the official Helm chart.
+#
+# 3. Manual via Grafana UI:
+#    - Navigate to Configuration -> Data Sources
+#    - Add new data source of type "Loki"
+#    - URL: http://loki:3100
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-loki
+  namespace: monitoring
+  labels:
+    app: grafana
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: datasource
+    app.kubernetes.io/part-of: middleware-platform
+    # Label for Grafana sidecar discovery (kube-prometheus-stack)
+    grafana_datasource: "1"
+data:
+  loki-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        # Access mode: proxy (server-side) or direct (browser)
+        access: proxy
+        # Loki service URL (ClusterIP service)
+        url: http://loki:3100
+        # Not the default datasource (Prometheus is default)
+        isDefault: false
+        # Enable for Explore view
+        basicAuth: false
+        # Timeout settings
+        timeout: 60
+        # Additional JSON data for Loki-specific settings
+        jsonData:
+          # Maximum number of log lines to return
+          maxLines: 5000
+          # Derived fields configuration
+          # Link logs to traces if using distributed tracing
+          derivedFields:
+            - datasourceUid: tempo
+              matcherRegex: "traceId=(\\w+)"
+              name: TraceID
+              url: "$${__value.raw}"
+              # Enable when Tempo is deployed
+              # datasourceName: Tempo
+        # Secure JSON data (for auth if needed)
+        # secureJsonData:
+        #   httpHeaderValue1: "Bearer ${LOKI_TOKEN}"
+
+---
+# Alternative: Helm values patch for kube-prometheus-stack
+# Save this as a separate file and use with helm upgrade
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-loki-helm-values
+  namespace: monitoring
+  labels:
+    app: grafana
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "Reference Helm values for adding Loki datasource to kube-prometheus-stack"
+data:
+  values.yaml: |
+    # Add to kube-prometheus-stack values.yaml
+    # helm upgrade prometheus prometheus-community/kube-prometheus-stack -f values.yaml
+    grafana:
+      additionalDataSources:
+        - name: Loki
+          type: loki
+          url: http://loki:3100
+          access: proxy
+          isDefault: false
+          jsonData:
+            maxLines: 5000

@@ -331,6 +331,296 @@ spec:
             }
         }
 
+        stage('Integration Tests') {
+            options {
+                timeout(time: 15, unit: 'MINUTES')
+            }
+            when { expression { params.DEPLOY_TYPE != 'infrastructure-only' } }
+            steps {
+                container('maven') {
+                    dir('sample-app') {
+                        sh '''#!/bin/bash
+                            set -e
+
+                            echo "================================================================"
+                            echo "Integration Tests - Starting Liberty Server"
+                            echo "================================================================"
+
+                            # Create Liberty server, install features, and deploy application
+                            mvn liberty:create liberty:install-feature liberty:deploy -B
+
+                            # Start Liberty server in background
+                            echo "Starting Liberty server..."
+                            mvn liberty:start -B
+
+                            # Wait for server to be ready
+                            echo "Waiting for Liberty server to be ready..."
+                            RETRY_COUNT=0
+                            MAX_RETRIES=30
+                            until curl -sf http://localhost:9080/health/ready > /dev/null 2>&1; do
+                                RETRY_COUNT=$((RETRY_COUNT + 1))
+                                if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+                                    echo "ERROR: Liberty server failed to start within timeout"
+                                    mvn liberty:stop -B || true
+                                    exit 1
+                                fi
+                                echo "  Waiting for server... (attempt ${RETRY_COUNT}/${MAX_RETRIES})"
+                                sleep 2
+                            done
+                            echo "Liberty server is ready!"
+
+                            echo ""
+                            echo "================================================================"
+                            echo "Running Integration Tests"
+                            echo "================================================================"
+
+                            # Run integration tests
+                            TEST_EXIT_CODE=0
+                            mvn failsafe:integration-test failsafe:verify -B || TEST_EXIT_CODE=$?
+
+                            echo ""
+                            echo "================================================================"
+                            echo "Stopping Liberty Server"
+                            echo "================================================================"
+
+                            # Stop Liberty server
+                            mvn liberty:stop -B
+
+                            # Exit with test result code
+                            exit $TEST_EXIT_CODE
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    junit testResults: 'sample-app/target/failsafe-reports/*.xml', allowEmptyResults: true
+                }
+                failure {
+                    echo 'INTEGRATION TESTS FAILED: One or more integration tests did not pass'
+                }
+            }
+        }
+
+        stage('Database Migration') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+            when {
+                allOf {
+                    expression { params.DEPLOY_TYPE != 'infrastructure-only' }
+                    expression { !params.DRY_RUN }
+                }
+            }
+            steps {
+                container('maven') {
+                    // Retrieve database credentials from AWS Secrets Manager for prod-aws
+                    // For other environments, expect credentials to be set via Jenkins credentials
+                    script {
+                        if (params.ENVIRONMENT == 'prod-aws') {
+                            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: params.AWS_CREDENTIALS_ID]]) {
+                                sh '''#!/bin/bash
+                                    set -e
+                                    set +x  # Disable command tracing to prevent credential exposure
+
+                                    echo "================================================================"
+                                    echo "Database Migration - Retrieving Credentials"
+                                    echo "================================================================"
+
+                                    # AWS CLI wrapper with retry logic
+                                    aws_cli_with_retry() {
+                                        local max_attempts=5
+                                        local base_delay=2
+                                        local attempt=1
+
+                                        while [ $attempt -le $max_attempts ]; do
+                                            if output=$(aws "$@" 2>&1); then
+                                                echo "${output}"
+                                                return 0
+                                            fi
+
+                                            if echo "${output}" | grep -qi "ExpiredToken\\|InvalidClientTokenId\\|AccessDenied"; then
+                                                echo "ERROR: AWS authentication failed" >&2
+                                                return 1
+                                            fi
+
+                                            if echo "${output}" | grep -qi "Throttling\\|ServiceUnavailable"; then
+                                                local delay=$((base_delay * (2 ** (attempt - 1))))
+                                                echo "  [RETRY] Transient error, waiting ${delay}s (attempt ${attempt}/${max_attempts})" >&2
+                                                sleep $delay
+                                                attempt=$((attempt + 1))
+                                                continue
+                                            fi
+
+                                            echo "ERROR: AWS CLI failed: ${output}" >&2
+                                            return 1
+                                        done
+                                        return 1
+                                    }
+
+                                    # Retrieve database credentials from Secrets Manager
+                                    # Secret path follows pattern: mw-{env}/database/credentials
+                                    ENV_SUFFIX=$(echo "${ENVIRONMENT}" | sed 's/-aws$//')
+                                    SECRET_NAME="mw-${ENV_SUFFIX}/database/credentials"
+
+                                    echo "Retrieving database credentials from: ${SECRET_NAME}"
+
+                                    DB_SECRET=$(aws_cli_with_retry secretsmanager get-secret-value \
+                                        --secret-id "${SECRET_NAME}" \
+                                        --region "${AWS_REGION}" \
+                                        --query 'SecretString' \
+                                        --output text)
+
+                                    if [ -z "${DB_SECRET}" ]; then
+                                        echo "ERROR: Failed to retrieve database credentials"
+                                        exit 1
+                                    fi
+
+                                    # Parse JSON credentials
+                                    DB_HOST=$(echo "${DB_SECRET}" | jq -r '.host')
+                                    DB_PORT=$(echo "${DB_SECRET}" | jq -r '.port // 5432')
+                                    DB_NAME=$(echo "${DB_SECRET}" | jq -r '.dbname')
+                                    DB_USER=$(echo "${DB_SECRET}" | jq -r '.username')
+                                    DB_PASS=$(echo "${DB_SECRET}" | jq -r '.password')
+
+                                    # Construct JDBC URL
+                                    FLYWAY_URL="jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+                                    echo "Database host: ${DB_HOST}"
+                                    echo "Database name: ${DB_NAME}"
+
+                                    # Export to environment file for Maven
+                                    echo "FLYWAY_URL=${FLYWAY_URL}" > /tmp/flyway-env
+                                    echo "FLYWAY_USER=${DB_USER}" >> /tmp/flyway-env
+                                    echo "FLYWAY_PASSWORD=${DB_PASS}" >> /tmp/flyway-env
+
+                                    echo ""
+                                    echo "================================================================"
+                                    echo "Database Migration - Validating Migrations"
+                                    echo "================================================================"
+
+                                    cd sample-app
+
+                                    # Source credentials and run validation
+                                    export FLYWAY_URL
+                                    export FLYWAY_USER="${DB_USER}"
+                                    export FLYWAY_PASSWORD="${DB_PASS}"
+
+                                    # Validate migration files before applying
+                                    mvn flyway:validate -B \
+                                        -Dflyway.url="${FLYWAY_URL}" \
+                                        -Dflyway.user="${DB_USER}" \
+                                        -Dflyway.password="${DB_PASS}" \
+                                        -Dflyway.connectRetries=3
+
+                                    echo ""
+                                    echo "================================================================"
+                                    echo "Database Migration - Applying Migrations"
+                                    echo "================================================================"
+
+                                    # Apply pending migrations
+                                    mvn flyway:migrate -B \
+                                        -Dflyway.url="${FLYWAY_URL}" \
+                                        -Dflyway.user="${DB_USER}" \
+                                        -Dflyway.password="${DB_PASS}" \
+                                        -Dflyway.connectRetries=3
+
+                                    echo ""
+                                    echo "================================================================"
+                                    echo "Database Migration - Current Schema Info"
+                                    echo "================================================================"
+
+                                    # Show current migration status
+                                    mvn flyway:info -B \
+                                        -Dflyway.url="${FLYWAY_URL}" \
+                                        -Dflyway.user="${DB_USER}" \
+                                        -Dflyway.password="${DB_PASS}"
+
+                                    # Cleanup sensitive data
+                                    rm -f /tmp/flyway-env
+                                    unset DB_PASS FLYWAY_PASSWORD DB_SECRET
+
+                                    echo ""
+                                    echo "Database migrations completed successfully!"
+                                '''
+                            }
+                        } else {
+                            // For non-AWS environments, use Jenkins credentials
+                            withCredentials([
+                                usernamePassword(
+                                    credentialsId: "db-credentials-${params.ENVIRONMENT}",
+                                    usernameVariable: 'DB_USER',
+                                    passwordVariable: 'DB_PASS'
+                                ),
+                                string(
+                                    credentialsId: "db-url-${params.ENVIRONMENT}",
+                                    variable: 'DB_URL'
+                                )
+                            ]) {
+                                sh '''#!/bin/bash
+                                    set -e
+                                    set +x  # Disable command tracing to prevent credential exposure
+
+                                    echo "================================================================"
+                                    echo "Database Migration - ${ENVIRONMENT}"
+                                    echo "================================================================"
+
+                                    cd sample-app
+
+                                    echo "Validating migrations..."
+                                    mvn flyway:validate -B \
+                                        -Dflyway.url="${DB_URL}" \
+                                        -Dflyway.user="${DB_USER}" \
+                                        -Dflyway.password="${DB_PASS}" \
+                                        -Dflyway.connectRetries=3
+
+                                    echo ""
+                                    echo "Applying migrations..."
+                                    mvn flyway:migrate -B \
+                                        -Dflyway.url="${DB_URL}" \
+                                        -Dflyway.user="${DB_USER}" \
+                                        -Dflyway.password="${DB_PASS}" \
+                                        -Dflyway.connectRetries=3
+
+                                    echo ""
+                                    echo "Current schema info:"
+                                    mvn flyway:info -B \
+                                        -Dflyway.url="${DB_URL}" \
+                                        -Dflyway.user="${DB_USER}" \
+                                        -Dflyway.password="${DB_PASS}"
+
+                                    echo ""
+                                    echo "Database migrations completed successfully!"
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
+            post {
+                failure {
+                    echo '''
+                    ================================================================
+                    DATABASE MIGRATION FAILED
+                    ================================================================
+                    The database migration step has failed. This could be due to:
+                    1. Invalid SQL syntax in migration files
+                    2. Migration checksum mismatch (modified existing migration)
+                    3. Database connection issues
+                    4. Missing database permissions
+
+                    IMPORTANT: Do NOT proceed with deployment until migrations are fixed.
+                    Check the Flyway documentation for troubleshooting:
+                    https://documentation.red-gate.com/fd/troubleshooting-184127505.html
+
+                    To repair the schema history (use with caution):
+                    mvn flyway:repair -Dflyway.url=... -Dflyway.user=... -Dflyway.password=...
+                    ================================================================
+                    '''
+                }
+            }
+        }
+
         stage('Push to Local Registry') {
             when {
                 allOf {

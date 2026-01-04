@@ -33,7 +33,7 @@ resource "aws_lb" "main" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
+  subnets            = module.networking.public_subnet_ids
 
   enable_deletion_protection = true
 
@@ -140,7 +140,7 @@ resource "aws_lb_target_group" "liberty" {
   name     = "${local.name_prefix}-liberty-tg"
   port     = 9080
   protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
+  vpc_id   = module.networking.vpc_id
 
   health_check {
     enabled             = true
@@ -180,7 +180,7 @@ resource "aws_lb_target_group" "liberty_admin" {
   name     = "${local.name_prefix}-liberty-admin-tg"
   port     = 9443
   protocol = "HTTPS"
-  vpc_id   = aws_vpc.main.id
+  vpc_id   = module.networking.vpc_id
 
   health_check {
     enabled             = true

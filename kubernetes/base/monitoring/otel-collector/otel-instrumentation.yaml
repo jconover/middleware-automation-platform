@@ -1,0 +1,144 @@
+# =============================================================================
+# OpenTelemetry Instrumentation Custom Resource
+# =============================================================================
+# This Instrumentation CR configures auto-instrumentation for Java applications.
+# When a pod has the annotation:
+#   instrumentation.opentelemetry.io/inject-java: "tracing/liberty-instrumentation"
+# The OTEL Operator injects the Java agent as an init container.
+#
+# Prerequisites:
+#   1. Install cert-manager (required by OTEL Operator):
+#      kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+#
+#   2. Install OpenTelemetry Operator:
+#      kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml
+#
+#   3. Deploy this Instrumentation CR:
+#      kubectl apply -f otel-instrumentation.yaml
+#
+# How it works:
+#   - OTEL Operator watches for pods with inject annotations
+#   - Injects init container with OTEL Java agent JAR
+#   - Adds environment variables for agent configuration
+#   - Agent automatically instruments supported frameworks (JAX-RS, JDBC, etc.)
+#
+# Supported Java Frameworks (auto-instrumented):
+#   - JAX-RS / Jakarta REST
+#   - Servlet
+#   - JDBC
+#   - JMS
+#   - Logging (Log4j, Logback, JUL)
+#   - HttpClient, OkHttp
+#   - gRPC
+#   - Kafka
+#   - Redis (Jedis, Lettuce)
+#
+# =============================================================================
+---
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: liberty-instrumentation
+  namespace: tracing
+  labels:
+    app.kubernetes.io/name: otel-instrumentation
+    app.kubernetes.io/component: auto-instrumentation
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  # Exporter configuration
+  exporter:
+    endpoint: http://otel-collector.tracing.svc.cluster.local:4317
+
+  # Propagators for distributed context
+  propagators:
+    - tracecontext
+    - baggage
+    - b3
+
+  # Sampler configuration
+  sampler:
+    type: parentbased_traceidratio
+    argument: "0.1"  # 10% sampling rate
+
+  # Java-specific configuration
+  java:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:2.1.0
+    env:
+      # Service identification
+      - name: OTEL_SERVICE_NAME
+        value: liberty-app
+      - name: OTEL_RESOURCE_ATTRIBUTES
+        value: "service.namespace=middleware-platform,deployment.environment=local-kubernetes"
+
+      # Exporter settings
+      - name: OTEL_TRACES_EXPORTER
+        value: otlp
+      - name: OTEL_METRICS_EXPORTER
+        value: none
+      - name: OTEL_LOGS_EXPORTER
+        value: none
+
+      # Span processing
+      - name: OTEL_BSP_SCHEDULE_DELAY
+        value: "5000"
+      - name: OTEL_BSP_MAX_EXPORT_BATCH_SIZE
+        value: "512"
+      - name: OTEL_BSP_MAX_QUEUE_SIZE
+        value: "2048"
+
+      # Instrumentation settings
+      - name: OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED
+        value: "true"
+
+      # Capture HTTP request/response headers and bodies (careful with PII)
+      - name: OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST
+        value: "X-Request-ID,X-Correlation-ID"
+      - name: OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE
+        value: "X-Request-ID"
+
+      # Suppress noisy health check spans
+      - name: OTEL_INSTRUMENTATION_HTTP_SERVER_SUPPRESS_HEALTH_CHECK_SPANS
+        value: "true"
+
+      # Database instrumentation (sanitize queries)
+      - name: OTEL_INSTRUMENTATION_JDBC_STATEMENT_SANITIZER_ENABLED
+        value: "true"
+
+    # Resource requirements for the agent
+    resources:
+      limits:
+        cpu: "100m"
+        memory: "128Mi"
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+
+  # Resource attributes applied to all telemetry
+  resource:
+    addK8sUIDAttributes: true
+    resourceAttributes:
+      cluster.name: beelink-homelab
+      service.namespace: middleware-platform
+
+  # Environment variables injected into instrumented pods
+  env:
+    - name: OTEL_K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: spec.nodeName
+    - name: OTEL_K8S_POD_NAME
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.name
+    - name: OTEL_K8S_POD_UID
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.uid
+    - name: OTEL_K8S_NAMESPACE
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.namespace

@@ -1,0 +1,85 @@
+# =============================================================================
+# ServiceMonitor for Loki and Promtail Metrics
+# =============================================================================
+# Enables Prometheus Operator to automatically discover and scrape
+# Loki and Promtail metrics for observability stack monitoring.
+# =============================================================================
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: loki-metrics
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: middleware-platform
+    # Release label for Prometheus Operator discovery
+    release: prometheus
+spec:
+  # Job label for Prometheus
+  jobLabel: app
+
+  # Select services in monitoring namespace
+  namespaceSelector:
+    matchNames:
+      - monitoring
+
+  # Select Loki service
+  selector:
+    matchLabels:
+      app: loki
+
+  # Endpoint configuration
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: promtail-metrics
+  namespace: monitoring
+  labels:
+    app: promtail
+    app.kubernetes.io/name: promtail
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: middleware-platform
+    # Release label for Prometheus Operator discovery
+    release: prometheus
+spec:
+  # Job label for Prometheus
+  jobLabel: app
+
+  # Select services in monitoring namespace
+  namespaceSelector:
+    matchNames:
+      - monitoring
+
+  # Select Promtail service
+  selector:
+    matchLabels:
+      app: promtail
+
+  # Endpoint configuration
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace

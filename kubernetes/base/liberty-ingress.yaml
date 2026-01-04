@@ -1,0 +1,146 @@
+---
+# Liberty Ingress with TLS Termination
+# Production-ready ingress configuration with security hardening
+#
+# Prerequisites:
+#   1. nginx-ingress controller installed
+#   2. TLS secret created (liberty-tls-secret) OR cert-manager configured
+#
+# For development with self-signed certificates:
+#   kubectl apply -f liberty-tls-secret.yaml
+#
+# For production with cert-manager:
+#   kubectl apply -f certificates/
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: liberty-ingress
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    # =========================================================================
+    # TLS/SSL Configuration
+    # =========================================================================
+    # Force HTTPS redirect (all HTTP traffic redirected to HTTPS)
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Use strong TLS configuration
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+
+    # =========================================================================
+    # Rate Limiting (DDoS protection)
+    # =========================================================================
+    # Limit requests per second per IP
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    # Limit concurrent connections per IP
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+    # Burst limit for rate limiting
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    # Return 429 Too Many Requests when rate limited
+    nginx.ingress.kubernetes.io/limit-req-status-code: "429"
+
+    # =========================================================================
+    # Security Headers
+    # =========================================================================
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      # Prevent MIME type sniffing
+      more_set_headers "X-Content-Type-Options: nosniff";
+      # Prevent clickjacking
+      more_set_headers "X-Frame-Options: DENY";
+      # Enable XSS filter in browsers
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      # Referrer policy for privacy
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      # Content Security Policy (adjust as needed for your application)
+      more_set_headers "Content-Security-Policy: default-src 'self'; frame-ancestors 'none'";
+      # Permissions policy (formerly Feature-Policy)
+      more_set_headers "Permissions-Policy: geolocation=(), microphone=(), camera=()";
+      # Strict Transport Security (HSTS) - enforce HTTPS for 1 year
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+
+    # =========================================================================
+    # Proxy Configuration
+    # =========================================================================
+    # Timeout settings
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    # Body size limit (adjust for your application needs)
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Enable websocket support if needed
+    # nginx.ingress.kubernetes.io/websocket-services: "liberty-service"
+
+    # =========================================================================
+    # Backend Protocol
+    # =========================================================================
+    # Use HTTP to backend (Liberty handles its own TLS termination on port 9443)
+    # Change to HTTPS if you want end-to-end encryption
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+
+    # =========================================================================
+    # Health Check Configuration
+    # =========================================================================
+    # Custom health check path for upstream
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
+
+    # =========================================================================
+    # Monitoring
+    # =========================================================================
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "10254"
+
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - liberty.local
+      secretName: liberty-tls-secret
+  rules:
+    - host: liberty.local
+      http:
+        paths:
+          # Main application path
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: liberty-service
+                port:
+                  name: http
+
+---
+# Optional: Ingress for HTTPS passthrough to Liberty (end-to-end encryption)
+# Uncomment if you need Liberty to handle TLS termination
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: liberty-ingress-https-passthrough
+#   labels:
+#     app: liberty
+#     app.kubernetes.io/name: liberty
+#     app.kubernetes.io/component: ingress
+#     app.kubernetes.io/part-of: middleware-platform
+#   annotations:
+#     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+#     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+# spec:
+#   ingressClassName: nginx
+#   tls:
+#     - hosts:
+#         - liberty-secure.local
+#       secretName: liberty-tls-secret
+#   rules:
+#     - host: liberty-secure.local
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: liberty-service
+#                 port:
+#                   name: https

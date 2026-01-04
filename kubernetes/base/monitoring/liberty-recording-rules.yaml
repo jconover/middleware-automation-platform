@@ -1,0 +1,279 @@
+# =============================================================================
+# Prometheus Recording Rules for Liberty SLI Metrics
+# =============================================================================
+# Pre-compute expensive SLI queries for dashboard performance and SLO alerting.
+# Recording rules run at evaluation intervals and store results as new time series.
+#
+# SLO Targets:
+#   - Availability: 99.95% (error rate < 0.05%)
+#   - Latency: p95 < 500ms
+#   - Error Rate: < 0.5%
+#
+# These rules pre-aggregate metrics across the Liberty fleet, making dashboards
+# responsive and enabling efficient multi-window burn rate calculations.
+# =============================================================================
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: liberty-recording-rules
+  labels:
+    app: liberty
+    component: monitoring
+    release: prometheus
+    role: recording-rules
+spec:
+  groups:
+    # =========================================================================
+    # Request Rate Recording Rules
+    # =========================================================================
+    - name: liberty.sli.requests
+      interval: 30s
+      rules:
+        # Total request rate across all Liberty pods (5m window)
+        - record: liberty:http_requests:rate5m
+          expr: |
+            sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m]))
+
+        # Total request rate by pod (5m window)
+        - record: liberty:http_requests_by_pod:rate5m
+          expr: |
+            sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m])) by (pod)
+
+        # Total request rate by status code class (5m window)
+        - record: liberty:http_requests_by_status:rate5m
+          expr: |
+            sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m])) by (status)
+
+        # Total request count over rolling windows (for SLO calculations)
+        - record: liberty:http_requests:increase1h
+          expr: |
+            sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[1h]))
+
+        - record: liberty:http_requests:increase6h
+          expr: |
+            sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[6h]))
+
+        - record: liberty:http_requests:increase1d
+          expr: |
+            sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[1d]))
+
+        - record: liberty:http_requests:increase30d
+          expr: |
+            sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[30d]))
+
+    # =========================================================================
+    # Error Rate Recording Rules
+    # =========================================================================
+    - name: liberty.sli.errors
+      interval: 30s
+      rules:
+        # 5xx error rate as a ratio (5m window)
+        - record: liberty:http_error_rate:ratio5m
+          expr: |
+            (
+              sum(rate(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[5m]))
+              / sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m]))
+            ) or vector(0)
+
+        # 5xx error rate by pod (5m window)
+        - record: liberty:http_error_rate_by_pod:ratio5m
+          expr: |
+            (
+              sum(rate(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[5m])) by (pod)
+              / sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m])) by (pod)
+            ) or vector(0)
+
+        # 5xx error count over rolling windows (for SLO calculations)
+        - record: liberty:http_errors:increase1h
+          expr: |
+            sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[1h]))
+
+        - record: liberty:http_errors:increase6h
+          expr: |
+            sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[6h]))
+
+        - record: liberty:http_errors:increase1d
+          expr: |
+            sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[1d]))
+
+        - record: liberty:http_errors:increase30d
+          expr: |
+            sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[30d]))
+
+        # Availability (success rate) - inverse of error rate
+        - record: liberty:availability:ratio5m
+          expr: |
+            1 - liberty:http_error_rate:ratio5m
+
+    # =========================================================================
+    # Latency Recording Rules
+    # =========================================================================
+    - name: liberty.sli.latency
+      interval: 30s
+      rules:
+        # p50 latency (median)
+        - record: liberty:http_request_duration:p50
+          expr: |
+            histogram_quantile(0.50,
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+            )
+
+        # p90 latency
+        - record: liberty:http_request_duration:p90
+          expr: |
+            histogram_quantile(0.90,
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+            )
+
+        # p95 latency (SLO target: < 500ms)
+        - record: liberty:http_request_duration:p95
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+            )
+
+        # p99 latency
+        - record: liberty:http_request_duration:p99
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+            )
+
+        # p95 latency by pod (for identifying slow instances)
+        - record: liberty:http_request_duration_by_pod:p95
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (pod, le)
+            )
+
+        # Requests exceeding SLO latency threshold (500ms)
+        # Count of requests above threshold for SLO calculation
+        - record: liberty:http_requests_slow:rate5m
+          expr: |
+            sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[5m]))
+
+        # Latency SLI: ratio of requests within SLO (< 500ms)
+        - record: liberty:latency_slo_ratio:ratio5m
+          expr: |
+            (
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[5m]))
+              / sum(rate(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[5m]))
+            ) or vector(1)
+
+    # =========================================================================
+    # Error Budget Recording Rules
+    # =========================================================================
+    - name: liberty.slo.error_budget
+      interval: 1m
+      rules:
+        # SLO targets as constants (for dashboard display and calculations)
+        # Availability SLO: 99.95%
+        - record: liberty:slo:availability_target
+          expr: "0.9995"
+
+        # Error rate SLO: 0.5%
+        - record: liberty:slo:error_rate_target
+          expr: "0.005"
+
+        # Latency SLO: 99% of requests < 500ms
+        - record: liberty:slo:latency_target
+          expr: "0.99"
+
+        # Error budget remaining (30-day window)
+        # Allowed error rate = 1 - availability_target = 0.0005 (0.05%)
+        # Error budget consumed = actual errors / allowed errors
+        - record: liberty:error_budget:remaining_ratio
+          expr: |
+            clamp_min(
+              1 - (
+                liberty:http_errors:increase30d
+                / (liberty:http_requests:increase30d * 0.0005)
+              ),
+              0
+            ) or vector(1)
+
+        # Error budget burn rate (how fast we're consuming the budget)
+        # Burn rate of 1 = consuming budget at exactly the sustainable rate
+        # Burn rate of 2 = consuming budget 2x faster than sustainable
+        - record: liberty:error_budget:burn_rate_1h
+          expr: |
+            (
+              liberty:http_errors:increase1h / liberty:http_requests:increase1h
+            ) / 0.0005 or vector(0)
+
+        - record: liberty:error_budget:burn_rate_6h
+          expr: |
+            (
+              liberty:http_errors:increase6h / liberty:http_requests:increase6h
+            ) / 0.0005 or vector(0)
+
+        - record: liberty:error_budget:burn_rate_1d
+          expr: |
+            (
+              liberty:http_errors:increase1d / liberty:http_requests:increase1d
+            ) / 0.0005 or vector(0)
+
+    # =========================================================================
+    # JVM Health Recording Rules
+    # =========================================================================
+    - name: liberty.sli.jvm
+      interval: 30s
+      rules:
+        # Average heap usage percentage across all pods
+        - record: liberty:jvm_heap_usage:ratio
+          expr: |
+            avg(
+              memory_usedHeap_bytes{job="liberty", mp_scope="base"}
+              / memory_maxHeap_bytes{job="liberty", mp_scope="base"}
+            )
+
+        # Max heap usage percentage (worst performing pod)
+        - record: liberty:jvm_heap_usage:max_ratio
+          expr: |
+            max(
+              memory_usedHeap_bytes{job="liberty", mp_scope="base"}
+              / memory_maxHeap_bytes{job="liberty", mp_scope="base"}
+            )
+
+        # Average GC time rate
+        - record: liberty:jvm_gc_time:rate5m
+          expr: |
+            avg(rate(gc_time_total_seconds{job="liberty", mp_scope="base"}[5m]))
+
+        # Thread pool utilization
+        - record: liberty:threadpool_utilization:ratio
+          expr: |
+            avg(
+              threadpool_activeThreads{job="liberty", mp_scope="vendor"}
+              / threadpool_size{job="liberty", mp_scope="vendor"}
+            )
+
+    # =========================================================================
+    # Service Health Recording Rules
+    # =========================================================================
+    - name: liberty.sli.health
+      interval: 30s
+      rules:
+        # Total number of healthy Liberty pods
+        - record: liberty:pods:healthy_count
+          expr: |
+            count(up{job="liberty"} == 1)
+
+        # Total number of unhealthy Liberty pods
+        - record: liberty:pods:unhealthy_count
+          expr: |
+            count(up{job="liberty"} == 0) or vector(0)
+
+        # Availability based on healthy pods ratio
+        - record: liberty:pods:availability_ratio
+          expr: |
+            liberty:pods:healthy_count / (liberty:pods:healthy_count + liberty:pods:unhealthy_count)
+
+        # Connection pool free ratio
+        - record: liberty:connectionpool:free_ratio
+          expr: |
+            avg(
+              connectionpool_freeConnections{job="liberty", mp_scope="vendor"}
+              / connectionpool_managedConnections{job="liberty", mp_scope="vendor"}
+            )

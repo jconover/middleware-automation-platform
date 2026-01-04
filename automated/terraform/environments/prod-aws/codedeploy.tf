@@ -14,7 +14,7 @@ resource "aws_lb_target_group" "liberty_ecs_green" {
   name        = "${local.name_prefix}-liberty-ecs-green"
   port        = 9080
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
   target_type = "ip" # Required for Fargate
 
   health_check {

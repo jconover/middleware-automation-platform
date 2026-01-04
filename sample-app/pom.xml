@@ -24,12 +24,28 @@
 
         <!-- Plugin versions -->
         <surefire.plugin.version>3.2.5</surefire.plugin.version>
+        <failsafe.plugin.version>3.2.5</failsafe.plugin.version>
+        <liberty.plugin.version>3.10</liberty.plugin.version>
+        <flyway.plugin.version>10.6.0</flyway.plugin.version>
+
+        <!-- Liberty configuration -->
+        <liberty.var.default.http.port>9080</liberty.var.default.http.port>
+        <liberty.var.default.https.port>9443</liberty.var.default.https.port>
         <pmd.plugin.version>3.21.2</pmd.plugin.version>
         <checkstyle.plugin.version>3.3.1</checkstyle.plugin.version>
         <jacoco.plugin.version>0.8.11</jacoco.plugin.version>
 
         <!-- Coverage thresholds -->
         <jacoco.line.coverage>0.80</jacoco.line.coverage>
+
+        <!-- Flyway configuration (override via -D or environment variables) -->
+        <flyway.url>${env.FLYWAY_URL}</flyway.url>
+        <flyway.user>${env.FLYWAY_USER}</flyway.user>
+        <flyway.password>${env.FLYWAY_PASSWORD}</flyway.password>
+        <flyway.schemas>public</flyway.schemas>
+        <flyway.locations>classpath:db/migration</flyway.locations>
+        <flyway.baselineOnMigrate>false</flyway.baselineOnMigrate>
+        <flyway.validateOnMigrate>true</flyway.validateOnMigrate>
     </properties>
 
     <dependencies>
@@ -95,6 +111,20 @@
             <groupId>org.glassfish.expressly</groupId>
             <artifactId>expressly</artifactId>
             <version>5.0.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- JSON-P for integration tests -->
+        <dependency>
+            <groupId>jakarta.json</groupId>
+            <artifactId>jakarta.json-api</artifactId>
+            <version>2.1.3</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.parsson</groupId>
+            <artifactId>parsson</artifactId>
+            <version>1.1.5</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -209,6 +239,85 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+
+            <!-- Liberty Maven Plugin for Integration Tests -->
+            <plugin>
+                <groupId>io.openliberty.tools</groupId>
+                <artifactId>liberty-maven-plugin</artifactId>
+                <version>${liberty.plugin.version}</version>
+                <configuration>
+                    <serverName>defaultServer</serverName>
+                    <configDirectory>${project.basedir}/src/main/liberty/config</configDirectory>
+                    <bootstrapProperties>
+                        <default.http.port>${liberty.var.default.http.port}</default.http.port>
+                        <default.https.port>${liberty.var.default.https.port}</default.https.port>
+                    </bootstrapProperties>
+                </configuration>
+            </plugin>
+
+            <!-- Failsafe Plugin for Integration Tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${failsafe.plugin.version}</version>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                    </includes>
+                    <systemPropertyVariables>
+                        <liberty.test.port>${liberty.var.default.http.port}</liberty.test.port>
+                    </systemPropertyVariables>
+                    <reportFormat>xml</reportFormat>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>integration-test</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>verify</id>
+                        <goals>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Flyway Maven Plugin for Database Migrations -->
+            <plugin>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-maven-plugin</artifactId>
+                <version>${flyway.plugin.version}</version>
+                <configuration>
+                    <url>${flyway.url}</url>
+                    <user>${flyway.user}</user>
+                    <password>${flyway.password}</password>
+                    <schemas>
+                        <schema>${flyway.schemas}</schema>
+                    </schemas>
+                    <locations>
+                        <location>${flyway.locations}</location>
+                    </locations>
+                    <baselineOnMigrate>${flyway.baselineOnMigrate}</baselineOnMigrate>
+                    <validateOnMigrate>${flyway.validateOnMigrate}</validateOnMigrate>
+                    <!-- Fail build if migration validation fails -->
+                    <cleanDisabled>true</cleanDisabled>
+                    <!-- Placeholders for environment-specific values -->
+                    <placeholders>
+                        <environment>${env.ENVIRONMENT}</environment>
+                    </placeholders>
+                </configuration>
+                <dependencies>
+                    <!-- PostgreSQL JDBC Driver -->
+                    <dependency>
+                        <groupId>org.postgresql</groupId>
+                        <artifactId>postgresql</artifactId>
+                        <version>42.7.1</version>
+                    </dependency>
+                </dependencies>
             </plugin>
         </plugins>
     </build>

@@ -257,35 +257,25 @@ curl http://localhost:9080/metrics
 curl http://localhost:9080/sample-app/api/health
 ```
 
-**Option B: Ingress via NGINX**
+**Option B: Ingress with TLS (Recommended)**
+
+For production-ready ingress with HTTPS, TLS termination, rate limiting, and security headers, see [Section 2: Deploy NGINX Ingress Controller with TLS](#2-deploy-nginx-ingress-controller-with-tls).
+
+Quick start (after NGINX Ingress Controller is installed):
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: liberty-ingress
-  namespace: liberty
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: liberty.local
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: liberty-service
-            port:
-              number: 9080
-EOF
+# The Ingress resource is included in the base kustomization
+# Apply it with the deployment
+kubectl apply -k kubernetes/overlays/local-homelab
+
+# Or apply just the Ingress
+kubectl apply -f kubernetes/base/liberty-ingress.yaml -n liberty
 
 # Add to /etc/hosts
 echo "192.168.68.200 liberty.local" | sudo tee -a /etc/hosts
 ```
 
-Access at: http://liberty.local/sample-app/
+Access at: https://liberty.local/sample-app/
 
 **Option C: MetalLB LoadBalancer**
 
@@ -314,24 +304,278 @@ kubectl delete secret liberty-secrets -n liberty
 kubectl delete namespace liberty
 ```
 
-### 2. Deploy Monitoring Stack
+### 2. Deploy NGINX Ingress Controller with TLS
+
+This section covers deploying the NGINX Ingress Controller for external access to services, along with TLS termination using either self-signed certificates or cert-manager for automatic certificate management.
+
+#### Overview
+
+| Property | Value |
+|----------|-------|
+| Namespace | `ingress-nginx` |
+| LoadBalancer IP | 192.168.68.200 |
+| HTTP Port | 80 |
+| HTTPS Port | 443 |
+| Access URL | https://liberty.local |
+
+#### Step 2.1: Install NGINX Ingress Controller
+
+```bash
+# Add the ingress-nginx Helm repository
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+# Install nginx-ingress with MetalLB LoadBalancer IP
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --create-namespace \
+  --set controller.service.type=LoadBalancer \
+  --set controller.service.loadBalancerIP=192.168.68.200 \
+  --set controller.metrics.enabled=true \
+  --set controller.metrics.serviceMonitor.enabled=true \
+  --wait --timeout 5m
+```
+
+Verify the installation:
+
+```bash
+# Check that the ingress controller is running
+kubectl get pods -n ingress-nginx
+
+# Verify the LoadBalancer IP is assigned
+kubectl get svc -n ingress-nginx
+```
+
+Expected output:
+```
+NAME                                 TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)
+ingress-nginx-controller             LoadBalancer   10.43.x.x      192.168.68.200   80:xxxxx/TCP,443:xxxxx/TCP
+```
+
+#### Step 2.2: Configure TLS Certificates
+
+Choose ONE of the following options based on your environment:
+
+**Option A: Self-Signed Certificate (Development Quick Start)**
+
+For local development without internet access:
+
+```bash
+# Generate self-signed certificate
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout liberty-tls.key \
+  -out liberty-tls.crt \
+  -subj "/CN=liberty.local/O=Middleware Platform" \
+  -addext "subjectAltName=DNS:liberty.local,DNS:*.liberty.local"
+
+# Create the TLS secret in the liberty namespace
+kubectl create namespace liberty --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret tls liberty-tls-secret \
+  --namespace liberty \
+  --cert=liberty-tls.crt \
+  --key=liberty-tls.key
+
+# Clean up local files
+rm liberty-tls.key liberty-tls.crt
+
+# Verify the secret was created
+kubectl get secret liberty-tls-secret -n liberty
+```
+
+**Option B: cert-manager (Recommended for all environments)**
+
+cert-manager automatically provisions and renews TLS certificates.
+
+```bash
+# Install cert-manager
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+
+# Wait for cert-manager to be ready
+kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=300s
+
+# Verify installation
+kubectl get pods -n cert-manager
+```
+
+Expected output:
+```
+NAME                                       READY   STATUS    RESTARTS   AGE
+cert-manager-xxxxxx-xxxxx                  1/1     Running   0          2m
+cert-manager-cainjector-xxxxxx-xxxxx       1/1     Running   0          2m
+cert-manager-webhook-xxxxxx-xxxxx          1/1     Running   0          2m
+```
+
+Apply the certificate resources:
+
+```bash
+# Create the liberty namespace first
+kubectl create namespace liberty --dry-run=client -o yaml | kubectl apply -f -
+
+# Apply ClusterIssuers and Certificate
+kubectl apply -f kubernetes/base/certificates/
+```
+
+Verify certificate issuance:
+
+```bash
+# Check certificate status
+kubectl get certificate -n liberty
+
+# Check the certificate details
+kubectl describe certificate liberty-certificate -n liberty
+
+# Verify the TLS secret was created
+kubectl get secret liberty-tls-secret -n liberty
+```
+
+Expected output for certificate:
+```
+NAME                  READY   SECRET               AGE
+liberty-certificate   True    liberty-tls-secret   2m
+```
+
+#### Step 2.3: Apply the Ingress Resource
+
+The Liberty Ingress is included in the base kustomization. Apply it along with the deployment:
+
+```bash
+# Apply the full Liberty deployment including Ingress
+kubectl apply -k kubernetes/overlays/local-homelab
+```
+
+Or apply just the Ingress resource:
+
+```bash
+kubectl apply -f kubernetes/base/liberty-ingress.yaml -n liberty
+```
+
+#### Step 2.4: Configure Local DNS
+
+Add the hostname to your local hosts file:
+
+```bash
+# Add to /etc/hosts (Linux/macOS)
+echo "192.168.68.200 liberty.local" | sudo tee -a /etc/hosts
+
+# Or on Windows (run as Administrator):
+# echo 192.168.68.200 liberty.local >> C:\Windows\System32\drivers\etc\hosts
+```
+
+#### Step 2.5: Verify Ingress Configuration
+
+```bash
+# Check Ingress resource
+kubectl get ingress -n liberty
+
+# Describe Ingress for details
+kubectl describe ingress liberty-ingress -n liberty
+```
+
+Expected output:
+```
+NAME              CLASS   HOSTS          ADDRESS          PORTS     AGE
+liberty-ingress   nginx   liberty.local  192.168.68.200   80, 443   2m
+```
+
+#### Step 2.6: Test HTTPS Access
+
+```bash
+# Test HTTPS endpoint (with self-signed cert, use -k to skip verification)
+curl -k https://liberty.local/health/ready
+
+# Test HTTP to HTTPS redirect
+curl -I http://liberty.local/health/ready
+# Should return: HTTP/1.1 308 Permanent Redirect
+
+# Verify security headers
+curl -k -I https://liberty.local/ | grep -E "X-Frame|X-Content-Type|Strict-Transport"
+```
+
+Expected headers:
+```
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+```
+
+#### Ingress Features Summary
+
+| Feature | Configuration | Description |
+|---------|--------------|-------------|
+| TLS Termination | `spec.tls` | HTTPS with certificate from secret |
+| SSL Redirect | `ssl-redirect: "true"` | Forces HTTP to HTTPS |
+| Rate Limiting | `limit-rps: "100"` | 100 requests/second per IP |
+| Connection Limit | `limit-connections: "50"` | 50 concurrent connections per IP |
+| Security Headers | `configuration-snippet` | X-Frame-Options, CSP, HSTS, etc. |
+| Strong TLS | `ssl-protocols`, `ssl-ciphers` | TLS 1.2/1.3 with strong ciphers |
+
+#### Troubleshooting Ingress
+
+**Issue: 502 Bad Gateway**
+```bash
+# Check if backend pods are running
+kubectl get pods -n liberty
+
+# Check if service endpoints exist
+kubectl get endpoints liberty-service -n liberty
+
+# Check ingress controller logs
+kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx
+```
+
+**Issue: Certificate not trusted in browser**
+- For self-signed certificates, this is expected
+- Add an exception in your browser, or
+- Use cert-manager with Let's Encrypt for trusted certificates (requires public domain)
+
+**Issue: 308 Redirect Loop**
+```bash
+# Check if you're accessing via HTTP but have ssl-redirect enabled
+# Solution: Use https:// in your URL
+```
+
+#### Upgrade Ingress Controller
+
+```bash
+helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --reuse-values \
+  --wait
+```
+
+#### Uninstall Ingress Controller
+
+```bash
+# Remove Helm release
+helm uninstall ingress-nginx -n ingress-nginx
+
+# Delete namespace
+kubectl delete namespace ingress-nginx
+
+# Remove cert-manager (if installed)
+kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+```
+
+---
+
+### 3. Deploy Monitoring Stack
 
 This section covers deploying Prometheus and Grafana using the kube-prometheus-stack Helm chart, which provides a complete monitoring solution including Prometheus Operator, Grafana, AlertManager, and node exporters.
 
-#### Step 2.1: Create Monitoring Namespace
+#### Step 3.1: Create Monitoring Namespace
 
 ```bash
 kubectl create namespace monitoring
 ```
 
-#### Step 2.2: Add Helm Repository
+#### Step 3.2: Add Helm Repository
 
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 ```
 
-#### Step 2.3: Deploy Prometheus Stack with LoadBalancer IPs
+#### Step 3.3: Deploy Prometheus Stack with LoadBalancer IPs
 
 Deploy the kube-prometheus-stack chart with LoadBalancer services configured for MetalLB:
 
@@ -400,7 +644,7 @@ helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
     --wait --timeout 10m
 ```
 
-#### Step 2.4: Verify Deployment
+#### Step 3.4: Verify Deployment
 
 Check that all pods are running:
 
@@ -421,7 +665,7 @@ prometheus-grafana                      LoadBalancer   10.43.x.x   192.168.68.20
 prometheus-kube-prometheus-alertmanager LoadBalancer   10.43.x.x   192.168.68.203   9093:xxxxx/TCP
 ```
 
-#### Step 2.5: Access Monitoring Services
+#### Step 3.5: Access Monitoring Services
 
 | Service | URL | Default Credentials |
 |---------|-----|---------------------|
@@ -429,7 +673,7 @@ prometheus-kube-prometheus-alertmanager LoadBalancer   10.43.x.x   192.168.68.20
 | Grafana | http://192.168.68.202:3000 | admin / admin |
 | AlertManager | http://192.168.68.203:9093 | No authentication required |
 
-#### Step 2.6: Configure Liberty Scrape Targets
+#### Step 3.6: Configure Liberty Scrape Targets
 
 **Option A: ServiceMonitor for Kubernetes-Deployed Liberty**
 
@@ -485,7 +729,7 @@ helm upgrade prometheus prometheus-community/kube-prometheus-stack \
     --set prometheus.prometheusSpec.additionalScrapeConfigsSecret.key=prometheus-additional.yaml
 ```
 
-#### Step 2.7: Import Liberty Dashboard
+#### Step 3.7: Import Liberty Dashboard
 
 **Method 1: Import via Grafana UI**
 
@@ -540,7 +784,7 @@ The Grafana sidecar automatically loads dashboards from ConfigMaps with the `gra
 | Heap Usage % | JVM heap utilization | `memory_usedHeap_bytes{mp_scope="base"} / memory_maxHeap_bytes{mp_scope="base"}` |
 | Heap Memory | Used vs maximum heap bytes | `memory_usedHeap_bytes{mp_scope="base"}`, `memory_maxHeap_bytes{mp_scope="base"}` |
 
-### 3. Deploy AWX
+### 4. Deploy AWX
 
 ```bash
 # Install AWX Operator
@@ -555,7 +799,7 @@ kubectl create secret generic awx-admin-password \
 kubectl apply -f awx/awx-deployment.yaml
 ```
 
-### 4. Deploy Jenkins
+### 5. Deploy Jenkins
 
 Jenkins provides CI/CD pipeline capabilities with dynamic Kubernetes pod agents for building and deploying the middleware platform. The deployment uses Helm with a customized values file that pre-configures plugins, pod templates, and Jenkins Configuration as Code (JCasC).
 
@@ -2017,7 +2261,7 @@ kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Doc
 |---------|------------|------|-----|
 | **Liberty Server 1** | 192.168.68.86 | 9080/9443 | http://192.168.68.86:9080 |
 | **Liberty Server 2** | 192.168.68.88 | 9080/9443 | http://192.168.68.88:9080 |
-| **NGINX Ingress** | 192.168.68.200 | 80/443 | http://192.168.68.200 |
+| **NGINX Ingress** | 192.168.68.200 | 80/443 | https://liberty.local |
 | **Prometheus** | 192.168.68.201 | 9090 | http://192.168.68.201:9090 |
 | **Grafana** | 192.168.68.202 | 3000 | http://192.168.68.202:3000 |
 | **AlertManager** | 192.168.68.203 | 9093 | http://192.168.68.203:9093 |

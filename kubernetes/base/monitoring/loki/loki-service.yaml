@@ -1,0 +1,86 @@
+# =============================================================================
+# Loki Service Configuration
+# =============================================================================
+# Exposes Loki for:
+#   - Promtail log ingestion (push API)
+#   - Grafana log queries (query API)
+#   - External access via MetalLB LoadBalancer (optional)
+#
+# MetalLB IP Assignment: 192.168.68.204
+# Access: http://192.168.68.204:3100
+# =============================================================================
+---
+# ClusterIP Service for internal cluster access
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: log-aggregation
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3100
+      targetPort: http
+      protocol: TCP
+    - name: grpc
+      port: 9096
+      targetPort: grpc
+      protocol: TCP
+  selector:
+    app: loki
+
+---
+# LoadBalancer Service for external access (MetalLB)
+# This allows direct access from the homelab network for troubleshooting
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-external
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: log-aggregation
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    # MetalLB IP assignment
+    metallb.universe.tf/loadBalancerIPs: "192.168.68.204"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 192.168.68.204
+  ports:
+    - name: http
+      port: 3100
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: loki
+
+---
+# Headless service for StatefulSet (if scaling in future)
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-headless
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: log-aggregation
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http
+      port: 3100
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: loki

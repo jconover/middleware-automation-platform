@@ -1,0 +1,219 @@
+# =============================================================================
+# Promtail Configuration ConfigMap
+# =============================================================================
+# Promtail is the log collection agent for Loki. It runs as a DaemonSet on
+# each node to collect container logs and forward them to Loki.
+#
+# This configuration includes:
+#   - Kubernetes service discovery for pods
+#   - Pipeline stages for Liberty JSON log parsing
+#   - Label extraction for efficient log querying
+#   - Multi-tenant support via namespace labels
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: monitoring
+  labels:
+    app: promtail
+    app.kubernetes.io/name: promtail
+    app.kubernetes.io/component: log-collection
+    app.kubernetes.io/part-of: middleware-platform
+data:
+  promtail.yaml: |
+    # Server configuration
+    server:
+      http_listen_port: 3101
+      grpc_listen_port: 0
+      log_level: info
+
+    # Position file to track read offsets
+    positions:
+      filename: /run/promtail/positions.yaml
+
+    # Loki client configuration
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+        # Batching configuration
+        batchwait: 1s
+        batchsize: 1048576
+        # Retry configuration
+        backoff_config:
+          min_period: 500ms
+          max_period: 5m
+          max_retries: 10
+        # Timeout
+        timeout: 10s
+        # Tenant ID (leave empty for single-tenant mode)
+        # tenant_id: middleware
+
+    # Scrape configurations
+    scrape_configs:
+      # =======================================================================
+      # Kubernetes Pod Logs
+      # =======================================================================
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+
+        # Relabeling rules for Kubernetes metadata
+        relabel_configs:
+          # Only keep pods with logs
+          - source_labels: [__meta_kubernetes_pod_annotation_promtail_io_scrape]
+            action: drop
+            regex: "false"
+
+          # Use pod namespace as label
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+          # Use pod name as label
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+
+          # Use container name as label
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+
+          # Use app label from pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+
+          # Use component label from pod
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+            target_label: component
+
+          # Use node name
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+
+          # Create job label from namespace/name
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_name]
+            separator: /
+            target_label: job
+
+          # Keep only running pods
+          - source_labels: [__meta_kubernetes_pod_phase]
+            action: drop
+            regex: (Succeeded|Failed)
+
+          # Set log file path
+          - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
+            target_label: __path__
+            separator: /
+            replacement: /var/log/pods/*$1/$2/*.log
+
+        # Pipeline stages for log processing
+        pipeline_stages:
+          # =================================================================
+          # Liberty JSON Log Processing
+          # =================================================================
+          # Liberty outputs JSON logs when configured with:
+          #   <logging consoleFormat="JSON"/>
+          #
+          # Sample Liberty JSON log:
+          # {
+          #   "type": "liberty_message",
+          #   "host": "liberty-app-abc123",
+          #   "ibm_userDir": "/opt/ol/wlp/usr/",
+          #   "ibm_serverName": "defaultServer",
+          #   "message": "CWWKZ0001I: Application sample-app started",
+          #   "ibm_threadId": "00000028",
+          #   "ibm_datetime": "2024-01-15T10:30:00.000+0000",
+          #   "module": "com.ibm.ws.app.manager.AppMessageHelper",
+          #   "loglevel": "INFO",
+          #   "ibm_sequence": "1705315800000_0000001"
+          # }
+          # =================================================================
+          - match:
+              selector: '{app="liberty"}'
+              stages:
+                # Parse JSON logs from Liberty
+                - json:
+                    expressions:
+                      level: loglevel
+                      message: message
+                      module: module
+                      thread: ibm_threadId
+                      timestamp: ibm_datetime
+                      type: type
+                      server: ibm_serverName
+
+                # Set labels from extracted values
+                - labels:
+                    level:
+                    module:
+                    type:
+
+                # Parse timestamp
+                - timestamp:
+                    source: timestamp
+                    format: "2006-01-02T15:04:05.000-0700"
+                    fallback_formats:
+                      - "2006-01-02T15:04:05.000Z"
+                      - RFC3339
+
+                # Output formatted message
+                - output:
+                    source: message
+
+          # =================================================================
+          # Generic JSON Log Processing (other applications)
+          # =================================================================
+          - match:
+              selector: '{app!="liberty"}'
+              stages:
+                # Try to parse as JSON
+                - json:
+                    expressions:
+                      level: level
+                      msg: msg
+                      message: message
+                      time: time
+                      timestamp: timestamp
+                      ts: ts
+
+                # Set level label if extracted
+                - labels:
+                    level:
+
+                # Try various timestamp formats
+                - timestamp:
+                    source: time
+                    format: RFC3339Nano
+                    fallback_formats:
+                      - RFC3339
+                      - "2006-01-02T15:04:05.000Z"
+                      - UnixMs
+
+                # Use message field if available
+                - output:
+                    source: message
+
+          # =================================================================
+          # Static Labels
+          # =================================================================
+          - static_labels:
+              cluster: homelab
+              environment: local
+
+      # =======================================================================
+      # System Logs (journald)
+      # =======================================================================
+      - job_name: journal
+        journal:
+          max_age: 12h
+          path: /var/log/journal
+          labels:
+            job: systemd-journal
+        relabel_configs:
+          - source_labels: [__journal__systemd_unit]
+            target_label: unit
+          - source_labels: [__journal__hostname]
+            target_label: node
+        pipeline_stages:
+          - static_labels:
+              cluster: homelab
+              source: journal

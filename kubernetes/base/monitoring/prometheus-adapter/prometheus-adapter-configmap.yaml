@@ -1,0 +1,266 @@
+# =============================================================================
+# Prometheus Adapter Configuration for Custom Metrics HPA
+# =============================================================================
+# Maps Liberty Prometheus metrics to Kubernetes custom metrics API, enabling
+# HPA to scale based on application-specific metrics like request rate and latency.
+#
+# Custom Metrics Provided:
+#   - http_requests_per_second: Request rate per pod (target: 1000 RPS)
+#   - http_request_duration_seconds_p95: p95 latency (target: 500ms)
+#   - http_error_rate: Error rate ratio per pod
+#
+# Prerequisites:
+#   - Prometheus Operator with ServiceMonitor for Liberty
+#   - Liberty pods exposing MicroProfile Metrics on /metrics
+#
+# Verification:
+#   kubectl get --raw /apis/custom.metrics.k8s.io/v1beta1 | jq .
+#   kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/http_requests_per_second" | jq .
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-adapter-config
+  namespace: monitoring
+  labels:
+    app: prometheus-adapter
+    app.kubernetes.io/name: prometheus-adapter
+    app.kubernetes.io/component: metrics-adapter
+    app.kubernetes.io/part-of: middleware-platform
+data:
+  config.yaml: |
+    # ==========================================================================
+    # Prometheus Adapter Configuration
+    # ==========================================================================
+    # This configuration maps Prometheus metrics to the Kubernetes custom
+    # metrics API, enabling HPA to use application-specific metrics.
+    #
+    # For Liberty metrics, we use:
+    #   - servlet_request_total: Counter of total HTTP requests
+    #   - servlet_request_elapsedTime_seconds: Histogram of request durations
+    # ==========================================================================
+
+    # --------------------------------------------------------------------------
+    # Resource Rules: Map Prometheus metrics to Kubernetes resources
+    # --------------------------------------------------------------------------
+    resourceRules:
+      # CPU and memory from node_exporter/cAdvisor
+      cpu:
+        containerQuery: |
+          sum(rate(container_cpu_usage_seconds_total{<<.LabelMatchers>>}[5m])) by (<<.GroupBy>>)
+        nodeQuery: |
+          sum(rate(node_cpu_seconds_total{mode!="idle",<<.LabelMatchers>>}[5m])) by (<<.GroupBy>>)
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            node:
+              resource: node
+            pod:
+              resource: pod
+        containerLabel: container
+      memory:
+        containerQuery: |
+          sum(container_memory_working_set_bytes{<<.LabelMatchers>>}) by (<<.GroupBy>>)
+        nodeQuery: |
+          sum(node_memory_MemTotal_bytes{<<.LabelMatchers>>} - node_memory_MemAvailable_bytes{<<.LabelMatchers>>}) by (<<.GroupBy>>)
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            node:
+              resource: node
+            pod:
+              resource: pod
+        containerLabel: container
+      window: 5m
+
+    # --------------------------------------------------------------------------
+    # Rules: Custom metrics for HPA
+    # --------------------------------------------------------------------------
+    rules:
+      # ========================================================================
+      # HTTP Requests Per Second (Primary scaling metric)
+      # ========================================================================
+      # Maps servlet_request_total counter to requests/second per pod.
+      # HPA uses this to scale based on load distribution across pods.
+      # Target: 1000 RPS per pod
+      # ========================================================================
+      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="base"}'
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            pod:
+              resource: pod
+        name:
+          matches: "^(.*)_total$"
+          as: "http_requests_per_second"
+        metricsQuery: |
+          sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)
+
+      # ========================================================================
+      # HTTP Request Rate by Pod (Alternative naming)
+      # ========================================================================
+      # Same as above but with different naming convention for flexibility.
+      # ========================================================================
+      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="base"}'
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            pod:
+              resource: pod
+        name:
+          matches: "^servlet_request_total$"
+          as: "liberty_requests_per_second"
+        metricsQuery: |
+          sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)
+
+      # ========================================================================
+      # HTTP p95 Latency (Quality-of-service scaling metric)
+      # ========================================================================
+      # Maps servlet_request_elapsedTime_seconds histogram to p95 latency.
+      # Enables scaling based on response time degradation.
+      # Target: 500ms (0.5 seconds)
+      # ========================================================================
+      - seriesQuery: 'servlet_request_elapsedTime_seconds_bucket{job="liberty",mp_scope="base"}'
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            pod:
+              resource: pod
+        name:
+          matches: "^(.*)_bucket$"
+          as: "http_request_duration_seconds_p95"
+        metricsQuery: |
+          histogram_quantile(0.95, sum(rate(<<.Series>>{<<.LabelMatchers>>}[5m])) by (le, <<.GroupBy>>))
+
+      # ========================================================================
+      # HTTP p99 Latency (Tail latency metric)
+      # ========================================================================
+      # For more aggressive scaling based on tail latency.
+      # ========================================================================
+      - seriesQuery: 'servlet_request_elapsedTime_seconds_bucket{job="liberty",mp_scope="base"}'
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            pod:
+              resource: pod
+        name:
+          matches: "^(.*)_bucket$"
+          as: "http_request_duration_seconds_p99"
+        metricsQuery: |
+          histogram_quantile(0.99, sum(rate(<<.Series>>{<<.LabelMatchers>>}[5m])) by (le, <<.GroupBy>>))
+
+      # ========================================================================
+      # HTTP Error Rate (Stability scaling metric)
+      # ========================================================================
+      # Maps error requests to total requests ratio.
+      # Can trigger scale-up during error spikes or scale-down when stable.
+      # ========================================================================
+      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="base"}'
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            pod:
+              resource: pod
+        name:
+          matches: "^servlet_request_total$"
+          as: "http_error_rate"
+        metricsQuery: |
+          (
+            sum(rate(servlet_request_total{<<.LabelMatchers>>,status=~"5.."}[5m])) by (<<.GroupBy>>)
+            / sum(rate(servlet_request_total{<<.LabelMatchers>>}[5m])) by (<<.GroupBy>>)
+          ) or on() vector(0)
+
+      # ========================================================================
+      # JVM Heap Usage Ratio (Resource-based scaling)
+      # ========================================================================
+      # Enables scaling based on JVM memory pressure.
+      # ========================================================================
+      - seriesQuery: 'memory_usedHeap_bytes{job="liberty",mp_scope="base"}'
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            pod:
+              resource: pod
+        name:
+          matches: "^memory_usedHeap_bytes$"
+          as: "jvm_heap_usage_ratio"
+        metricsQuery: |
+          (
+            memory_usedHeap_bytes{<<.LabelMatchers>>}
+            / memory_maxHeap_bytes{<<.LabelMatchers>>}
+          )
+
+      # ========================================================================
+      # Thread Pool Utilization (Concurrency-based scaling)
+      # ========================================================================
+      # Enables scaling based on Liberty thread pool saturation.
+      # ========================================================================
+      - seriesQuery: 'threadpool_activeThreads{job="liberty",mp_scope="vendor"}'
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            pod:
+              resource: pod
+        name:
+          matches: "^threadpool_activeThreads$"
+          as: "threadpool_utilization"
+        metricsQuery: |
+          (
+            threadpool_activeThreads{<<.LabelMatchers>>}
+            / threadpool_size{<<.LabelMatchers>>}
+          )
+
+      # ========================================================================
+      # Connection Pool Free Ratio (Database scaling metric)
+      # ========================================================================
+      # Enables scaling when database connection pool is under pressure.
+      # Lower values indicate more connections in use.
+      # ========================================================================
+      - seriesQuery: 'connectionpool_freeConnections{job="liberty",mp_scope="vendor"}'
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            pod:
+              resource: pod
+        name:
+          matches: "^connectionpool_freeConnections$"
+          as: "connectionpool_free_ratio"
+        metricsQuery: |
+          (
+            connectionpool_freeConnections{<<.LabelMatchers>>}
+            / connectionpool_managedConnections{<<.LabelMatchers>>}
+          )
+
+    # --------------------------------------------------------------------------
+    # External Rules: For metrics not associated with specific pods
+    # --------------------------------------------------------------------------
+    externalRules:
+      # Aggregate request rate across all Liberty pods
+      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="base"}'
+        resources:
+          namespaced: true
+        name:
+          matches: "^servlet_request_total$"
+          as: "liberty_total_requests_per_second"
+        metricsQuery: |
+          sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m]))
+
+      # Error budget burn rate (from recording rules)
+      - seriesQuery: 'liberty:error_budget:burn_rate_1h'
+        resources:
+          namespaced: false
+        name:
+          matches: "^liberty:error_budget:burn_rate_1h$"
+          as: "error_budget_burn_rate"
+        metricsQuery: '<<.Series>>'

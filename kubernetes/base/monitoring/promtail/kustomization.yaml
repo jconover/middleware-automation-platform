@@ -1,0 +1,33 @@
+# =============================================================================
+# Promtail Kustomization
+# =============================================================================
+# Deploys Promtail log collection agent as a DaemonSet.
+#
+# Usage:
+#   kubectl apply -k kubernetes/base/monitoring/promtail/
+#
+# Prerequisites:
+#   - Loki deployed and accessible at loki:3100
+#   - Monitoring namespace exists
+#
+# Post-deployment:
+#   1. Verify pods on each node: kubectl get pods -n monitoring -l app=promtail -o wide
+#   2. Check logs: kubectl logs -n monitoring -l app=promtail
+#   3. Verify Loki is receiving logs: curl http://192.168.68.204:3100/loki/api/v1/labels
+# =============================================================================
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: promtail
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/part-of: middleware-platform
+  app.kubernetes.io/managed-by: kustomize
+
+# Resources to deploy
+resources:
+  - promtail-configmap.yaml
+  - promtail-daemonset.yaml

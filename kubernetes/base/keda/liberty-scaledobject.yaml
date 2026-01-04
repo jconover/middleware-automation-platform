@@ -1,0 +1,235 @@
+# =============================================================================
+# KEDA ScaledObject for Liberty Application
+# =============================================================================
+# Alternative to prometheus-adapter HPA using KEDA (Kubernetes Event-Driven
+# Autoscaling) for more advanced scaling scenarios.
+#
+# KEDA Advantages over prometheus-adapter:
+#   - Supports scale-to-zero (optional, disabled here for production)
+#   - Native Prometheus scaler without APIService registration
+#   - Multiple trigger types (Prometheus, external metrics, queues, etc.)
+#   - Horizontal and vertical scaling support
+#   - Built-in cooldown periods
+#
+# Prerequisites:
+#   - KEDA installed: helm install keda kedacore/keda --namespace keda --create-namespace
+#   - Prometheus accessible at configured URL
+#   - Liberty ServiceMonitor collecting metrics
+#
+# Verification:
+#   kubectl get scaledobject liberty-scaledobject
+#   kubectl get hpa keda-hpa-liberty-scaledobject
+#   kubectl describe scaledobject liberty-scaledobject
+#
+# Note: KEDA creates its own HPA. Do NOT use both KEDA ScaledObject AND
+#       the standard liberty-hpa.yaml - choose one approach.
+# =============================================================================
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: liberty-scaledobject
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "KEDA ScaledObject for Liberty with Prometheus-based scaling"
+    keda.sh/scaling-approach: "request-based"
+spec:
+  # Target deployment to scale
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: liberty-app
+
+  # Replica bounds
+  minReplicaCount: 3
+  maxReplicaCount: 10
+
+  # Disable scale-to-zero for production workloads
+  # Set to 0 to enable scale-to-zero (useful for non-production)
+  idleReplicaCount: 3
+
+  # Polling interval: how often KEDA checks metrics
+  pollingInterval: 15
+
+  # Cooldown period: minimum time between scale-down decisions
+  # Prevents flapping during traffic fluctuations
+  cooldownPeriod: 300
+
+  # Advanced scaling behavior (matches standard HPA behavior)
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 10
+              periodSeconds: 60
+            - type: Pods
+              value: 2
+              periodSeconds: 120
+          selectPolicy: Min
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
+            - type: Pods
+              value: 4
+              periodSeconds: 15
+          selectPolicy: Max
+
+  # Fallback behavior if metrics are unavailable
+  fallback:
+    failureThreshold: 3
+    replicas: 3
+
+  # ---------------------------------------------------------------------------
+  # Scaling Triggers
+  # ---------------------------------------------------------------------------
+  # Multiple triggers evaluated in parallel. The trigger requesting the
+  # highest replica count wins (ensuring all SLOs are met).
+  # ---------------------------------------------------------------------------
+  triggers:
+    # =========================================================================
+    # Trigger 1: HTTP Requests Per Second (Primary Load Indicator)
+    # =========================================================================
+    # Scales based on request rate to maintain even load distribution.
+    # Target: 1000 RPS per pod
+    # =========================================================================
+    - type: prometheus
+      metadata:
+        # Prometheus server URL (adjust for your cluster)
+        serverAddress: http://prometheus-operated.monitoring.svc:9090
+        # PromQL query returning current request rate per pod
+        query: |
+          sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[2m]))
+          / max(kube_deployment_spec_replicas{deployment="liberty-app"})
+        # Target value per pod (RPS)
+        threshold: "1000"
+        # Activate scaler only when there's traffic
+        activationThreshold: "10"
+        # Return 0 if query returns no data (prevents scaling errors)
+        ignoreNullValues: "true"
+      metricType: AverageValue
+
+    # =========================================================================
+    # Trigger 2: p95 Latency (Quality of Service)
+    # =========================================================================
+    # Scales based on response time to maintain SLO compliance.
+    # Target: 500ms (0.5 seconds)
+    # Inverse scaling: lower latency = fewer pods needed
+    # =========================================================================
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-operated.monitoring.svc:9090
+        # PromQL query returning p95 latency in seconds
+        query: |
+          histogram_quantile(0.95,
+            sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+          )
+        # Target: 0.5 seconds (500ms)
+        # When latency exceeds this, scale up
+        threshold: "0.5"
+        # Only activate when latency is measurable
+        activationThreshold: "0.01"
+        ignoreNullValues: "true"
+      metricType: Value
+
+    # =========================================================================
+    # Trigger 3: CPU Utilization (Resource Baseline)
+    # =========================================================================
+    # Standard CPU-based scaling as a reliable fallback.
+    # Target: 70% average utilization
+    # =========================================================================
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        # Target CPU utilization percentage
+        value: "70"
+
+    # =========================================================================
+    # Trigger 4: Memory Utilization (Resource Protection)
+    # =========================================================================
+    # Prevents OOM conditions by scaling before memory pressure.
+    # Target: 80% average utilization
+    # =========================================================================
+    - type: memory
+      metricType: Utilization
+      metadata:
+        # Target memory utilization percentage
+        value: "80"
+
+    # =========================================================================
+    # Trigger 5: Error Rate (Stability Metric)
+    # =========================================================================
+    # Scales up when error rate exceeds threshold, indicating overload.
+    # Target: 1% error rate (scale up to reduce per-pod load)
+    # =========================================================================
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-operated.monitoring.svc:9090
+        # PromQL query returning 5xx error rate as percentage
+        query: |
+          100 * (
+            sum(rate(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[5m]))
+            / sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m]))
+          )
+        # Scale up when error rate exceeds 1%
+        threshold: "1"
+        # Only activate when there's traffic
+        activationThreshold: "0.1"
+        ignoreNullValues: "true"
+      metricType: Value
+
+    # =========================================================================
+    # Trigger 6: Thread Pool Utilization (Concurrency Metric)
+    # =========================================================================
+    # Scales based on Liberty thread pool saturation.
+    # Target: 70% thread pool utilization
+    # =========================================================================
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-operated.monitoring.svc:9090
+        # PromQL query returning thread pool utilization as percentage
+        query: |
+          100 * avg(
+            threadpool_activeThreads{job="liberty", mp_scope="vendor"}
+            / threadpool_size{job="liberty", mp_scope="vendor"}
+          )
+        # Scale up when thread pool is 70% utilized
+        threshold: "70"
+        activationThreshold: "10"
+        ignoreNullValues: "true"
+      metricType: Value
+
+---
+# =============================================================================
+# TriggerAuthentication for Prometheus (Optional)
+# =============================================================================
+# Use this if your Prometheus requires authentication.
+# Uncomment and configure as needed.
+# =============================================================================
+# apiVersion: keda.sh/v1alpha1
+# kind: TriggerAuthentication
+# metadata:
+#   name: prometheus-auth
+#   labels:
+#     app: liberty
+# spec:
+#   secretTargetRef:
+#     - parameter: bearerToken
+#       name: prometheus-token
+#       key: token
+#     # For basic auth:
+#     # - parameter: username
+#     #   name: prometheus-auth
+#     #   key: username
+#     # - parameter: password
+#     #   name: prometheus-auth
+#     #   key: password

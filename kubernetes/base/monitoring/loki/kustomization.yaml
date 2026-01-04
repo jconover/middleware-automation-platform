@@ -1,0 +1,38 @@
+# =============================================================================
+# Loki Kustomization
+# =============================================================================
+# Deploys Loki log aggregation system for Kubernetes.
+#
+# Usage:
+#   kubectl apply -k kubernetes/base/monitoring/loki/
+#
+# Prerequisites:
+#   - Monitoring namespace exists
+#   - StorageClass available for PVC (or pre-created PV)
+#   - Network policies allow Promtail -> Loki communication
+#
+# Post-deployment:
+#   1. Verify Loki is ready: kubectl get pods -n monitoring -l app=loki
+#   2. Check logs: kubectl logs -n monitoring -l app=loki
+#   3. Test API: curl http://192.168.68.204:3100/ready
+# =============================================================================
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: loki
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/part-of: middleware-platform
+  app.kubernetes.io/managed-by: kustomize
+
+# Resources to deploy
+resources:
+  - loki-configmap.yaml
+  - loki-deployment.yaml
+  - loki-service.yaml
+  - loki-networkpolicy.yaml
+  - grafana-datasource-loki.yaml
+  - loki-servicemonitor.yaml

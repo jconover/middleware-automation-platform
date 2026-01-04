@@ -63,8 +63,20 @@ variable "enable_nat_gateway" {
   default     = true
 }
 
+variable "high_availability_nat" {
+  description = "Deploy NAT Gateway per AZ for high availability (+$32/month per additional NAT)"
+  type        = bool
+  default     = false
+}
+
 variable "enable_flow_logs" {
   description = "Enable VPC flow logs"
+  type        = bool
+  default     = true
+}
+
+variable "enable_flow_logs_encryption" {
+  description = "Enable KMS encryption for VPC flow logs (creates a KMS key)"
   type        = bool
   default     = true
 }
@@ -84,6 +96,12 @@ variable "flow_logs_retention_days" {
   description = "Number of days to retain VPC flow logs"
   type        = number
   default     = 30
+}
+
+variable "aws_region" {
+  description = "AWS region (required for KMS key policy)"
+  type        = string
+  default     = ""
 }
 
 variable "tags" {

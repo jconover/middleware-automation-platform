@@ -1,0 +1,431 @@
+# =============================================================================
+# Prometheus Adapter Deployment
+# =============================================================================
+# Deploys prometheus-adapter to expose Prometheus metrics as Kubernetes
+# custom metrics, enabling HPA to scale based on application metrics.
+#
+# The adapter implements the custom.metrics.k8s.io API and fetches metrics
+# from Prometheus to serve to the HPA controller.
+#
+# Prerequisites:
+#   - Prometheus running in the monitoring namespace
+#   - prometheus-adapter-config ConfigMap with metric rules
+#   - RBAC permissions for metrics API registration
+#
+# Verification:
+#   kubectl get pods -n monitoring -l app=prometheus-adapter
+#   kubectl get apiservices | grep custom.metrics
+#   kubectl get --raw /apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/http_requests_per_second
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-adapter
+  namespace: monitoring
+  labels:
+    app: prometheus-adapter
+    app.kubernetes.io/name: prometheus-adapter
+    app.kubernetes.io/component: metrics-adapter
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-adapter
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: prometheus-adapter
+        app.kubernetes.io/name: prometheus-adapter
+        app.kubernetes.io/component: metrics-adapter
+        app.kubernetes.io/part-of: middleware-platform
+      annotations:
+        # Trigger rolling restart when config changes
+        checksum/config: "{{ include (print $.Template.BasePath \"/configmap.yaml\") . | sha256sum }}"
+    spec:
+      serviceAccountName: prometheus-adapter
+      automountServiceAccountToken: true
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: prometheus-adapter
+          image: registry.k8s.io/prometheus-adapter/prometheus-adapter:v0.11.2
+          imagePullPolicy: IfNotPresent
+
+          args:
+            - --secure-port=6443
+            - --tls-cert-file=/var/run/serving-cert/tls.crt
+            - --tls-private-key-file=/var/run/serving-cert/tls.key
+            - --logtostderr=true
+            - --prometheus-url=http://prometheus-operated.monitoring.svc:9090/
+            - --metrics-relist-interval=1m
+            - --v=4
+            - --config=/etc/adapter/config.yaml
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          ports:
+            - name: https
+              containerPort: 6443
+              protocol: TCP
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          volumeMounts:
+            - name: config
+              mountPath: /etc/adapter/
+              readOnly: true
+            - name: serving-cert
+              mountPath: /var/run/serving-cert
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-adapter-config
+        - name: serving-cert
+          secret:
+            secretName: prometheus-adapter-serving-cert
+        - name: tmp
+          emptyDir: {}
+
+      nodeSelector:
+        kubernetes.io/os: linux
+
+      tolerations:
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-adapter
+  namespace: monitoring
+  labels:
+    app: prometheus-adapter
+    app.kubernetes.io/name: prometheus-adapter
+    app.kubernetes.io/component: metrics-adapter
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  type: ClusterIP
+  ports:
+    - name: https
+      port: 443
+      targetPort: 6443
+      protocol: TCP
+  selector:
+    app: prometheus-adapter
+
+---
+# =============================================================================
+# RBAC for Prometheus Adapter
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-adapter
+  namespace: monitoring
+  labels:
+    app: prometheus-adapter
+    app.kubernetes.io/name: prometheus-adapter
+    app.kubernetes.io/component: metrics-adapter
+    app.kubernetes.io/part-of: middleware-platform
+
+---
+# ClusterRole for prometheus-adapter to read pod metrics
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-adapter-resource-reader
+  labels:
+    app: prometheus-adapter
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - services
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# ClusterRole for serving custom metrics API
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-adapter-server-resources
+  labels:
+    app: prometheus-adapter
+rules:
+  - apiGroups:
+      - custom.metrics.k8s.io
+    resources:
+      - "*"
+    verbs:
+      - "*"
+
+---
+# ClusterRole for HPA controller to read custom metrics
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: custom-metrics-reader
+  labels:
+    app: prometheus-adapter
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+rules:
+  - apiGroups:
+      - custom.metrics.k8s.io
+    resources:
+      - "*"
+    verbs:
+      - get
+      - list
+
+---
+# ClusterRoleBinding for reading cluster resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-adapter-resource-reader
+  labels:
+    app: prometheus-adapter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-adapter-resource-reader
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-adapter
+    namespace: monitoring
+
+---
+# ClusterRoleBinding for HPA controller delegation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-adapter-hpa-controller
+  labels:
+    app: prometheus-adapter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-adapter-server-resources
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-adapter
+    namespace: monitoring
+
+---
+# RoleBinding for auth-reader in kube-system
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus-adapter-auth-reader
+  namespace: kube-system
+  labels:
+    app: prometheus-adapter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-adapter
+    namespace: monitoring
+
+---
+# ClusterRoleBinding for auth-delegator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-adapter-auth-delegator
+  labels:
+    app: prometheus-adapter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-adapter
+    namespace: monitoring
+
+---
+# =============================================================================
+# APIService Registration for Custom Metrics
+# =============================================================================
+# Registers prometheus-adapter as the handler for custom.metrics.k8s.io API.
+# This enables HPA to query custom metrics through the Kubernetes API server.
+# =============================================================================
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta1.custom.metrics.k8s.io
+  labels:
+    app: prometheus-adapter
+    app.kubernetes.io/name: prometheus-adapter
+    app.kubernetes.io/component: metrics-adapter
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  service:
+    name: prometheus-adapter
+    namespace: monitoring
+    port: 443
+  group: custom.metrics.k8s.io
+  version: v1beta1
+  # Set insecureSkipTLSVerify to true for self-signed certs
+  # For production, use cert-manager to provision a proper CA
+  insecureSkipTLSVerify: true
+  groupPriorityMinimum: 100
+  versionPriority: 100
+
+---
+# APIService for v1beta2 (newer HPA versions)
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta2.custom.metrics.k8s.io
+  labels:
+    app: prometheus-adapter
+    app.kubernetes.io/name: prometheus-adapter
+    app.kubernetes.io/component: metrics-adapter
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  service:
+    name: prometheus-adapter
+    namespace: monitoring
+    port: 443
+  group: custom.metrics.k8s.io
+  version: v1beta2
+  insecureSkipTLSVerify: true
+  groupPriorityMinimum: 100
+  versionPriority: 200
+
+---
+# =============================================================================
+# TLS Certificate for Prometheus Adapter
+# =============================================================================
+# Self-signed certificate for the adapter's HTTPS endpoint.
+# For production, use cert-manager with a ClusterIssuer.
+# =============================================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-adapter-serving-cert
+  namespace: monitoring
+  labels:
+    app: prometheus-adapter
+type: kubernetes.io/tls
+data:
+  # Placeholder - replace with actual cert or use cert-manager
+  # Generate with:
+  #   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  #     -keyout tls.key -out tls.crt \
+  #     -subj "/CN=prometheus-adapter.monitoring.svc"
+  #   kubectl create secret tls prometheus-adapter-serving-cert \
+  #     --cert=tls.crt --key=tls.key -n monitoring
+  #
+  # The following are placeholder values - regenerate for your cluster
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURFekNDQWZ1Z0F3SUJBZ0lKQUxrMHRKVjJlNXVNTUEwR0NTcUdTSWIzRFFFQkN3VUFNQnd4R2pBWUJnTlYKQkFNTUVYQnliMjFsZEdobGRYTXRZV1JoY0hSbGNqQWVGdzB5TkRBeE1ERXdNREF3TURCYUZ3MHlOVEF4TURFdwpNREF3TURCYU1Cd3hHakFZQmdOVkJBTU1FWEJ5YjIxbGRHaGxkWE10WVdSaGNIUmxjakNDQVNJd0RRWUpLb1pJCmh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBTUVWWklZWUdMVjJGcnk4N1JIVjVkQ3lFaGFHSlBQUkxsR1kKdmRUQ3BhZlBMWnBvTHRPS0pOWUxFVklYb0d1V1dhTk9YV3RSM1BPT0V1eDdnN1pXblVoVnVKZjdTdGtoT0w5OApkWEZlRnVlTnJidFNCTW5MRUFzVWxKdnhKTG1EQ21TdUZvZ0JaQlRCbGhJbWRteUxWV1pJRGR4Nm9jRGJPYlRoCjVaV2xqVWRvVVZtZUMzUjZaRFNaVWxWQmJITk5WcTRQS0dOTEFGdVVBQnFvSGx4R2hhR0lQYkdFbWRtQ0J4SjEKT0JYRXlJazVxelN0NWFYTVZiWXFJOFNvb0tGRURBejREa0tIQmJJaXhCZ0JMNkFIbGhEakJnQkxnQWVXRU9NRwpBRXVBQjVZUTR3WUFTNEFIbGhEakJnQkxnQWVXRU9NR0FFdUFCNVlRNHdZQVNvQUhsaERqQmdCTGdBZVdFT01HCkFFc0NBd0VBQWFOUU1FNHdIUVlEVlIwT0JCWUVGTnVrY3F3OUFJM0F5RnBnVW9iSG9jRVlSQnhZTUI4R0ExVWQKSXdRWU1CYUFGTnVrY3F3OUFJM0F5RnBnVW9iSG9jRVlSQnhZTUF3R0ExVWRFd1FGTUFNQkFmOHdEUVlKS29aSQpodmNOQVFFTEJRQURnZ0VCQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBPQ0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0=
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2UUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktjd2dnU2pBZ0VBQW9JQkFRREJGV1NHR0JpMWRoYTgKdk8wUjFlWFFzaElXaGlUejBTNVJtTDNVd3FXbnp5MmFhQzdUaWlUV0N4RlNGNkJybGxtallsMXJVZHp6amhMcwplNE8yVnAxSVZiaVgrMHJaSVRpL2ZIVnhYaGJuamEyN1VnVEp5eEFMRkpTYjhTUzVnd3BrcmhhSUFXUVV3WllTCkpuWnNpMVZtU0EzY2VxSEEyem0wNGVXVnBZMUhhRkZabmd0MGVtUTBtVkpWUVd4elRWYXVEeWhqU3dCYmxBQWEKcUI1Y1JvV2hpRDJ4aEpuWmdnY1NkVGdWeE1pSk9hczByZVdsekZXMktpUEVxS0NoUkF3TStBNUNod1d5SXNRWQpBUytnQjVZUTR3WUFTNEFIbGhEakJnQkxnQWVXRU9NR0FFdUFCNVlRNHdZQVM0QUhsaERqQmdCTGdBZVdFT01HCkFFcUFCNVlRNHdZQVM0QUhsaERqQmdCTEFnTUJBQUVDZ2dFQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUEKQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQpBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUEKQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQpBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFRSkJBT3VBQUFBQUFBQUFBQUFBQUFBQUFBQUEKQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQpBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUEKQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQpBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBCkFBQUFBQUFBQUFBQUFBQUFBQT09Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0=
+
+---
+# =============================================================================
+# NetworkPolicy for Prometheus Adapter
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-adapter
+  namespace: monitoring
+  labels:
+    app: prometheus-adapter
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus-adapter
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow API server to reach the adapter
+    - ports:
+        - protocol: TCP
+          port: 6443
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow connection to Prometheus
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090

@@ -1,0 +1,230 @@
+# =============================================================================
+# Custom Metrics HPA for Liberty Application
+# =============================================================================
+# Advanced HorizontalPodAutoscaler using both resource metrics (CPU/memory)
+# and custom metrics (request rate, latency) for intelligent scaling.
+#
+# Scaling Strategy:
+#   - Baseline: CPU utilization (always available, reliable fallback)
+#   - Primary: HTTP requests per second (scales based on load distribution)
+#   - Quality: p95 latency (ensures response time SLO compliance)
+#
+# Targets:
+#   - CPU: 70% average utilization
+#   - Requests: 1000 RPS per pod
+#   - Latency: 500ms p95 response time
+#
+# Prerequisites:
+#   - prometheus-adapter deployed for custom metrics
+#   - Liberty ServiceMonitor collecting metrics
+#   - Recording rules for aggregated metrics
+#
+# Verification:
+#   kubectl get hpa liberty-hpa -o wide
+#   kubectl describe hpa liberty-hpa
+#   kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/http_requests_per_second"
+# =============================================================================
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: liberty-hpa
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "Custom metrics HPA for Liberty with request-based and latency-based scaling"
+    prometheus-adapter.kubernetes.io/metrics: "http_requests_per_second,http_request_duration_seconds_p95"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: liberty-app
+
+  # Replica bounds
+  minReplicas: 3
+  maxReplicas: 10
+
+  # ---------------------------------------------------------------------------
+  # Multi-metric scaling configuration
+  # ---------------------------------------------------------------------------
+  # The HPA controller selects the metric that suggests the highest replica
+  # count, ensuring the deployment can handle both load and latency spikes.
+  # ---------------------------------------------------------------------------
+  metrics:
+    # =========================================================================
+    # Resource Metric: CPU Utilization (Baseline)
+    # =========================================================================
+    # Always-available baseline metric. Provides reliable scaling even if
+    # custom metrics are temporarily unavailable.
+    # Target: 70% average utilization across all pods
+    # =========================================================================
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    # =========================================================================
+    # Resource Metric: Memory Utilization (Protection)
+    # =========================================================================
+    # Prevents OOM conditions by scaling before memory pressure builds.
+    # Target: 80% average utilization (higher threshold, secondary concern)
+    # =========================================================================
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+    # =========================================================================
+    # Custom Metric: HTTP Requests Per Second (Primary Load Indicator)
+    # =========================================================================
+    # Scales based on actual request load, ensuring even distribution.
+    # This is the primary scaling driver for traffic-based scaling.
+    #
+    # Target: 1000 RPS per pod
+    #   - Based on Liberty's typical capacity with 2 CPU cores
+    #   - Adjust based on actual performance testing results
+    #
+    # Requires: prometheus-adapter with rule for http_requests_per_second
+    # =========================================================================
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          # 1000 requests per second per pod
+          averageValue: "1000"
+
+    # =========================================================================
+    # Custom Metric: p95 Latency (Quality of Service)
+    # =========================================================================
+    # Scales based on response time degradation to maintain SLO compliance.
+    # When p95 latency exceeds target, scale up to reduce per-pod load.
+    #
+    # Target: 500ms (0.5 seconds)
+    #   - Aligned with SLO target of 99% requests < 500ms
+    #   - Triggers scale-up before SLO breach
+    #
+    # Note: Value is in seconds (matching Prometheus metric unit)
+    # Requires: prometheus-adapter with rule for http_request_duration_seconds_p95
+    # =========================================================================
+    - type: Pods
+      pods:
+        metric:
+          name: http_request_duration_seconds_p95
+        target:
+          type: AverageValue
+          # 500ms = 0.5 seconds (expressed as 500m = 0.5)
+          averageValue: "500m"
+
+  # ---------------------------------------------------------------------------
+  # Scaling Behavior Configuration
+  # ---------------------------------------------------------------------------
+  # Fine-tuned policies to prevent flapping while remaining responsive.
+  # ---------------------------------------------------------------------------
+  behavior:
+    # Scale-down behavior: Conservative to prevent service disruption
+    scaleDown:
+      # Wait 5 minutes of stable low utilization before scaling down
+      # Prevents thrashing during normal traffic variations
+      stabilizationWindowSeconds: 300
+      policies:
+        # Scale down at most 10% of current replicas per minute
+        # Gradual reduction maintains service stability
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+        # Or at most 2 pods per 2 minutes
+        # Prevents rapid scale-down during traffic dips
+        - type: Pods
+          value: 2
+          periodSeconds: 120
+      # Use the policy that results in FEWER pods being removed
+      selectPolicy: Min
+
+    # Scale-up behavior: Aggressive to handle traffic spikes
+    scaleUp:
+      # No stabilization window for scale-up
+      # React immediately to increased load
+      stabilizationWindowSeconds: 0
+      policies:
+        # Double capacity (up to 100% increase) per 15-second period
+        # Handles sudden traffic spikes
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        # Or add up to 4 pods per 15-second period
+        # Upper bound for percent-based scaling
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      # Use the policy that results in MORE pods being added
+      selectPolicy: Max
+
+---
+# =============================================================================
+# Alternative HPA: CPU-Only (Fallback)
+# =============================================================================
+# Use this HPA if prometheus-adapter is not deployed or custom metrics
+# are unavailable. Provides basic auto-scaling based on CPU utilization.
+#
+# To use instead of custom metrics HPA:
+#   1. Comment out the custom metrics HPA above
+#   2. Uncomment this section
+#   3. Rename to liberty-hpa
+# =============================================================================
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: liberty-hpa-basic
+#   labels:
+#     app: liberty
+#     app.kubernetes.io/name: liberty
+#     app.kubernetes.io/component: application-server
+#     app.kubernetes.io/part-of: middleware-platform
+#   annotations:
+#     description: "Basic CPU-only HPA for Liberty (fallback configuration)"
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: liberty-app
+#   minReplicas: 3
+#   maxReplicas: 10
+#   metrics:
+#     - type: Resource
+#       resource:
+#         name: cpu
+#         target:
+#           type: Utilization
+#           averageUtilization: 70
+#     - type: Resource
+#       resource:
+#         name: memory
+#         target:
+#           type: Utilization
+#           averageUtilization: 80
+#   behavior:
+#     scaleDown:
+#       stabilizationWindowSeconds: 300
+#       policies:
+#         - type: Percent
+#           value: 10
+#           periodSeconds: 60
+#     scaleUp:
+#       stabilizationWindowSeconds: 0
+#       policies:
+#         - type: Percent
+#           value: 100
+#           periodSeconds: 15
+#         - type: Pods
+#           value: 4
+#           periodSeconds: 15
+#       selectPolicy: Max

@@ -1,0 +1,46 @@
+# Kustomization for OpenTelemetry Collector
+# Deploys the OTEL Collector for centralized telemetry aggregation and export.
+#
+# Usage:
+#   kubectl apply -k kubernetes/base/monitoring/otel-collector/
+#
+# Prerequisites:
+#   - Jaeger deployed in tracing namespace
+#   - kubectl apply -k kubernetes/base/monitoring/jaeger/
+#   - For auto-instrumentation: Install OTEL Operator (see otel-instrumentation.yaml)
+#
+# Components:
+#   - OpenTelemetry Collector deployment with contrib distribution
+#   - Configuration for OTLP receivers and Jaeger export
+#   - Service for OTLP ingestion endpoints
+#   - NetworkPolicy for security
+#   - Instrumentation CR for auto-instrumenting Java applications
+#
+# Access from applications:
+#   OTLP gRPC: otel-collector.tracing.svc.cluster.local:4317
+#   OTLP HTTP: otel-collector.tracing.svc.cluster.local:4318
+#
+# Environment variables for Liberty pods:
+#   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.tracing.svc.cluster.local:4317
+#   OTEL_SERVICE_NAME: liberty-app
+#   OTEL_TRACES_EXPORTER: otlp
+#
+# Auto-Instrumentation:
+#   Add this annotation to pod template:
+#     instrumentation.opentelemetry.io/inject-java: "tracing/liberty-instrumentation"
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: otel-collector
+
+commonLabels:
+  app.kubernetes.io/part-of: middleware-platform
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - otel-collector-deployment.yaml
+  # Instrumentation CR for OTEL Operator auto-instrumentation
+  # Requires OTEL Operator to be installed first
+  - otel-instrumentation.yaml

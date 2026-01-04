@@ -421,6 +421,74 @@ variable "db_backup_retention_period" {
 }
 
 # -----------------------------------------------------------------------------
+# RDS Proxy
+# -----------------------------------------------------------------------------
+variable "enable_rds_proxy" {
+  description = <<-EOT
+    Enable RDS Proxy for connection pooling and IAM authentication.
+    Benefits:
+    - Connection pooling reduces database load from Lambda/Fargate
+    - IAM authentication eliminates password management
+    - Automatic failover handling improves availability
+    - Connection multiplexing improves scalability
+
+    Cost: ~$0.015 per proxy hour (~$11/month) + $0.015 per million requests
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "rds_proxy_idle_timeout" {
+  description = <<-EOT
+    Time in seconds that a connection can remain idle before RDS Proxy closes it.
+    Range: 1-28800 seconds (1 second to 8 hours).
+    Lower values free up connections faster; higher values reduce reconnection overhead.
+  EOT
+  type        = number
+  default     = 1800
+
+  validation {
+    condition     = var.rds_proxy_idle_timeout >= 1 && var.rds_proxy_idle_timeout <= 28800
+    error_message = "RDS Proxy idle timeout must be between 1 and 28800 seconds."
+  }
+}
+
+variable "rds_proxy_max_connections_percent" {
+  description = <<-EOT
+    Maximum percentage of available database connections that RDS Proxy can use.
+    Range: 1-100. Default: 100 (use all available connections).
+    Lower values reserve connections for other clients (e.g., admin access).
+  EOT
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.rds_proxy_max_connections_percent >= 1 && var.rds_proxy_max_connections_percent <= 100
+    error_message = "RDS Proxy max connections percent must be between 1 and 100."
+  }
+}
+
+variable "rds_proxy_require_iam" {
+  description = <<-EOT
+    Require IAM authentication for RDS Proxy connections.
+    When enabled, applications must use IAM credentials instead of passwords.
+    Provides stronger security but requires application code changes.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "enable_rds_proxy_read_endpoint" {
+  description = <<-EOT
+    Create a read-only endpoint for RDS Proxy.
+    Useful for read scaling when combined with RDS read replicas.
+    Note: Requires RDS read replica to be effective.
+  EOT
+  type        = bool
+  default     = false
+}
+
+# -----------------------------------------------------------------------------
 # Cache
 # -----------------------------------------------------------------------------
 variable "cache_node_type" {
@@ -578,6 +646,28 @@ variable "waf_enable_logging" {
   EOT
   type        = bool
   default     = false
+}
+
+# -----------------------------------------------------------------------------
+# Distributed Tracing (OpenTelemetry)
+# -----------------------------------------------------------------------------
+variable "otel_collector_endpoint" {
+  description = <<-EOT
+    OpenTelemetry Collector endpoint for trace export when not using X-Ray.
+    This is used when enable_xray = false.
+
+    For self-hosted OTEL Collector, use the internal endpoint:
+      http://otel-collector.internal:4317
+
+    For AWS Distro for OpenTelemetry (ADOT), leave empty and set enable_xray = true.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.otel_collector_endpoint == "" || can(regex("^https?://", var.otel_collector_endpoint))
+    error_message = "OTEL collector endpoint must be empty or a valid HTTP/HTTPS URL."
+  }
 }
 
 # -----------------------------------------------------------------------------

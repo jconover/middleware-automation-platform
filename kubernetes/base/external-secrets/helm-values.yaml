@@ -1,0 +1,93 @@
+# External Secrets Operator Helm Values
+# Install with: helm install external-secrets external-secrets/external-secrets \
+#   --namespace external-secrets --create-namespace -f helm-values.yaml
+---
+# Install CRDs with the Helm chart
+installCRDs: true
+
+# Replica count for high availability
+replicaCount: 2
+
+# Leader election for HA
+leaderElect: true
+
+# Service account configuration
+serviceAccount:
+  create: true
+  name: external-secrets
+  # For AWS IRSA - uncomment and set your role ARN
+  # annotations:
+  #   eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/external-secrets-role"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  fsGroup: 65534
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+
+# Webhook configuration
+webhook:
+  port: 9443
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Cert controller configuration
+certController:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Prometheus metrics
+metrics:
+  service:
+    enabled: true
+    port: 8080
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Node affinity for spreading across nodes
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - external-secrets
+          topologyKey: kubernetes.io/hostname

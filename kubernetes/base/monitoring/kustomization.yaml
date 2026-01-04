@@ -1,6 +1,6 @@
 # Kustomization for Liberty Monitoring Resources
-# Deploys ServiceMonitor, PrometheusRule, and AlertManager configuration
-# for Prometheus Operator integration.
+# Deploys ServiceMonitor, PrometheusRule, AlertManager, Loki, Promtail,
+# Prometheus Adapter, and Distributed Tracing (Jaeger + OpenTelemetry).
 #
 # Usage:
 #   kubectl apply -k kubernetes/base/monitoring/
@@ -9,6 +9,42 @@
 #   - Prometheus Operator CRDs installed (kube-prometheus-stack)
 #   - Liberty deployment with 'app: liberty' labels
 #   - AlertManager webhook secrets configured (see alertmanager-secrets.yaml)
+#   - StorageClass available for Loki PVC
+#   - For OTEL auto-instrumentation: Install OTEL Operator and cert-manager
+#
+# Components:
+#   - ServiceMonitor: Prometheus scraping for Liberty metrics
+#   - PrometheusRule: Alerting rules for Liberty
+#   - AlertManager: Alert routing and notifications
+#   - Loki: Log aggregation and storage
+#   - Promtail: Log collection agent (DaemonSet)
+#   - Prometheus Adapter: Custom metrics for HPA (request-based scaling)
+#   - Jaeger: Distributed tracing backend (UI at 192.168.68.205:16686)
+#   - OpenTelemetry Collector: Trace aggregation and export
+#
+# Distributed Tracing Setup:
+#   1. Deploy Jaeger: kubectl apply -k kubernetes/base/monitoring/jaeger/
+#   2. Deploy OTEL Collector: kubectl apply -k kubernetes/base/monitoring/otel-collector/
+#   3. Verify Jaeger UI: http://192.168.68.205:16686
+#   4. Add Jaeger datasource to Grafana: kubectl apply -f jaeger/grafana-datasource-jaeger.yaml
+#
+#   For auto-instrumentation (optional):
+#   1. Install cert-manager: kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+#   2. Install OTEL Operator: kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml
+#   3. Add annotation to pods: instrumentation.opentelemetry.io/inject-java: "tracing/liberty-instrumentation"
+#
+# Custom Metrics HPA Setup:
+#   1. Deploy prometheus-adapter: kubectl apply -k kubernetes/base/monitoring/prometheus-adapter/
+#   2. Verify APIService: kubectl get apiservices | grep custom.metrics
+#   3. Test metrics: kubectl get --raw /apis/custom.metrics.k8s.io/v1beta1
+#   4. Apply HPA: kubectl apply -f kubernetes/base/liberty-hpa.yaml
+#
+#   Available custom metrics for HPA:
+#     - http_requests_per_second: Request rate per pod (target: 1000 RPS)
+#     - http_request_duration_seconds_p95: p95 latency (target: 500ms)
+#     - http_error_rate: 5xx error rate ratio
+#     - jvm_heap_usage_ratio: JVM heap utilization
+#     - threadpool_utilization: Liberty thread pool usage
 #
 # AlertManager Setup:
 #   For production (with notifications):
@@ -18,6 +54,12 @@
 #
 #   For local development (no notifications):
 #     kubectl apply -f alertmanager-config-local.yaml -n monitoring
+#
+# Loki Setup:
+#   1. Deploy Loki: kubectl apply -k kubernetes/base/monitoring/loki/
+#   2. Deploy Promtail: kubectl apply -k kubernetes/base/monitoring/promtail/
+#   3. Verify: curl http://192.168.68.204:3100/ready
+#   4. Query logs in Grafana using Loki datasource
 ---
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -35,8 +77,19 @@ resources:
   - liberty-servicemonitor.yaml
   # Alerting rules for Liberty metrics
   - liberty-prometheusrule.yaml
+  # SLO/SLI recording rules for pre-computed metrics
+  - liberty-recording-rules.yaml
+  # SLO-based alerts with multi-window burn rate detection
+  - liberty-slo-alerts.yaml
   # AlertManager routing and receivers (uses secrets for webhook URLs)
   - alertmanager-config.yaml
+  # Loki log aggregation (includes deployment, service, config, networkpolicy)
+  - loki/
+  # Promtail log collection agent (DaemonSet)
+  - promtail/
+  # Prometheus Adapter for custom metrics HPA
+  # Enables scaling based on http_requests_per_second and latency metrics
+  - prometheus-adapter/
 
 # Note: alertmanager-secrets.yaml is NOT included here intentionally.
 # Secrets should be created manually to avoid committing sensitive URLs.
@@ -44,3 +97,6 @@ resources:
 #
 # For local development without webhooks, replace alertmanager-config.yaml
 # with alertmanager-config-local.yaml in the resources list above.
+#
+# Note: prometheus-adapter requires TLS certificate setup.
+# See prometheus-adapter/kustomization.yaml for certificate generation instructions.

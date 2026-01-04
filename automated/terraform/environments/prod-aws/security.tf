@@ -1,6 +1,16 @@
 # =============================================================================
 # Security Groups
 # =============================================================================
+# NOTE: Security groups are kept inline rather than using the security-groups
+# module because they have significant environment-specific customizations:
+#   - management_allowed_cidrs for admin access
+#   - VPC-internal SSH and metrics access
+#   - Cross-references between multiple security groups (monitoring, management, ECS)
+#   - Least-privilege egress rules with specific port allowlists
+#
+# The security-groups module (../../modules/security-groups/) provides basic
+# patterns that could be used for simpler deployments.
+# =============================================================================
 
 # -----------------------------------------------------------------------------
 # ALB Security Group
@@ -8,7 +18,7 @@
 resource "aws_security_group" "alb" {
   name        = "${local.name_prefix}-alb-sg"
   description = "Security group for Application Load Balancer"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
 
   ingress {
     description = "HTTP from anywhere"
@@ -53,7 +63,7 @@ resource "aws_security_group" "alb" {
 resource "aws_security_group" "liberty" {
   name        = "${local.name_prefix}-liberty-sg"
   description = "Security group for Liberty application servers"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
 
   ingress {
     description     = "HTTP from ALB"
@@ -146,7 +156,7 @@ resource "aws_security_group_rule" "liberty_egress_to_cache" {
 resource "aws_security_group" "db" {
   name        = "${local.name_prefix}-db-sg"
   description = "Security group for RDS PostgreSQL"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
 
   ingress {
     description     = "PostgreSQL from Liberty servers"
@@ -167,7 +177,7 @@ resource "aws_security_group" "db" {
 resource "aws_security_group" "cache" {
   name        = "${local.name_prefix}-cache-sg"
   description = "Security group for ElastiCache Redis"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
 
   ingress {
     description     = "Redis from Liberty servers"
@@ -190,7 +200,7 @@ resource "aws_security_group" "bastion" {
 
   name        = "${local.name_prefix}-bastion-sg"
   description = "Security group for Bastion host"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
 
   ingress {
     description = "SSH from allowed CIDRs"

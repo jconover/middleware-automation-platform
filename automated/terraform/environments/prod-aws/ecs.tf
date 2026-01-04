@@ -89,11 +89,24 @@ resource "aws_ecs_task_definition" "liberty" {
       ]
 
       environment = [
-        { name = "DB_HOST", value = aws_db_instance.main.address },
+        # Use RDS Proxy endpoint when enabled, otherwise direct RDS endpoint
+        { name = "DB_HOST", value = var.enable_rds_proxy ? aws_db_proxy.main[0].endpoint : aws_db_instance.main.address },
         { name = "DB_PORT", value = tostring(aws_db_instance.main.port) },
         { name = "DB_NAME", value = var.db_name },
         { name = "REDIS_HOST", value = aws_elasticache_replication_group.main.primary_endpoint_address },
-        { name = "REDIS_PORT", value = "6379" }
+        { name = "REDIS_PORT", value = "6379" },
+        # Indicate whether RDS Proxy IAM auth is enabled (for application configuration)
+        { name = "DB_USE_IAM_AUTH", value = var.enable_rds_proxy && var.rds_proxy_require_iam ? "true" : "false" },
+        # OpenTelemetry Configuration for Distributed Tracing
+        # When enable_xray=true, traces are sent to X-Ray daemon sidecar
+        # Otherwise, these env vars can be used with OTEL Collector or external backend
+        { name = "OTEL_SERVICE_NAME", value = "liberty-app" },
+        { name = "OTEL_RESOURCE_ATTRIBUTES", value = "service.namespace=middleware-platform,deployment.environment=${var.environment}" },
+        { name = "OTEL_TRACES_EXPORTER", value = var.enable_xray ? "xray" : "otlp" },
+        { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = var.enable_xray ? "http://localhost:2000" : var.otel_collector_endpoint },
+        { name = "OTEL_PROPAGATORS", value = "tracecontext,baggage,xray" },
+        { name = "OTEL_METRICS_EXPORTER", value = "none" },
+        { name = "OTEL_LOGS_EXPORTER", value = "none" }
       ]
 
       secrets = [
@@ -146,7 +159,7 @@ resource "aws_ecs_service" "liberty" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = module.networking.private_subnet_ids
     security_groups  = [aws_security_group.ecs_liberty.id]
     assign_public_ip = false
   }
@@ -194,7 +207,7 @@ resource "aws_ecs_service" "liberty" {
 resource "aws_security_group" "ecs_liberty" {
   name        = "${local.name_prefix}-ecs-liberty-sg"
   description = "Security group for ECS Liberty tasks"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
 
   ingress {
     description     = "HTTP from ALB"
@@ -296,7 +309,7 @@ resource "aws_lb_target_group" "liberty_ecs" {
   name        = "${local.name_prefix}-liberty-ecs-tg"
   port        = 9080
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
   target_type = "ip" # Required for Fargate
 
   health_check {

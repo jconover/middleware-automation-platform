@@ -72,6 +72,24 @@ configMapGenerator:
       - db.host=postgres.database.svc.cluster.local
       - log.level=DEBUG
 
+# Ingress Configuration
+# The Ingress uses liberty.local by default, which matches homelab setup.
+# No patches needed for homelab - the base configuration is appropriate.
+# For production with a real domain, create a patch to update the host.
+#
+# TLS Configuration:
+# Before applying, create TLS secret using one of these methods:
+#   1. Self-signed certificate (see kubernetes/base/liberty-tls-secret.yaml)
+#   2. cert-manager (apply kubernetes/base/certificates/)
+#
+# Quick start for self-signed TLS:
+#   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#     -keyout liberty-tls.key -out liberty-tls.crt \
+#     -subj "/CN=liberty.local/O=Middleware Platform" \
+#     -addext "subjectAltName=DNS:liberty.local"
+#   kubectl create secret tls liberty-tls-secret \
+#     --namespace liberty --cert=liberty-tls.crt --key=liberty-tls.key
+
 # Network Configuration
 # The base network policies use these environment-specific CIDRs:
 #   - HOMELAB_NETWORK: 192.168.68.0/24 (Beelink cluster network)

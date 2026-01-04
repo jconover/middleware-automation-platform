@@ -1,0 +1,186 @@
+# =============================================================================
+# Loki NetworkPolicy
+# =============================================================================
+# Controls network access to and from Loki:
+#   - Ingress: Promtail (log push), Grafana (queries), external access
+#   - Egress: DNS resolution, AlertManager (for ruler alerts)
+# =============================================================================
+---
+# Ingress policy for Loki
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-loki-ingress
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: loki
+  policyTypes:
+    - Ingress
+  ingress:
+    # From Promtail (log ingestion)
+    - from:
+        - podSelector:
+            matchLabels:
+              app: promtail
+      ports:
+        - protocol: TCP
+          port: 3100
+        - protocol: TCP
+          port: 9096
+    # From Grafana (log queries)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - protocol: TCP
+          port: 3100
+    # From Prometheus (if scraping Loki metrics)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 3100
+    # External access via MetalLB
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: metallb-system
+      ports:
+        - protocol: TCP
+          port: 3100
+    # Direct external access (homelab network)
+    - from:
+        - ipBlock:
+            cidr: 192.168.68.0/24
+      ports:
+        - protocol: TCP
+          port: 3100
+
+---
+# Egress policy for Loki
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-loki-egress
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: loki
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # AlertManager (for ruler alerts)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alertmanager
+      ports:
+        - protocol: TCP
+          port: 9093
+
+---
+# Egress policy for Promtail
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-promtail-egress
+  namespace: monitoring
+  labels:
+    app: promtail
+    app.kubernetes.io/name: promtail
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: promtail
+  policyTypes:
+    - Egress
+  egress:
+    # To Loki (log push)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: loki
+      ports:
+        - protocol: TCP
+          port: 3100
+    # DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Kubernetes API for service discovery
+    # NOTE: This IP is k3s-specific (default API service ClusterIP).
+    # Update for other Kubernetes distributions.
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Ingress policy for Promtail (metrics only)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-promtail-ingress
+  namespace: monitoring
+  labels:
+    app: promtail
+    app.kubernetes.io/name: promtail
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: promtail
+  policyTypes:
+    - Ingress
+  ingress:
+    # From Prometheus (metrics scraping)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 3101

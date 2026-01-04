@@ -1,0 +1,35 @@
+# =============================================================================
+# External Secrets Operator Kustomization
+# =============================================================================
+# This kustomization includes the ClusterSecretStore configurations.
+# ESO itself should be installed via Helm before applying these resources.
+#
+# Usage:
+#   1. Install ESO with Helm (see README.md)
+#   2. Apply the appropriate secret store:
+#      - AWS: kubectl apply -f aws-clustersecretstore.yaml
+#      - Local: kubectl apply -f local-clustersecretstore.yaml
+#   3. Or use kustomize with overlays to select the right store
+# =============================================================================
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: external-secrets-config
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/part-of: middleware-platform
+  app.kubernetes.io/managed-by: kustomize
+
+# Resources - include based on environment
+# For production (AWS), use aws-clustersecretstore.yaml
+# For local development, use local-clustersecretstore.yaml
+# Choose ONE based on your environment:
+resources:
+  # Uncomment the appropriate line for your environment:
+  # - aws-clustersecretstore.yaml     # Production (AWS Secrets Manager)
+  # - local-clustersecretstore.yaml   # Local development

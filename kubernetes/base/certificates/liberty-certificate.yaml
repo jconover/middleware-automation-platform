@@ -1,0 +1,153 @@
+---
+# Certificate for Liberty Ingress (Development - Self-Signed CA)
+# This certificate uses the internal CA issuer for development environments
+#
+# For local development (liberty.local domain):
+#   kubectl apply -f kubernetes/base/certificates/
+#
+# The Certificate resource will automatically create the liberty-tls-secret
+# referenced by the Ingress resource.
+#
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: liberty-certificate
+  namespace: liberty
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: certificate
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  # Secret that will be created with the certificate
+  secretName: liberty-tls-secret
+
+  # Certificate validity duration
+  duration: 2160h  # 90 days
+  # Renew 30 days before expiry
+  renewBefore: 720h  # 30 days
+
+  # Subject configuration
+  subject:
+    organizations:
+      - Middleware Platform
+  commonName: liberty.local
+
+  # Key settings
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    rotationPolicy: Always
+
+  # Key usages
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+
+  # DNS names for the certificate (Subject Alternative Names)
+  dnsNames:
+    - liberty.local
+    - liberty.liberty.svc.cluster.local
+    - liberty-service.liberty.svc.cluster.local
+    - "*.liberty.local"
+
+  # Optional: IP addresses for the certificate
+  # Useful for accessing services directly by IP
+  # ipAddresses:
+  #   - 192.168.68.200
+
+  # Issuer reference - using the internal CA issuer
+  # Change to letsencrypt-staging or letsencrypt-production for public domains
+  issuerRef:
+    name: liberty-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# Certificate for Liberty Ingress (Production - Let's Encrypt Staging)
+# Use this for testing Let's Encrypt integration before going to production
+#
+# Prerequisites:
+#   - Public domain with DNS pointing to your cluster
+#   - nginx-ingress with public IP
+#   - Port 80 accessible from the internet for HTTP-01 challenge
+#
+# IMPORTANT: Update the dnsNames to your actual public domain
+#
+# apiVersion: cert-manager.io/v1
+# kind: Certificate
+# metadata:
+#   name: liberty-certificate-letsencrypt-staging
+#   namespace: liberty
+#   labels:
+#     app: liberty
+#     app.kubernetes.io/name: liberty
+#     app.kubernetes.io/component: certificate
+#     app.kubernetes.io/part-of: middleware-platform
+# spec:
+#   secretName: liberty-tls-secret-staging
+#   duration: 2160h  # 90 days
+#   renewBefore: 720h  # 30 days
+#   subject:
+#     organizations:
+#       - Your Organization
+#   commonName: liberty.yourdomain.com
+#   privateKey:
+#     algorithm: RSA
+#     size: 2048
+#     rotationPolicy: Always
+#   usages:
+#     - server auth
+#     - digital signature
+#     - key encipherment
+#   dnsNames:
+#     - liberty.yourdomain.com
+#     - www.liberty.yourdomain.com
+#   issuerRef:
+#     name: letsencrypt-staging
+#     kind: ClusterIssuer
+#     group: cert-manager.io
+
+---
+# Certificate for Liberty Ingress (Production - Let's Encrypt Production)
+# Use this after successful testing with staging
+#
+# IMPORTANT:
+#   - Test with staging first to avoid rate limits
+#   - Update the dnsNames to your actual public domain
+#   - Ensure DNS is properly configured
+#
+# apiVersion: cert-manager.io/v1
+# kind: Certificate
+# metadata:
+#   name: liberty-certificate-letsencrypt-prod
+#   namespace: liberty
+#   labels:
+#     app: liberty
+#     app.kubernetes.io/name: liberty
+#     app.kubernetes.io/component: certificate
+#     app.kubernetes.io/part-of: middleware-platform
+# spec:
+#   secretName: liberty-tls-secret
+#   duration: 2160h  # 90 days
+#   renewBefore: 720h  # 30 days
+#   subject:
+#     organizations:
+#       - Your Organization
+#   commonName: liberty.yourdomain.com
+#   privateKey:
+#     algorithm: RSA
+#     size: 2048
+#     rotationPolicy: Always
+#   usages:
+#     - server auth
+#     - digital signature
+#     - key encipherment
+#   dnsNames:
+#     - liberty.yourdomain.com
+#     - www.liberty.yourdomain.com
+#   issuerRef:
+#     name: letsencrypt-production
+#     kind: ClusterIssuer
+#     group: cert-manager.io

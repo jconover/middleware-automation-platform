@@ -1,0 +1,359 @@
+# =============================================================================
+# Jaeger All-in-One Deployment for Distributed Tracing
+# =============================================================================
+# Jaeger provides distributed tracing capabilities for request flow visualization,
+# latency analysis, and root cause investigation across microservices.
+#
+# Architecture:
+#   - All-in-one deployment suitable for development and small-scale production
+#   - In-memory storage (for production, consider Elasticsearch or Cassandra backend)
+#   - Receives traces from OpenTelemetry Collector
+#
+# Ports:
+#   - 6831/udp: Jaeger Thrift Compact (legacy agents)
+#   - 6832/udp: Jaeger Thrift Binary (legacy agents)
+#   - 5778: Sampling config
+#   - 16686: Web UI
+#   - 4317: OTLP gRPC (OpenTelemetry)
+#   - 4318: OTLP HTTP (OpenTelemetry)
+#   - 14250: Jaeger gRPC
+#   - 14268: Jaeger HTTP Thrift
+#   - 14269: Admin/health
+#
+# MetalLB IP Assignment: 192.168.68.205 (Jaeger UI)
+# See CLAUDE.md for complete IP allocation table
+# =============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tracing
+  labels:
+    kubernetes.io/metadata.name: tracing
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/managed-by: kustomize
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: tracing
+  labels:
+    app: jaeger
+    app.kubernetes.io/name: jaeger
+    app.kubernetes.io/component: tracing-backend
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+        app.kubernetes.io/name: jaeger
+        app.kubernetes.io/component: tracing-backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "14269"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: jaeger
+          # Use all-in-one image for simplicity
+          # For production scale, consider jaeger-collector + jaeger-query with Elasticsearch
+          image: docker.io/jaegertracing/all-in-one:1.53
+          imagePullPolicy: IfNotPresent
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          env:
+            # Memory storage for development (limited to 100k traces)
+            - name: SPAN_STORAGE_TYPE
+              value: "memory"
+            # Collector settings
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
+            - name: COLLECTOR_ZIPKIN_HOST_PORT
+              value: ":9411"
+            # Sampling strategy (probabilistic 10% in production)
+            - name: SAMPLING_STRATEGIES_FILE
+              value: "/etc/jaeger/sampling.json"
+            # Log level
+            - name: LOG_LEVEL
+              value: "info"
+            # Memory limits for in-memory storage
+            - name: MEMORY_MAX_TRACES
+              value: "100000"
+
+          ports:
+            # OTLP receivers (OpenTelemetry native)
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+            # Jaeger native protocols
+            - name: jaeger-grpc
+              containerPort: 14250
+              protocol: TCP
+            - name: jaeger-http
+              containerPort: 14268
+              protocol: TCP
+            # Legacy Thrift protocols
+            - name: thrift-compact
+              containerPort: 6831
+              protocol: UDP
+            - name: thrift-binary
+              containerPort: 6832
+              protocol: UDP
+            # UI and admin
+            - name: ui
+              containerPort: 16686
+              protocol: TCP
+            - name: admin
+              containerPort: 14269
+              protocol: TCP
+            # Sampling config
+            - name: sampling
+              containerPort: 5778
+              protocol: TCP
+            # Zipkin compatible endpoint
+            - name: zipkin
+              containerPort: 9411
+              protocol: TCP
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: admin
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          volumeMounts:
+            - name: sampling-config
+              mountPath: /etc/jaeger
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: sampling-config
+          configMap:
+            name: jaeger-sampling-config
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-sampling-config
+  namespace: tracing
+  labels:
+    app: jaeger
+    app.kubernetes.io/name: jaeger
+    app.kubernetes.io/component: tracing-backend
+data:
+  sampling.json: |
+    {
+      "service_strategies": [
+        {
+          "service": "liberty-app",
+          "type": "probabilistic",
+          "param": 0.1
+        }
+      ],
+      "default_strategy": {
+        "type": "probabilistic",
+        "param": 0.1
+      }
+    }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector
+  namespace: tracing
+  labels:
+    app: jaeger
+    app.kubernetes.io/name: jaeger
+    app.kubernetes.io/component: collector
+spec:
+  type: ClusterIP
+  selector:
+    app: jaeger
+  ports:
+    # OTLP receivers - primary ingestion
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP
+    # Jaeger native
+    - name: jaeger-grpc
+      port: 14250
+      targetPort: jaeger-grpc
+      protocol: TCP
+    - name: jaeger-http
+      port: 14268
+      targetPort: jaeger-http
+      protocol: TCP
+    # Legacy Thrift (UDP)
+    - name: thrift-compact
+      port: 6831
+      targetPort: thrift-compact
+      protocol: UDP
+    - name: thrift-binary
+      port: 6832
+      targetPort: thrift-binary
+      protocol: UDP
+    # Zipkin compatible
+    - name: zipkin
+      port: 9411
+      targetPort: zipkin
+      protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-query
+  namespace: tracing
+  labels:
+    app: jaeger
+    app.kubernetes.io/name: jaeger
+    app.kubernetes.io/component: query
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: "192.168.68.205"
+spec:
+  type: LoadBalancer
+  selector:
+    app: jaeger
+  ports:
+    - name: ui
+      port: 16686
+      targetPort: ui
+      protocol: TCP
+    - name: admin
+      port: 14269
+      targetPort: admin
+      protocol: TCP
+    - name: sampling
+      port: 5778
+      targetPort: sampling
+      protocol: TCP
+
+---
+# NetworkPolicy: Restrict ingress to Jaeger
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jaeger-network-policy
+  namespace: tracing
+  labels:
+    app: jaeger
+    app.kubernetes.io/name: jaeger
+spec:
+  podSelector:
+    matchLabels:
+      app: jaeger
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow OTLP from OpenTelemetry Collector
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tracing
+          podSelector:
+            matchLabels:
+              app: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # Allow direct OTLP from application pods (if not using collector)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+          podSelector:
+            matchLabels:
+              app: liberty
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # Allow Prometheus scraping from monitoring namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 14269
+    # Allow UI access from any source (LoadBalancer)
+    - from: []
+      ports:
+        - protocol: TCP
+          port: 16686
+        - protocol: TCP
+          port: 5778
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

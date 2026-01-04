@@ -167,7 +167,7 @@ resource "aws_security_group" "monitoring" {
 
   name        = "${local.name_prefix}-monitoring-sg"
   description = "Security group for Prometheus/Grafana monitoring server"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.networking.vpc_id
 
   # SSH
   ingress {
@@ -264,7 +264,7 @@ resource "aws_instance" "monitoring" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.monitoring_instance_type
   key_name               = aws_key_pair.deployer.key_name
-  subnet_id              = aws_subnet.public[0].id
+  subnet_id              = module.networking.public_subnet_ids[0]
   vpc_security_group_ids = [aws_security_group.monitoring[0].id]
   iam_instance_profile   = aws_iam_instance_profile.monitoring[0].name
 

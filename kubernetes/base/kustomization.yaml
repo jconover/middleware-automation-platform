@@ -17,50 +17,66 @@ commonLabels:
 # Resources included in this base
 resources:
   - liberty-deployment.yaml
+  - liberty-hpa.yaml
+  - liberty-ingress.yaml
+  # Note: liberty-tls-secret.yaml is a template with instructions
+  # TLS secrets should be created using one of these methods:
+  #   1. kubectl create secret tls (see liberty-tls-secret.yaml for commands)
+  #   2. cert-manager (apply certificates/ directory)
+  # The certificates/ directory is NOT included by default as it requires
+  # cert-manager to be installed first.
+  #
+  # HPA Configuration:
+  # liberty-hpa.yaml provides custom metrics HPA using prometheus-adapter.
+  # Requires prometheus-adapter to be deployed for request-based scaling.
+  # See kubernetes/base/monitoring/prometheus-adapter/ for deployment.
 
-# ConfigMap generator for application configuration
+# ConfigMap generator for non-sensitive application configuration
+# Note: Database and Redis connection details are now in liberty-secrets
+# managed by External Secrets Operator (see secrets/ directory)
 configMapGenerator:
   - name: liberty-config
     literals:
-      - db.host=postgres.database.svc.cluster.local
-      - db.port=5432
-      - db.name=libertydb
+      # Application-level configuration (non-sensitive)
+      - app.name=liberty-app
+      - app.environment=production
     options:
       labels:
         app: liberty
 
 # =============================================================================
-# IMPORTANT: Secret Configuration Required
+# SECRETS MANAGEMENT
 # =============================================================================
-# The liberty-secrets Secret MUST be created before deploying Liberty.
-# The deployment references this secret for database credentials.
+# The liberty-secrets Secret contains database and Redis credentials.
+# It can be created using one of these methods:
 #
-# See liberty-secrets.yaml.template for detailed instructions on creating
-# the secret using one of these methods:
+# RECOMMENDED: External Secrets Operator (production)
+# ---------------------------------------------------
+# ESO syncs secrets from AWS Secrets Manager or HashiCorp Vault.
+# See kubernetes/base/secrets/liberty-secrets.yaml for the ExternalSecret
+# configuration.
 #
-#   1. kubectl create secret (development)
-#   2. Apply template file with replaced values
-#   3. Bitnami Sealed Secrets (GitOps)
-#   4. External Secrets Operator (production - AWS/Vault/GCP)
+# Setup steps:
+#   1. Install ESO: see external-secrets/README.md
+#   2. Apply ClusterSecretStore: kubectl apply -f external-secrets/aws-clustersecretstore.yaml
+#   3. Apply ExternalSecret: kubectl apply -f secrets/liberty-secrets.yaml
 #
-# Quick start for development:
+# The ExternalSecret will automatically create and sync the liberty-secrets
+# Secret with credentials from AWS Secrets Manager.
+#
+# ALTERNATIVE: Manual creation (development only)
+# -----------------------------------------------
+# For local development without ESO:
 #   kubectl create secret generic liberty-secrets \
 #     --namespace=liberty \
 #     --from-literal=db.password='devpassword123' \
 #     --from-literal=db.username='liberty' \
-#     --from-literal=keystore.password='keystorepass'
+#     --from-literal=db.host='postgres.database.svc.cluster.local' \
+#     --from-literal=db.port='5432' \
+#     --from-literal=db.name='libertydb' \
+#     --from-literal=redis.auth='redis-auth-token' \
+#     --from-literal=redis.host='redis.database.svc.cluster.local' \
+#     --from-literal=redis.port='6379'
 #
-# The secret is NOT managed by Kustomize to prevent credentials in Git.
+# See docs/SECRETS_MANAGEMENT.md for complete documentation.
 # =============================================================================
-
-# Secret generator - DEVELOPMENT ONLY (uncomment for local testing)
-# WARNING: Do not commit with real values - use external secrets in production
-# secretGenerator:
-#   - name: liberty-secrets
-#     literals:
-#       - db.password=REPLACE_WITH_ACTUAL_PASSWORD
-#       - db.username=liberty
-#       - keystore.password=REPLACE_WITH_ACTUAL_PASSWORD
-#     options:
-#       labels:
-#         app: liberty

@@ -1,0 +1,129 @@
+# =============================================================================
+# Loki Configuration ConfigMap
+# =============================================================================
+# Loki is a horizontally-scalable, highly-available log aggregation system
+# designed to be cost-effective and easy to operate. Unlike Elasticsearch,
+# Loki indexes only labels (not full-text), making it efficient for Kubernetes.
+#
+# This configuration is optimized for a 3-node homelab cluster with:
+#   - Single-instance mode (suitable for <100GB/day ingestion)
+#   - S3-compatible storage support (or filesystem for local)
+#   - 30-day retention with compaction
+#   - Structured log parsing for Liberty JSON logs
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-config
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: log-aggregation
+    app.kubernetes.io/part-of: middleware-platform
+data:
+  loki.yaml: |
+    # Authentication disabled for internal cluster use
+    # Production deployments should enable auth_enabled: true with multi-tenancy
+    auth_enabled: false
+
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9096
+      # Graceful shutdown
+      graceful_shutdown_timeout: 30s
+      # Log level for Loki itself
+      log_level: info
+
+    # Common configuration shared across all components
+    common:
+      # Instance address for ring membership
+      instance_addr: 127.0.0.1
+      # Path prefix for all data storage
+      path_prefix: /loki
+      # Storage configuration
+      storage:
+        filesystem:
+          chunks_directory: /loki/chunks
+          rules_directory: /loki/rules
+      # Replication factor (1 for single-instance)
+      replication_factor: 1
+      # Ring configuration for distributed mode
+      ring:
+        kvstore:
+          store: inmemory
+
+    # Query frontend configuration
+    query_range:
+      # Enable result caching
+      results_cache:
+        cache:
+          embedded_cache:
+            enabled: true
+            max_size_mb: 100
+
+    # Schema configuration - defines how logs are stored
+    schema_config:
+      configs:
+        - from: 2024-01-01
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+
+    # Ruler configuration for alerting (optional)
+    ruler:
+      alertmanager_url: http://alertmanager:9093
+      storage:
+        type: local
+        local:
+          directory: /loki/rules
+      rule_path: /loki/rules-temp
+      ring:
+        kvstore:
+          store: inmemory
+      enable_api: true
+
+    # Compactor for retention and index optimization
+    compactor:
+      working_directory: /loki/compactor
+      compaction_interval: 10m
+      retention_enabled: true
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 150
+      delete_request_store: filesystem
+
+    # Limits configuration
+    limits_config:
+      # Retention period (30 days)
+      retention_period: 720h
+      # Ingestion limits
+      ingestion_rate_mb: 10
+      ingestion_burst_size_mb: 20
+      # Per-stream limits
+      max_entries_limit_per_query: 5000
+      max_streams_per_user: 10000
+      max_line_size: 256kb
+      # Query limits
+      max_query_parallelism: 32
+      max_query_series: 500
+
+    # Ingester configuration
+    ingester:
+      lifecycler:
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+      # Chunk configuration
+      chunk_idle_period: 1h
+      max_chunk_age: 1h
+      chunk_target_size: 1048576
+      chunk_retain_period: 30s
+
+    # Analytics disabled
+    analytics:
+      reporting_enabled: false

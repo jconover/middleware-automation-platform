@@ -1,0 +1,453 @@
+# =============================================================================
+# SLO-Based Alerting Rules with Multi-Window Burn Rate Alerts
+# =============================================================================
+# Implements Google SRE multi-window, multi-burn-rate alerting strategy.
+#
+# SLO Definitions:
+#   - Availability SLO: 99.95% uptime (error budget: 0.05% or ~21.6 min/month)
+#   - Latency SLO: 99% of requests < 500ms
+#   - Error Rate SLO: < 0.5% 5xx errors
+#
+# Burn Rate Alert Strategy:
+#   Multi-window alerting catches both fast-burning (incidents) and slow-burning
+#   (degradation) issues while minimizing false positives.
+#
+#   | Severity | Burn Rate | Long Window | Short Window | Time to Exhaust |
+#   |----------|-----------|-------------|--------------|-----------------|
+#   | Critical | 14.4x     | 1h          | 5m           | 2 hours         |
+#   | Warning  | 6x        | 6h          | 30m          | 5 days          |
+#   | Info     | 3x        | 1d          | 2h           | 10 days         |
+#   | Ticket   | 1x        | 3d          | 6h           | 30 days         |
+#
+# Reference: https://sre.google/workbook/alerting-on-slos/
+# =============================================================================
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: liberty-slo-alerts
+  labels:
+    app: liberty
+    component: monitoring
+    release: prometheus
+    role: slo-alerts
+spec:
+  groups:
+    # =========================================================================
+    # Availability SLO Burn Rate Alerts
+    # =========================================================================
+    # SLO: 99.95% availability (0.05% error budget)
+    # Monthly error budget: 0.0005 * 43200 minutes = 21.6 minutes of downtime
+    - name: liberty.slo.availability
+      interval: 30s
+      rules:
+        # ---------------------------------------------------------------------
+        # Critical: Burning 14.4x the error budget
+        # Will exhaust 30-day budget in 2 hours
+        # Requires both 1h and 5m windows to fire (reduces false positives)
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOAvailabilityBudgetBurnCritical
+          expr: |
+            (
+              # 1-hour burn rate > 14.4x
+              (
+                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[1h]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[1h]))
+              ) > (14.4 * 0.0005)
+            )
+            and
+            (
+              # 5-minute burn rate > 14.4x (confirms ongoing issue)
+              (
+                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[5m]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[5m]))
+              ) > (14.4 * 0.0005)
+            )
+          for: 2m
+          labels:
+            severity: critical
+            slo: availability
+            component: liberty
+            burn_rate: "14.4x"
+          annotations:
+            summary: "Critical: Liberty availability SLO burn rate is 14.4x - budget exhaustion in 2 hours"
+            description: |
+              Liberty is burning the 30-day error budget at 14.4x the sustainable rate.
+              At this rate, the entire monthly error budget will be exhausted in approximately 2 hours.
+              Current error rate: {{ $value | humanizePercentage }}
+              SLO target: 99.95% availability (0.05% error budget)
+            runbook_url: "docs/runbooks/liberty-slo-breach.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+        # ---------------------------------------------------------------------
+        # Warning: Burning 6x the error budget
+        # Will exhaust 30-day budget in 5 days
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOAvailabilityBudgetBurnHigh
+          expr: |
+            (
+              # 6-hour burn rate > 6x
+              (
+                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[6h]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[6h]))
+              ) > (6 * 0.0005)
+            )
+            and
+            (
+              # 30-minute burn rate > 6x (confirms ongoing issue)
+              (
+                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[30m]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[30m]))
+              ) > (6 * 0.0005)
+            )
+          for: 5m
+          labels:
+            severity: warning
+            slo: availability
+            component: liberty
+            burn_rate: "6x"
+          annotations:
+            summary: "Warning: Liberty availability SLO burn rate is 6x - budget exhaustion in 5 days"
+            description: |
+              Liberty is burning the 30-day error budget at 6x the sustainable rate.
+              At this rate, the monthly error budget will be exhausted in approximately 5 days.
+              Investigate degraded performance or partial outages.
+            runbook_url: "docs/runbooks/liberty-slo-breach.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+        # ---------------------------------------------------------------------
+        # Info: Burning 3x the error budget (slow burn)
+        # Will exhaust 30-day budget in 10 days
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOAvailabilityBudgetBurnMedium
+          expr: |
+            (
+              # 1-day burn rate > 3x
+              (
+                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[1d]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[1d]))
+              ) > (3 * 0.0005)
+            )
+            and
+            (
+              # 2-hour burn rate > 3x
+              (
+                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[2h]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[2h]))
+              ) > (3 * 0.0005)
+            )
+          for: 15m
+          labels:
+            severity: info
+            slo: availability
+            component: liberty
+            burn_rate: "3x"
+          annotations:
+            summary: "Info: Liberty availability SLO burn rate is 3x - budget exhaustion in 10 days"
+            description: |
+              Liberty is slowly burning the error budget at 3x the sustainable rate.
+              While not immediately critical, this trend will exhaust the budget within 10 days.
+              Review for subtle degradation or intermittent issues.
+            runbook_url: "docs/runbooks/liberty-slo-breach.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+        # ---------------------------------------------------------------------
+        # Ticket: At or slightly above sustainable burn rate
+        # Create ticket for investigation during business hours
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOAvailabilityBudgetBurnLow
+          expr: |
+            (
+              # 3-day burn rate > 1x (consuming more than sustainable)
+              (
+                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[3d]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[3d]))
+              ) > 0.0005
+            )
+            and
+            (
+              # 6-hour burn rate > 1x
+              (
+                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[6h]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[6h]))
+              ) > 0.0005
+            )
+          for: 1h
+          labels:
+            severity: ticket
+            slo: availability
+            component: liberty
+            burn_rate: "1x"
+          annotations:
+            summary: "Ticket: Liberty consuming error budget faster than sustainable"
+            description: |
+              Liberty is consuming the error budget at a rate that will exhaust it before month end.
+              Create a ticket for investigation during normal business hours.
+              No immediate action required but trend should be reversed.
+            runbook_url: "docs/runbooks/liberty-slo-breach.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+    # =========================================================================
+    # Latency SLO Burn Rate Alerts
+    # =========================================================================
+    # SLO: 99% of requests complete within 500ms
+    # Error budget: 1% of requests may exceed 500ms
+    - name: liberty.slo.latency
+      interval: 30s
+      rules:
+        # ---------------------------------------------------------------------
+        # Critical: p95 latency significantly exceeding SLO
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOLatencyBudgetBurnCritical
+          expr: |
+            (
+              # 1-hour: less than 95% of requests within 500ms (5% error budget consumption)
+              (
+                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[1h]))
+                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[1h]))
+              ) < 0.95
+            )
+            and
+            (
+              # 5-minute: confirms ongoing issue
+              (
+                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[5m]))
+                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[5m]))
+              ) < 0.95
+            )
+          for: 2m
+          labels:
+            severity: critical
+            slo: latency
+            component: liberty
+          annotations:
+            summary: "Critical: Liberty latency SLO breach - more than 5% of requests exceeding 500ms"
+            description: |
+              Liberty latency SLO is critically impacted. More than 5% of requests are taking longer than 500ms.
+              p95 latency: {{ with printf "liberty:http_request_duration:p95" | query }}{{ . | first | value | humanizeDuration }}{{ end }}
+              SLO target: 99% of requests < 500ms
+            runbook_url: "docs/runbooks/liberty-slow-responses.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+        # ---------------------------------------------------------------------
+        # Warning: Elevated latency consuming budget
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOLatencyBudgetBurnHigh
+          expr: |
+            (
+              # 6-hour: less than 98% of requests within 500ms
+              (
+                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[6h]))
+                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[6h]))
+              ) < 0.98
+            )
+            and
+            (
+              # 30-minute: confirms trend
+              (
+                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[30m]))
+                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[30m]))
+              ) < 0.98
+            )
+          for: 5m
+          labels:
+            severity: warning
+            slo: latency
+            component: liberty
+          annotations:
+            summary: "Warning: Liberty latency degradation - more than 2% of requests exceeding 500ms"
+            description: |
+              Liberty latency is degraded with more than 2% of requests exceeding the 500ms target.
+              Investigate potential performance issues, resource contention, or downstream dependencies.
+            runbook_url: "docs/runbooks/liberty-slow-responses.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+        # ---------------------------------------------------------------------
+        # p95 Latency Threshold Alert (direct measurement)
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOLatencyP95High
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+            ) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            slo: latency
+            component: liberty
+          annotations:
+            summary: "Warning: Liberty p95 latency exceeds 500ms SLO target"
+            description: |
+              The 95th percentile latency is currently {{ $value | humanizeDuration }}, exceeding the 500ms SLO target.
+              This indicates that at least 5% of users are experiencing slow responses.
+            runbook_url: "docs/runbooks/liberty-slow-responses.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+        # ---------------------------------------------------------------------
+        # p99 Latency Alert (tail latency)
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOLatencyP99Critical
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+            ) > 2
+          for: 5m
+          labels:
+            severity: critical
+            slo: latency
+            component: liberty
+          annotations:
+            summary: "Critical: Liberty p99 latency exceeds 2 seconds"
+            description: |
+              The 99th percentile latency is {{ $value | humanizeDuration }}, indicating severe tail latency issues.
+              1% of users are experiencing unacceptably slow responses (> 2 seconds).
+            runbook_url: "docs/runbooks/liberty-slow-responses.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+    # =========================================================================
+    # Error Budget Exhaustion Alerts
+    # =========================================================================
+    - name: liberty.slo.error_budget
+      interval: 1m
+      rules:
+        # ---------------------------------------------------------------------
+        # Error budget nearly exhausted
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOErrorBudgetLow
+          expr: |
+            liberty:error_budget:remaining_ratio < 0.25
+          for: 5m
+          labels:
+            severity: warning
+            slo: error_budget
+            component: liberty
+          annotations:
+            summary: "Warning: Liberty error budget is below 25%"
+            description: |
+              Only {{ $value | humanizePercentage }} of the monthly error budget remains.
+              Consider implementing a change freeze and focusing on reliability improvements.
+              Remaining budget must last until month end.
+            runbook_url: "docs/runbooks/liberty-slo-breach.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+        # ---------------------------------------------------------------------
+        # Error budget critically low
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOErrorBudgetCritical
+          expr: |
+            liberty:error_budget:remaining_ratio < 0.10
+          for: 5m
+          labels:
+            severity: critical
+            slo: error_budget
+            component: liberty
+          annotations:
+            summary: "Critical: Liberty error budget is below 10%"
+            description: |
+              Error budget is nearly exhausted with only {{ $value | humanizePercentage }} remaining.
+              Implement immediate change freeze. Any additional errors will breach the SLO.
+              Focus all efforts on stability and incident prevention.
+            runbook_url: "docs/runbooks/liberty-slo-breach.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+        # ---------------------------------------------------------------------
+        # Error budget exhausted (SLO breached)
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOErrorBudgetExhausted
+          expr: |
+            liberty:error_budget:remaining_ratio <= 0
+          for: 1m
+          labels:
+            severity: critical
+            slo: error_budget
+            component: liberty
+          annotations:
+            summary: "Critical: Liberty error budget exhausted - SLO breached"
+            description: |
+              The monthly error budget has been completely consumed. The availability SLO has been breached.
+              This requires a post-incident review and reliability improvements before the next period.
+            runbook_url: "docs/runbooks/liberty-slo-breach.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+    # =========================================================================
+    # Error Rate SLO Alerts (Direct Threshold)
+    # =========================================================================
+    # SLO: Error rate < 0.5%
+    - name: liberty.slo.error_rate
+      interval: 30s
+      rules:
+        # ---------------------------------------------------------------------
+        # Error rate approaching SLO threshold
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOErrorRateWarning
+          expr: |
+            liberty:http_error_rate:ratio5m > 0.003
+          for: 5m
+          labels:
+            severity: warning
+            slo: error_rate
+            component: liberty
+          annotations:
+            summary: "Warning: Liberty error rate is {{ $value | humanizePercentage }}"
+            description: |
+              Error rate is at {{ $value | humanizePercentage }}, approaching the 0.5% SLO threshold.
+              Investigate the source of errors to prevent SLO breach.
+            runbook_url: "docs/runbooks/liberty-high-error-rate.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+        # ---------------------------------------------------------------------
+        # Error rate exceeding SLO threshold
+        # ---------------------------------------------------------------------
+        - alert: LibertySLOErrorRateBreach
+          expr: |
+            liberty:http_error_rate:ratio5m > 0.005
+          for: 2m
+          labels:
+            severity: critical
+            slo: error_rate
+            component: liberty
+          annotations:
+            summary: "Critical: Liberty error rate {{ $value | humanizePercentage }} exceeds 0.5% SLO"
+            description: |
+              Error rate is at {{ $value | humanizePercentage }}, breaching the 0.5% SLO target.
+              Immediate investigation required. Check application logs, downstream dependencies, and resource utilization.
+            runbook_url: "docs/runbooks/liberty-high-error-rate.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"
+
+    # =========================================================================
+    # Apdex Score Alert (User Experience)
+    # =========================================================================
+    - name: liberty.slo.apdex
+      interval: 30s
+      rules:
+        # Apdex calculation: (satisfied + tolerated/2) / total
+        # Satisfied: < 500ms, Tolerated: 500ms - 2s, Frustrated: > 2s
+        - alert: LibertySLOApdexLow
+          expr: |
+            (
+              (
+                # Satisfied requests (< 500ms)
+                sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[5m]))
+                +
+                # Tolerated requests (500ms - 2s) / 2
+                (
+                  sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="2"}[5m]))
+                  - sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[5m]))
+                ) / 2
+              )
+              /
+              sum(rate(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[5m]))
+            ) < 0.85
+          for: 5m
+          labels:
+            severity: warning
+            slo: apdex
+            component: liberty
+          annotations:
+            summary: "Warning: Liberty Apdex score is {{ $value | printf \"%.2f\" }}"
+            description: |
+              User experience has degraded. Apdex score is {{ $value | printf \"%.2f\" }} (target: > 0.85).
+              This means a significant portion of users are experiencing slow or frustrating response times.
+              Satisfied threshold: 500ms, Tolerating threshold: 2s
+            runbook_url: "docs/runbooks/liberty-slow-responses.md"
+            dashboard_url: "/d/liberty-slo/liberty-slo-dashboard"

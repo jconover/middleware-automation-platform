@@ -1,0 +1,73 @@
+# =============================================================================
+# Kustomization for Prometheus Adapter
+# =============================================================================
+# Deploys prometheus-adapter for custom metrics HPA support.
+#
+# Usage:
+#   kubectl apply -k kubernetes/base/monitoring/prometheus-adapter/
+#
+# Prerequisites:
+#   - Prometheus Operator installed (kube-prometheus-stack)
+#   - Prometheus accessible at prometheus-operated.monitoring.svc:9090
+#
+# Post-deployment verification:
+#   # Check adapter is running
+#   kubectl get pods -n monitoring -l app=prometheus-adapter
+#
+#   # Verify APIService is available
+#   kubectl get apiservices | grep custom.metrics
+#
+#   # Test custom metrics API
+#   kubectl get --raw /apis/custom.metrics.k8s.io/v1beta1 | jq .
+#
+#   # Query specific metric for Liberty pods
+#   kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/http_requests_per_second" | jq .
+#
+# TLS Certificate Setup:
+#   The default installation includes placeholder TLS certificates.
+#   For production, generate proper certificates:
+#
+#   Option 1: Manual self-signed certificate
+#     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#       -keyout tls.key -out tls.crt \
+#       -subj "/CN=prometheus-adapter.monitoring.svc" \
+#       -addext "subjectAltName=DNS:prometheus-adapter.monitoring.svc,DNS:prometheus-adapter.monitoring.svc.cluster.local"
+#     kubectl create secret tls prometheus-adapter-serving-cert \
+#       --cert=tls.crt --key=tls.key -n monitoring --dry-run=client -o yaml | kubectl apply -f -
+#
+#   Option 2: cert-manager (recommended for production)
+#     apiVersion: cert-manager.io/v1
+#     kind: Certificate
+#     metadata:
+#       name: prometheus-adapter-serving-cert
+#       namespace: monitoring
+#     spec:
+#       secretName: prometheus-adapter-serving-cert
+#       dnsNames:
+#         - prometheus-adapter.monitoring.svc
+#         - prometheus-adapter.monitoring.svc.cluster.local
+#       issuerRef:
+#         name: selfsigned-issuer
+#         kind: ClusterIssuer
+# =============================================================================
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: prometheus-adapter
+
+namespace: monitoring
+
+commonLabels:
+  app.kubernetes.io/part-of: middleware-platform
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - prometheus-adapter-configmap.yaml
+  - prometheus-adapter-deployment.yaml
+
+# Images can be overridden per environment
+images:
+  - name: registry.k8s.io/prometheus-adapter/prometheus-adapter
+    newTag: v0.11.2

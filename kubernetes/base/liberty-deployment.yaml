@@ -41,6 +41,10 @@ spec:
         prometheus.io/path: "/metrics"
         # Security annotations
         container.apparmor.security.beta.kubernetes.io/liberty: runtime/default
+        # OpenTelemetry auto-instrumentation annotation
+        # Requires OTEL Operator: kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml
+        # Then create Instrumentation CR in tracing namespace (see otel-instrumentation.yaml)
+        instrumentation.opentelemetry.io/inject-java: "tracing/liberty-instrumentation"
     spec:
       # Pod-level security context
       securityContext:
@@ -120,19 +124,79 @@ spec:
               value: "JSON"
             - name: WLP_LOGGING_CONSOLE_LOGLEVEL
               value: "info"
+            # =================================================================
+            # Database Credentials (from liberty-secrets managed by ESO)
+            # =================================================================
             - name: DB_HOST
               valueFrom:
-                configMapKeyRef:
-                  name: liberty-config
+                secretKeyRef:
+                  name: liberty-secrets
                   key: db.host
+                  optional: true
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: db.port
+                  optional: true
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: db.name
+                  optional: true
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: db.username
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: liberty-secrets
                   key: db.password
+            # =================================================================
+            # Redis Credentials (from liberty-secrets managed by ESO)
+            # =================================================================
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: redis.host
+                  optional: true
+            - name: REDIS_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: redis.port
+                  optional: true
+            - name: REDIS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: redis.auth
+                  optional: true
             # JVM security settings
             - name: JVM_ARGS
               value: "-XX:+UseContainerSupport -Dcom.ibm.ws.logging.console.format=json"
+            # =================================================================
+            # OpenTelemetry Configuration for Distributed Tracing
+            # These are used if OTEL Operator auto-instrumentation is not active
+            # =================================================================
+            - name: OTEL_SERVICE_NAME
+              value: "liberty-app"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=middleware-platform,deployment.environment=local-kubernetes"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.tracing.svc.cluster.local:4317"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+            - name: OTEL_PROPAGATORS
+              value: "tracecontext,baggage"
 
           resources:
             requests:
@@ -241,52 +305,21 @@ spec:
     app: liberty
 
 ---
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: liberty-hpa
-  labels:
-    app: liberty
-    app.kubernetes.io/name: liberty
-    app.kubernetes.io/component: application-server
-    app.kubernetes.io/part-of: middleware-platform
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: liberty-app
-  minReplicas: 3
-  maxReplicas: 10
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 80
-  behavior:
-    scaleDown:
-      stabilizationWindowSeconds: 300
-      policies:
-        - type: Percent
-          value: 10
-          periodSeconds: 60
-    scaleUp:
-      stabilizationWindowSeconds: 0
-      policies:
-        - type: Percent
-          value: 100
-          periodSeconds: 15
-        - type: Pods
-          value: 4
-          periodSeconds: 15
-      selectPolicy: Max
+# =============================================================================
+# HPA Configuration - See liberty-hpa.yaml
+# =============================================================================
+# The HorizontalPodAutoscaler is now defined in a separate file (liberty-hpa.yaml)
+# with support for custom metrics including:
+#   - http_requests_per_second (target: 1000 RPS per pod)
+#   - http_request_duration_seconds_p95 (target: 500ms)
+#   - CPU and memory utilization (baseline metrics)
+#
+# Prerequisites for custom metrics:
+#   - prometheus-adapter deployment (kubernetes/base/monitoring/prometheus-adapter/)
+#   - ServiceMonitor collecting Liberty metrics
+#
+# Apply: kubectl apply -f kubernetes/base/liberty-hpa.yaml
+# =============================================================================
 
 ---
 apiVersion: policy/v1
@@ -446,6 +479,19 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    # Allow trace export to OpenTelemetry Collector in tracing namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tracing
+          podSelector:
+            matchLabels:
+              app: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
     # Allow external HTTPS (for external API calls if needed)
     - to:
         - ipBlock:

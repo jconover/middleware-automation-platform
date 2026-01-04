@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<server description="Open Liberty for Integration Tests">
+    <featureManager>
+        <feature>restfulWS-3.1</feature>
+        <feature>jsonb-3.0</feature>
+        <feature>cdi-4.0</feature>
+        <feature>mpHealth-4.0</feature>
+        <feature>mpMetrics-5.0</feature>
+        <feature>mpConfig-3.0</feature>
+        <feature>mpOpenAPI-3.1</feature>
+        <feature>beanValidation-3.0</feature>
+    </featureManager>
+
+    <httpEndpoint id="defaultHttpEndpoint" host="*"
+                  httpPort="${default.http.port}"
+                  httpsPort="${default.https.port}">
+        <httpOptions maxPostSize="1048576" />
+    </httpEndpoint>
+
+    <!-- Health endpoint without authentication for integration tests -->
+    <mpHealth authentication="false"/>
+
+    <!-- Metrics endpoint without authentication for integration tests -->
+    <mpMetrics authentication="false"/>
+
+    <logging consoleLogLevel="INFO" consoleFormat="simple"/>
+
+    <!-- Application deployment -->
+    <webApplication id="sample-app" location="sample-app.war" contextRoot="/sample-app"/>
+</server>

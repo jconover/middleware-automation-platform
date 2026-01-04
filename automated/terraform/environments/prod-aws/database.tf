@@ -47,7 +47,7 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
 resource "aws_db_subnet_group" "main" {
   name        = "${local.name_prefix}-db-subnet"
   description = "Database subnet group for ${local.name_prefix}"
-  subnet_ids  = aws_subnet.private[*].id
+  subnet_ids  = module.networking.private_subnet_ids
 
   tags = {
     Name = "${local.name_prefix}-db-subnet"
@@ -130,7 +130,7 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring" {
 resource "aws_elasticache_subnet_group" "main" {
   name        = "${local.name_prefix}-cache-subnet"
   description = "Cache subnet group for ${local.name_prefix}"
-  subnet_ids  = aws_subnet.private[*].id
+  subnet_ids  = module.networking.private_subnet_ids
 
   tags = {
     Name = "${local.name_prefix}-cache-subnet"

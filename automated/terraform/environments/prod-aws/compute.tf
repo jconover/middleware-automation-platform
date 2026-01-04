@@ -86,7 +86,7 @@ resource "aws_instance" "liberty" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.liberty_instance_type
   key_name               = aws_key_pair.deployer.key_name
-  subnet_id              = aws_subnet.private[count.index % var.availability_zones].id
+  subnet_id              = module.networking.private_subnet_ids[count.index % var.availability_zones]
   vpc_security_group_ids = [aws_security_group.liberty.id]
   iam_instance_profile   = aws_iam_instance_profile.liberty.name
 

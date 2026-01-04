@@ -1,0 +1,360 @@
+# =============================================================================
+# OpenTelemetry Collector Deployment
+# =============================================================================
+# The OpenTelemetry Collector receives, processes, and exports telemetry data.
+# It acts as a central aggregation point for traces, metrics, and logs.
+#
+# Architecture:
+#   - Receives traces from Liberty applications via OTLP
+#   - Exports traces to Jaeger backend
+#   - Provides batching, retry, and sampling capabilities
+#
+# Data Flow:
+#   Liberty Pod -> OTEL Collector -> Jaeger
+#                        |
+#                        +-> (future: Prometheus metrics)
+#
+# Ports:
+#   - 4317: OTLP gRPC receiver
+#   - 4318: OTLP HTTP receiver
+#   - 8888: Collector metrics
+#   - 8889: Prometheus exporter (for collector's own metrics)
+#   - 13133: Health check
+#
+# =============================================================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: tracing
+  labels:
+    app: otel-collector
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/component: telemetry-collector
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+        app.kubernetes.io/name: otel-collector
+        app.kubernetes.io/component: telemetry-collector
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8889"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      serviceAccountName: otel-collector
+
+      containers:
+        - name: otel-collector
+          image: docker.io/otel/opentelemetry-collector-contrib:0.92.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config=/etc/otel-collector/config.yaml
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          ports:
+            # OTLP receivers
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+            # Collector metrics
+            - name: metrics
+              containerPort: 8888
+              protocol: TCP
+            # Prometheus exporter
+            - name: prometheus
+              containerPort: 8889
+              protocol: TCP
+            # Health check
+            - name: health
+              containerPort: 13133
+              protocol: TCP
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel-collector
+              readOnly: true
+
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: tracing
+  labels:
+    app: otel-collector
+    app.kubernetes.io/name: otel-collector
+data:
+  config.yaml: |
+    # =============================================================================
+    # OpenTelemetry Collector Configuration
+    # =============================================================================
+
+    receivers:
+      # OTLP receiver - primary ingestion endpoint
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+            cors:
+              allowed_origins:
+                - "http://*"
+                - "https://*"
+
+    processors:
+      # Batch traces for efficient export
+      batch:
+        timeout: 5s
+        send_batch_size: 512
+        send_batch_max_size: 1024
+
+      # Memory limiter to prevent OOM
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 75
+        spike_limit_percentage: 25
+
+      # Add resource attributes
+      resource:
+        attributes:
+          - key: deployment.environment
+            value: local-kubernetes
+            action: upsert
+          - key: service.namespace
+            value: middleware-platform
+            action: upsert
+
+      # Probabilistic sampling (10% of traces)
+      probabilistic_sampler:
+        sampling_percentage: 10
+
+    exporters:
+      # Export to Jaeger via OTLP
+      otlp/jaeger:
+        endpoint: jaeger-collector.tracing.svc.cluster.local:4317
+        tls:
+          insecure: true
+
+      # Debug logging (disable in production)
+      debug:
+        verbosity: basic
+        sampling_initial: 5
+        sampling_thereafter: 200
+
+      # Prometheus exporter for collector metrics
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        namespace: otel_collector
+
+    extensions:
+      # Health check extension
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+      # Performance profiler
+      pprof:
+        endpoint: 0.0.0.0:1777
+
+      # zPages for debugging
+      zpages:
+        endpoint: 0.0.0.0:55679
+
+    service:
+      extensions:
+        - health_check
+        - pprof
+        - zpages
+
+      pipelines:
+        # Traces pipeline
+        traces:
+          receivers:
+            - otlp
+          processors:
+            - memory_limiter
+            - batch
+            - resource
+            - probabilistic_sampler
+          exporters:
+            - otlp/jaeger
+            - debug
+
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          level: detailed
+          address: 0.0.0.0:8888
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: tracing
+  labels:
+    app: otel-collector
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/component: telemetry-collector
+spec:
+  type: ClusterIP
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP
+    - name: metrics
+      port: 8888
+      targetPort: metrics
+      protocol: TCP
+    - name: prometheus
+      port: 8889
+      targetPort: prometheus
+      protocol: TCP
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: tracing
+  labels:
+    app: otel-collector
+    app.kubernetes.io/name: otel-collector
+automountServiceAccountToken: false
+
+---
+# NetworkPolicy: Restrict ingress to OTEL Collector
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-network-policy
+  namespace: tracing
+  labels:
+    app: otel-collector
+    app.kubernetes.io/name: otel-collector
+spec:
+  podSelector:
+    matchLabels:
+      app: otel-collector
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow OTLP from Liberty application pods
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+          podSelector:
+            matchLabels:
+              app: liberty
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # Allow Prometheus scraping from monitoring namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8888
+        - protocol: TCP
+          port: 8889
+    # Allow health checks from anywhere in cluster
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 13133
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow OTLP export to Jaeger
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tracing
+          podSelector:
+            matchLabels:
+              app: jaeger
+      ports:
+        - protocol: TCP
+          port: 4317

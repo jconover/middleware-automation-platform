@@ -1,0 +1,37 @@
+# Kustomization for Jaeger Distributed Tracing
+# Deploys Jaeger all-in-one for trace collection, storage, and visualization.
+#
+# Usage:
+#   kubectl apply -k kubernetes/base/monitoring/jaeger/
+#
+# Prerequisites:
+#   - Kubernetes cluster with MetalLB configured
+#   - IP 192.168.68.205 available in MetalLB pool
+#
+# Components:
+#   - Jaeger all-in-one deployment (collector + query + UI)
+#   - Sampling configuration (10% default rate)
+#   - Services for OTLP, Jaeger protocols, and UI
+#   - NetworkPolicy for security
+#
+# Access:
+#   Jaeger UI: http://192.168.68.205:16686
+#   OTLP gRPC: jaeger-collector.tracing.svc.cluster.local:4317
+#   OTLP HTTP: jaeger-collector.tracing.svc.cluster.local:4318
+#
+# Production Notes:
+#   For production deployments with persistent storage, replace all-in-one
+#   with separate collector/query pods backed by Elasticsearch or Cassandra.
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: jaeger-tracing
+
+commonLabels:
+  app.kubernetes.io/part-of: middleware-platform
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - jaeger-deployment.yaml
