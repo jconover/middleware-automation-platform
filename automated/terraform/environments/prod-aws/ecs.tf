@@ -205,11 +205,12 @@ resource "aws_security_group" "ecs_liberty" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  # Least-privilege egress rules (HTTPS inline, DB/Cache via aws_security_group_rule to avoid cycles)
   egress {
-    description = "All outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "HTTPS to external APIs"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -219,7 +220,30 @@ resource "aws_security_group" "ecs_liberty" {
 }
 
 # -----------------------------------------------------------------------------
-# Allow ECS tasks to access RDS and Redis
+# ECS Liberty Egress Rules (separate to avoid dependency cycles)
+# -----------------------------------------------------------------------------
+resource "aws_security_group_rule" "ecs_liberty_egress_to_db" {
+  type                     = "egress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs_liberty.id
+  source_security_group_id = aws_security_group.db.id
+  description              = "PostgreSQL to RDS"
+}
+
+resource "aws_security_group_rule" "ecs_liberty_egress_to_cache" {
+  type                     = "egress"
+  from_port                = 6379
+  to_port                  = 6379
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs_liberty.id
+  source_security_group_id = aws_security_group.cache.id
+  description              = "Redis to ElastiCache"
+}
+
+# -----------------------------------------------------------------------------
+# Allow ECS tasks to access RDS and Redis (ingress rules)
 # -----------------------------------------------------------------------------
 resource "aws_security_group_rule" "db_from_ecs" {
   type                     = "ingress"

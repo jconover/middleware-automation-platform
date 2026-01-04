@@ -520,6 +520,55 @@ variable "security_alert_email" {
 }
 
 # -----------------------------------------------------------------------------
+# WAF (Web Application Firewall)
+# -----------------------------------------------------------------------------
+variable "enable_waf" {
+  description = <<-EOT
+    Enable AWS WAFv2 Web Application Firewall for the ALB.
+    Provides protection against:
+    - OWASP Top 10 web exploits (XSS, path traversal, etc.)
+    - SQL injection attacks
+    - Known bad inputs and malicious patterns
+    - DDoS via rate limiting
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "waf_rate_limit" {
+  description = <<-EOT
+    Maximum requests per 5-minute period per IP address before rate limiting kicks in.
+    Requests exceeding this limit are blocked. Default: 2000 requests/5 minutes.
+
+    Guidelines:
+    - Low traffic sites: 1000-2000
+    - Medium traffic: 2000-5000
+    - High traffic/API: 5000-10000
+  EOT
+  type        = number
+  default     = 2000
+
+  validation {
+    condition     = var.waf_rate_limit >= 100 && var.waf_rate_limit <= 20000000
+    error_message = "WAF rate limit must be between 100 and 20,000,000 requests per 5-minute period."
+  }
+}
+
+variable "waf_enable_logging" {
+  description = <<-EOT
+    Enable WAF logging to CloudWatch Logs.
+    When enabled, creates a log group with 30-day retention for:
+    - Blocked requests
+    - Matched rules
+    - Request details (with authorization and cookie headers redacted)
+
+    Note: WAF logging incurs additional CloudWatch Logs costs.
+  EOT
+  type        = bool
+  default     = false
+}
+
+# -----------------------------------------------------------------------------
 # Tagging
 # -----------------------------------------------------------------------------
 variable "additional_tags" {
