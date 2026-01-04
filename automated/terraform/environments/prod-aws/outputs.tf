@@ -187,6 +187,36 @@ output "ecs_scaling_config" {
 }
 
 # -----------------------------------------------------------------------------
+# CodeDeploy Blue-Green Deployment Outputs
+# -----------------------------------------------------------------------------
+output "codedeploy_app_name" {
+  description = "Name of the CodeDeploy application for ECS Blue-Green deployments"
+  value       = var.ecs_enabled && var.enable_blue_green ? aws_codedeploy_app.ecs_liberty[0].name : null
+}
+
+output "codedeploy_deployment_group_name" {
+  description = "Name of the CodeDeploy deployment group"
+  value       = var.ecs_enabled && var.enable_blue_green ? aws_codedeploy_deployment_group.ecs_liberty[0].deployment_group_name : null
+}
+
+output "blue_green_deployment_config" {
+  description = "Blue-Green deployment configuration summary"
+  value = var.ecs_enabled && var.enable_blue_green ? {
+    enabled              = true
+    app_name             = aws_codedeploy_app.ecs_liberty[0].name
+    deployment_group     = aws_codedeploy_deployment_group.ecs_liberty[0].deployment_group_name
+    deployment_config    = "CodeDeployDefault.ECSLinear10PercentEvery1Minutes"
+    blue_target_group    = aws_lb_target_group.liberty_ecs[0].name
+    green_target_group   = aws_lb_target_group.liberty_ecs_green[0].name
+    auto_rollback        = true
+    termination_wait_min = 5
+    } : {
+    enabled = false
+    message = "Blue-Green deployments are disabled. Set enable_blue_green = true to enable."
+  }
+}
+
+# -----------------------------------------------------------------------------
 # Ansible Inventory Helper
 # -----------------------------------------------------------------------------
 output "ansible_inventory" {

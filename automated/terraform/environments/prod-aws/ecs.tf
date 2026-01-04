@@ -157,18 +157,25 @@ resource "aws_ecs_service" "liberty" {
     container_port   = 9080
   }
 
-  deployment_circuit_breaker {
-    enable   = true
-    rollback = true
+  # Circuit breaker only available with ECS deployment controller (not CODE_DEPLOY)
+  dynamic "deployment_circuit_breaker" {
+    for_each = var.enable_blue_green ? [] : [1]
+    content {
+      enable   = true
+      rollback = true
+    }
   }
 
   deployment_controller {
-    type = "ECS"
+    # Use CODE_DEPLOY for Blue-Green deployments, otherwise standard ECS rolling updates
+    type = var.enable_blue_green ? "CODE_DEPLOY" : "ECS"
   }
 
   # Allow external changes to desired_count (for auto-scaling)
+  # When using CodeDeploy (Blue-Green), also ignore task_definition and load_balancer
+  # as CodeDeploy manages these during deployments
   lifecycle {
-    ignore_changes = [desired_count]
+    ignore_changes = [desired_count, task_definition, load_balancer]
   }
 
   # Enable ECS Exec for debugging

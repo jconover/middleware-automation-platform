@@ -78,6 +78,12 @@ variable "availability_zones" {
   }
 }
 
+variable "high_availability_nat" {
+  description = "Deploy NAT Gateway per AZ for high availability (+$32/month per additional NAT)"
+  type        = bool
+  default     = false
+}
+
 variable "allowed_ssh_cidr_blocks" {
   description = "CIDR blocks allowed to SSH to instances (via bastion)"
   type        = list(string)
@@ -134,6 +140,12 @@ variable "ecs_enabled" {
   description = "Enable ECS Fargate deployment"
   type        = bool
   default     = true
+}
+
+variable "enable_blue_green" {
+  description = "Enable Blue-Green deployments with CodeDeploy for zero-downtime releases"
+  type        = bool
+  default     = false
 }
 
 variable "container_image_tag" {

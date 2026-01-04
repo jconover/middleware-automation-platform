@@ -57,24 +57,35 @@ resource "aws_subnet" "private" {
 }
 
 # -----------------------------------------------------------------------------
-# NAT Gateway (Single NAT for cost optimization)
+# NAT Gateway
+# Single NAT Gateway (default) or Multi-AZ NAT Gateways for high availability
+# Multi-AZ adds ~$32/month per additional NAT Gateway
 # -----------------------------------------------------------------------------
+
+# Elastic IPs for NAT Gateways
+# - Single NAT: 1 EIP
+# - Multi-AZ: 1 EIP per AZ
 resource "aws_eip" "nat" {
+  count  = var.high_availability_nat ? var.availability_zones : 1
   domain = "vpc"
 
   tags = {
-    Name = "${local.name_prefix}-nat-eip"
+    Name = var.high_availability_nat ? "${local.name_prefix}-nat-eip-${count.index + 1}" : "${local.name_prefix}-nat-eip"
   }
 
   depends_on = [aws_internet_gateway.main]
 }
 
+# NAT Gateways
+# - Single NAT: 1 NAT Gateway in first public subnet
+# - Multi-AZ: 1 NAT Gateway per AZ in corresponding public subnet
 resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
+  count         = var.high_availability_nat ? var.availability_zones : 1
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
 
   tags = {
-    Name = "${local.name_prefix}-nat"
+    Name = var.high_availability_nat ? "${local.name_prefix}-nat-${count.index + 1}" : "${local.name_prefix}-nat"
   }
 
   depends_on = [aws_internet_gateway.main]
@@ -96,16 +107,36 @@ resource "aws_route_table" "public" {
   }
 }
 
+# Private Route Table - Single NAT Gateway configuration
+# Used when high_availability_nat = false
 resource "aws_route_table" "private" {
+  count  = var.high_availability_nat ? 0 : 1
   vpc_id = aws_vpc.main.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
+    nat_gateway_id = aws_nat_gateway.main[0].id
   }
 
   tags = {
     Name = "${local.name_prefix}-private-rt"
+  }
+}
+
+# Private Route Tables - Multi-AZ NAT Gateway configuration
+# Used when high_availability_nat = true
+# Creates one route table per AZ, each routing through its local NAT Gateway
+resource "aws_route_table" "private_per_az" {
+  count  = var.high_availability_nat ? var.availability_zones : 0
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main[count.index].id
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-private-rt-${count.index + 1}"
   }
 }
 
@@ -116,11 +147,21 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
+# Private subnet route table associations - Single NAT Gateway
 resource "aws_route_table_association" "private" {
-  count = var.availability_zones
+  count = var.high_availability_nat ? 0 : var.availability_zones
 
   subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private[0].id
+}
+
+# Private subnet route table associations - Multi-AZ NAT Gateways
+# Each private subnet routes through its local AZ's NAT Gateway
+resource "aws_route_table_association" "private_per_az" {
+  count = var.high_availability_nat ? var.availability_zones : 0
+
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private_per_az[count.index].id
 }
 
 # -----------------------------------------------------------------------------
