@@ -70,7 +70,7 @@ resource "aws_xray_sampling_rule" "liberty_default" {
   rule_name      = "${local.name_prefix}-liberty-default"
   priority       = 1000
   version        = 1
-  reservoir_size = 1        # Fixed rate: 1 trace per second guaranteed
+  reservoir_size = 1 # Fixed rate: 1 trace per second guaranteed
   fixed_rate     = var.xray_sampling_rate
   url_path       = "*"
   host           = "*"
@@ -94,8 +94,8 @@ resource "aws_xray_sampling_rule" "liberty_errors" {
   rule_name      = "${local.name_prefix}-liberty-errors"
   priority       = 100 # Higher priority than default
   version        = 1
-  reservoir_size = 5     # Capture more errors
-  fixed_rate     = 0.5   # 50% of errors sampled
+  reservoir_size = 5   # Capture more errors
+  fixed_rate     = 0.5 # 50% of errors sampled
   url_path       = "*"
   host           = "*"
   http_method    = "*"
@@ -121,8 +121,8 @@ resource "aws_xray_sampling_rule" "liberty_health" {
   rule_name      = "${local.name_prefix}-liberty-health"
   priority       = 50 # Highest priority
   version        = 1
-  reservoir_size = 0     # No guaranteed traces
-  fixed_rate     = 0.01  # 1% of health checks
+  reservoir_size = 0    # No guaranteed traces
+  fixed_rate     = 0.01 # 1% of health checks
   url_path       = "/health/*"
   host           = "*"
   http_method    = "GET"

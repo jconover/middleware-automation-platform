@@ -1,0 +1,13 @@
+---
+# ArgoCD Namespace for GitOps management
+# This namespace is used for ArgoCD Application CRs to manage Liberty deployments
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app.kubernetes.io/name: argocd
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    description: "ArgoCD GitOps namespace for middleware platform management"

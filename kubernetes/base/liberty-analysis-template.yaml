@@ -1,0 +1,398 @@
+# =============================================================================
+# Argo Rollouts: Liberty Analysis Templates
+# =============================================================================
+# AnalysisTemplates define automated validation checks for canary deployments.
+# These templates query Prometheus metrics to determine canary health.
+#
+# Analysis Criteria:
+#   - HTTP success rate > 95% (5xx errors < 5%)
+#   - p95 latency < 500ms
+#
+# Both criteria must pass for the analysis to succeed. If either fails,
+# the canary is automatically aborted and rolled back.
+#
+# Prerequisites:
+#   - Prometheus collecting Liberty metrics
+#   - Liberty ServiceMonitor configured
+#   - Metrics endpoint available: /metrics on port 9080
+#
+# Testing Analysis Templates:
+#   # Create a test AnalysisRun
+#   kubectl argo rollouts analyze --templates liberty-success-rate -n default
+#
+#   # View analysis status
+#   kubectl get analysisrun -n default
+#   kubectl describe analysisrun <name> -n default
+#
+# Debugging Failed Analysis:
+#   # Check AnalysisRun details
+#   kubectl argo rollouts get rollout liberty-app -n default
+#
+#   # View Prometheus metrics directly
+#   kubectl port-forward svc/prometheus 9090:9090 -n monitoring
+#   # Then query in browser: http://localhost:9090
+# =============================================================================
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: liberty-success-rate
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: analysis
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "Validates HTTP success rate and latency for Liberty canary deployments"
+spec:
+  # ---------------------------------------------------------------------------
+  # Template Arguments
+  # ---------------------------------------------------------------------------
+  # Arguments can be passed from the Rollout spec to customize analysis.
+  args:
+    - name: service-name
+      # Default to canary service, can be overridden in Rollout spec
+      value: liberty-canary
+
+  # ---------------------------------------------------------------------------
+  # Metrics Configuration
+  # ---------------------------------------------------------------------------
+  metrics:
+    # =========================================================================
+    # Metric 1: HTTP Success Rate
+    # =========================================================================
+    # Calculates the percentage of successful HTTP requests (non-5xx).
+    # Target: > 95% success rate
+    #
+    # Query Logic:
+    #   - Numerator: requests with status code < 500 (successful)
+    #   - Denominator: total requests
+    #   - Result: success rate as a decimal (0.0 to 1.0)
+    #
+    # Liberty uses MicroProfile Metrics which exposes metrics in Prometheus
+    # format. The metric names follow the pattern:
+    #   - http_server_requests_total (counter) with labels: method, status, uri
+    #   - http_server_requests_seconds (histogram) for latency
+    #
+    # If using default JAX-RS metrics:
+    #   - base_REST_request_total (counter)
+    #   - base_REST_request_elapsedTime_seconds (timer)
+    # =========================================================================
+    - name: success-rate
+      # Prometheus query interval
+      interval: 30s
+      # Number of successful measurements required to pass
+      successCondition: result[0] >= 0.95
+      # Number of failed measurements to trigger failure
+      failureCondition: result[0] < 0.90
+      # Limit consecutive errors before failing analysis
+      failureLimit: 3
+      # Continue analysis even if this metric fails (for debugging)
+      # Set to false in production for strict validation
+      inconclusiveLimit: 3
+      provider:
+        prometheus:
+          # Prometheus server address
+          # Adjust based on your monitoring namespace
+          address: http://prometheus-server.monitoring.svc.cluster.local:9090
+          query: |
+            sum(
+              rate(
+                http_server_requests_total{
+                  kubernetes_service_name="{{ args.service-name }}",
+                  status!~"5.."
+                }[5m]
+              )
+            )
+            /
+            sum(
+              rate(
+                http_server_requests_total{
+                  kubernetes_service_name="{{ args.service-name }}"
+                }[5m]
+              )
+            )
+
+    # =========================================================================
+    # Metric 2: p95 Latency
+    # =========================================================================
+    # Calculates the 95th percentile response time.
+    # Target: < 500ms (0.5 seconds)
+    #
+    # Query Logic:
+    #   - Uses histogram_quantile to calculate p95
+    #   - Buckets from http_server_requests_seconds_bucket
+    #   - Result: latency in seconds
+    #
+    # Note: The histogram_quantile function requires properly bucketed
+    # histogram metrics. If your metrics use different naming, adjust
+    # the metric name accordingly.
+    # =========================================================================
+    - name: latency-p95
+      interval: 30s
+      # Success if p95 latency is below 500ms (0.5 seconds)
+      successCondition: result[0] < 0.5
+      # Fail if p95 latency exceeds 750ms (0.75 seconds)
+      failureCondition: result[0] > 0.75
+      failureLimit: 3
+      inconclusiveLimit: 3
+      provider:
+        prometheus:
+          address: http://prometheus-server.monitoring.svc.cluster.local:9090
+          query: |
+            histogram_quantile(
+              0.95,
+              sum(
+                rate(
+                  http_server_requests_seconds_bucket{
+                    kubernetes_service_name="{{ args.service-name }}"
+                  }[5m]
+                )
+              ) by (le)
+            )
+
+---
+# =============================================================================
+# Alternative Analysis Template: MicroProfile Metrics
+# =============================================================================
+# Use this template if Liberty is configured with MicroProfile Metrics
+# which exports metrics in a different format.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: liberty-microprofile-analysis
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: analysis
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "Analysis template for Liberty with MicroProfile Metrics format"
+spec:
+  args:
+    - name: service-name
+      value: liberty-canary
+    - name: namespace
+      value: default
+
+  metrics:
+    # =========================================================================
+    # MicroProfile REST Request Success Rate
+    # =========================================================================
+    # Uses base_REST_request_total metric from MicroProfile Metrics.
+    # This metric includes class and method labels for JAX-RS endpoints.
+    # =========================================================================
+    - name: mp-success-rate
+      interval: 30s
+      successCondition: result[0] >= 0.95
+      failureCondition: result[0] < 0.90
+      failureLimit: 3
+      inconclusiveLimit: 3
+      provider:
+        prometheus:
+          address: http://prometheus-server.monitoring.svc.cluster.local:9090
+          query: |
+            (
+              sum(
+                rate(
+                  base_REST_request_total{
+                    namespace="{{ args.namespace }}",
+                    service="{{ args.service-name }}"
+                  }[5m]
+                )
+              )
+              -
+              sum(
+                rate(
+                  base_REST_request_unmappedException_total{
+                    namespace="{{ args.namespace }}",
+                    service="{{ args.service-name }}"
+                  }[5m]
+                ) or vector(0)
+              )
+            )
+            /
+            sum(
+              rate(
+                base_REST_request_total{
+                  namespace="{{ args.namespace }}",
+                  service="{{ args.service-name }}"
+                }[5m]
+              )
+            )
+
+    # =========================================================================
+    # MicroProfile REST Request Latency (Mean)
+    # =========================================================================
+    # Uses base_REST_request_elapsedTime_seconds metric.
+    # MicroProfile Metrics exposes this as a timer (total time / count).
+    # =========================================================================
+    - name: mp-latency-mean
+      interval: 30s
+      # Mean latency should be under 200ms for healthy service
+      successCondition: result[0] < 0.2
+      failureCondition: result[0] > 0.4
+      failureLimit: 3
+      inconclusiveLimit: 3
+      provider:
+        prometheus:
+          address: http://prometheus-server.monitoring.svc.cluster.local:9090
+          query: |
+            sum(
+              rate(
+                base_REST_request_elapsedTime_seconds_sum{
+                  namespace="{{ args.namespace }}",
+                  service="{{ args.service-name }}"
+                }[5m]
+              )
+            )
+            /
+            sum(
+              rate(
+                base_REST_request_elapsedTime_seconds_count{
+                  namespace="{{ args.namespace }}",
+                  service="{{ args.service-name }}"
+                }[5m]
+              )
+            )
+
+---
+# =============================================================================
+# Composite Analysis Template: Full Health Check
+# =============================================================================
+# Comprehensive analysis that combines success rate, latency, and error
+# budget checks for thorough canary validation.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: liberty-full-analysis
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: analysis
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "Comprehensive analysis template with success rate, latency, and availability checks"
+spec:
+  args:
+    - name: service-name
+      value: liberty-canary
+    - name: success-rate-threshold
+      value: "0.95"
+    - name: latency-threshold-ms
+      value: "500"
+
+  metrics:
+    # =========================================================================
+    # HTTP Success Rate (>95%)
+    # =========================================================================
+    - name: http-success-rate
+      interval: 30s
+      successCondition: result[0] >= {{ args.success-rate-threshold }}
+      failureCondition: result[0] < 0.90
+      failureLimit: 3
+      inconclusiveLimit: 5
+      provider:
+        prometheus:
+          address: http://prometheus-server.monitoring.svc.cluster.local:9090
+          query: |
+            sum(
+              rate(
+                http_server_requests_total{
+                  kubernetes_service_name="{{ args.service-name }}",
+                  status!~"5.."
+                }[5m]
+              )
+            )
+            /
+            sum(
+              rate(
+                http_server_requests_total{
+                  kubernetes_service_name="{{ args.service-name }}"
+                }[5m]
+              )
+            )
+
+    # =========================================================================
+    # p95 Latency (<500ms)
+    # =========================================================================
+    - name: http-latency-p95
+      interval: 30s
+      # Convert ms threshold to seconds for comparison
+      successCondition: result[0] < ({{ args.latency-threshold-ms }} / 1000)
+      failureCondition: result[0] > 0.75
+      failureLimit: 3
+      inconclusiveLimit: 5
+      provider:
+        prometheus:
+          address: http://prometheus-server.monitoring.svc.cluster.local:9090
+          query: |
+            histogram_quantile(
+              0.95,
+              sum(
+                rate(
+                  http_server_requests_seconds_bucket{
+                    kubernetes_service_name="{{ args.service-name }}"
+                  }[5m]
+                )
+              ) by (le)
+            )
+
+    # =========================================================================
+    # Error Rate (5xx errors)
+    # =========================================================================
+    # Additional check for server errors specifically.
+    # Fails if error rate exceeds 5%.
+    # =========================================================================
+    - name: error-rate
+      interval: 30s
+      successCondition: result[0] <= 0.05
+      failureCondition: result[0] > 0.10
+      failureLimit: 3
+      inconclusiveLimit: 5
+      provider:
+        prometheus:
+          address: http://prometheus-server.monitoring.svc.cluster.local:9090
+          query: |
+            sum(
+              rate(
+                http_server_requests_total{
+                  kubernetes_service_name="{{ args.service-name }}",
+                  status=~"5.."
+                }[5m]
+              )
+            )
+            /
+            sum(
+              rate(
+                http_server_requests_total{
+                  kubernetes_service_name="{{ args.service-name }}"
+                }[5m]
+              )
+            )
+
+    # =========================================================================
+    # Pod Availability
+    # =========================================================================
+    # Ensures canary pods are running and ready.
+    # Fails if available pods drop below expected count.
+    # =========================================================================
+    - name: pod-availability
+      interval: 30s
+      # At least 1 pod should be ready during canary
+      successCondition: result[0] >= 1
+      failureCondition: result[0] < 1
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus-server.monitoring.svc.cluster.local:9090
+          query: |
+            kube_deployment_status_replicas_available{
+              deployment="{{ args.service-name }}"
+            }
+            or
+            kube_replicaset_status_ready_replicas{
+              replicaset=~"liberty-app-.*"
+            }

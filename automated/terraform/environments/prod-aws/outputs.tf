@@ -91,6 +91,41 @@ output "db_credentials_secret_arn" {
 }
 
 # -----------------------------------------------------------------------------
+# RDS Read Replica Outputs
+# -----------------------------------------------------------------------------
+output "db_replica_endpoint" {
+  description = "RDS PostgreSQL read replica endpoint (hostname:port)"
+  value       = var.db_create_read_replica ? aws_db_instance.replica[0].endpoint : null
+}
+
+output "db_replica_address" {
+  description = "RDS PostgreSQL read replica address (hostname only)"
+  value       = var.db_create_read_replica ? aws_db_instance.replica[0].address : null
+}
+
+output "db_replica_arn" {
+  description = "ARN of the RDS read replica"
+  value       = var.db_create_read_replica ? aws_db_instance.replica[0].arn : null
+}
+
+output "db_replica_configuration" {
+  description = "RDS read replica configuration summary"
+  value = var.db_create_read_replica ? {
+    enabled              = true
+    endpoint             = aws_db_instance.replica[0].endpoint
+    address              = aws_db_instance.replica[0].address
+    instance_class       = aws_db_instance.replica[0].instance_class
+    performance_insights = true
+    source_db            = aws_db_instance.main.identifier
+    promotion_tier       = "Can be promoted to standalone primary"
+    use_case             = "Read scaling and disaster recovery"
+    } : {
+    enabled = false
+    message = "RDS read replica is disabled. Set db_create_read_replica = true to enable disaster recovery."
+  }
+}
+
+# -----------------------------------------------------------------------------
 # RDS Proxy Outputs
 # -----------------------------------------------------------------------------
 output "rds_proxy_endpoint" {
@@ -111,13 +146,13 @@ output "rds_proxy_read_endpoint" {
 output "rds_proxy_configuration" {
   description = "RDS Proxy configuration summary"
   value = var.enable_rds_proxy ? {
-    enabled                   = true
-    endpoint                  = aws_db_proxy.main[0].endpoint
-    read_endpoint             = var.enable_rds_proxy_read_endpoint ? aws_db_proxy_endpoint.read_only[0].endpoint : null
-    iam_auth_required         = var.rds_proxy_require_iam
-    idle_timeout_seconds      = var.rds_proxy_idle_timeout
-    max_connections_percent   = var.rds_proxy_max_connections_percent
-    tls_required              = true
+    enabled                 = true
+    endpoint                = aws_db_proxy.main[0].endpoint
+    read_endpoint           = var.enable_rds_proxy_read_endpoint ? aws_db_proxy_endpoint.read_only[0].endpoint : null
+    iam_auth_required       = var.rds_proxy_require_iam
+    idle_timeout_seconds    = var.rds_proxy_idle_timeout
+    max_connections_percent = var.rds_proxy_max_connections_percent
+    tls_required            = true
     } : {
     enabled = false
     message = "RDS Proxy is disabled. Set enable_rds_proxy = true to enable connection pooling and IAM authentication."
@@ -199,6 +234,35 @@ output "ecr_push_commands" {
     podman push ${aws_ecr_repository.liberty.repository_url}:latest
 
   EOT
+}
+
+# -----------------------------------------------------------------------------
+# ECR Cross-Region Replication Outputs
+# -----------------------------------------------------------------------------
+output "ecr_dr_repository_url" {
+  description = "URL of the ECR repository in the DR region for Liberty images"
+  value       = var.ecr_replication_enabled ? aws_ecr_repository.liberty_dr[0].repository_url : null
+}
+
+output "ecr_dr_repository_arn" {
+  description = "ARN of the ECR repository in the DR region"
+  value       = var.ecr_replication_enabled ? aws_ecr_repository.liberty_dr[0].arn : null
+}
+
+output "ecr_replication_configuration" {
+  description = "ECR cross-region replication configuration summary"
+  value = var.ecr_replication_enabled ? {
+    enabled            = true
+    primary_region     = data.aws_region.current.name
+    primary_repository = aws_ecr_repository.liberty.repository_url
+    dr_region          = var.ecr_replication_region
+    dr_repository      = aws_ecr_repository.liberty_dr[0].repository_url
+    replication_filter = "${local.name_prefix}-liberty"
+    auto_sync          = "Images are automatically replicated on push"
+    } : {
+    enabled = false
+    message = "ECR cross-region replication is disabled. Set ecr_replication_enabled = true to enable disaster recovery for container images."
+  }
 }
 
 # -----------------------------------------------------------------------------

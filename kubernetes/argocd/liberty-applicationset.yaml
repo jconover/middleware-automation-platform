@@ -1,0 +1,146 @@
+---
+# ArgoCD ApplicationSet for multi-environment Liberty deployment
+# Generates Applications for local-homelab and prod overlays using generators
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: liberty-environments
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: applicationset
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    description: "ApplicationSet generating Liberty Applications for multiple environments"
+spec:
+  # Generator configuration - List generator for explicit environment definition
+  generators:
+    - list:
+        elements:
+          # Local Homelab environment (Beelink K8s cluster)
+          - name: local-homelab
+            environment: local-homelab
+            namespace: liberty
+            overlayPath: kubernetes/overlays/local-homelab
+            cluster: https://kubernetes.default.svc
+            autoSync: "true"
+            prune: "true"
+            selfHeal: "true"
+            replicas: "2"
+
+          # Production environment (for Kubernetes-based prod, not AWS ECS)
+          - name: prod
+            environment: production
+            namespace: liberty-prod
+            overlayPath: kubernetes/overlays/prod
+            cluster: https://kubernetes.default.svc
+            autoSync: "false"
+            prune: "false"
+            selfHeal: "true"
+            replicas: "3"
+
+  # Application template - generates Application CRs from generator elements
+  template:
+    metadata:
+      # Application name includes environment for uniqueness
+      name: "liberty-{{name}}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/name: liberty
+        app.kubernetes.io/instance: "liberty-{{name}}"
+        app.kubernetes.io/component: application-server
+        app.kubernetes.io/part-of: middleware-platform
+        app.kubernetes.io/managed-by: argocd
+        environment: "{{environment}}"
+      annotations:
+        description: "Liberty application for {{environment}} environment"
+        notifications.argoproj.io/subscribe.on-sync-succeeded.slack: argocd-notifications
+        notifications.argoproj.io/subscribe.on-sync-failed.slack: argocd-notifications
+        notifications.argoproj.io/subscribe.on-health-degraded.slack: argocd-notifications
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+
+      # Source configuration
+      source:
+        # Update this URL to match your Git repository
+        repoURL: https://github.com/jconover/middleware-automation-platform.git
+        targetRevision: main
+        path: "{{overlayPath}}"
+        kustomize:
+          commonLabels:
+            argocd.argoproj.io/managed-by: argocd
+            argocd.argoproj.io/environment: "{{environment}}"
+          commonAnnotations:
+            argocd.argoproj.io/tracking-id: "liberty-{{name}}"
+
+      # Destination configuration
+      destination:
+        server: "{{cluster}}"
+        namespace: "{{namespace}}"
+
+      # Sync policy - varies by environment
+      # Note: prune and selfHeal are set to true for all environments
+      # For production manual sync, disable automated section entirely via gotemplate
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - ApplyOutOfSyncOnly=true
+          - Validate=true
+          - RespectIgnoreDifferences=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+
+      # Revision history for rollback capability
+      revisionHistoryLimit: 10
+
+      # Ignore expected differences
+      ignoreDifferences:
+        - group: autoscaling
+          kind: HorizontalPodAutoscaler
+          jsonPointers:
+            - /status
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /metadata/annotations/deployment.kubernetes.io~1revision
+        - group: ""
+          kind: Service
+          jsonPointers:
+            - /spec/clusterIP
+            - /spec/clusterIPs
+
+  # Sync policy for ApplicationSet itself
+  syncPolicy:
+    # Preserve resources if generator element is removed (safety)
+    preserveResourcesOnDeletion: true
+
+  # Strategy for handling Application updates
+  strategy:
+    type: RollingSync
+    rollingSync:
+      steps:
+        # Sync local-homelab first (canary environment)
+        - matchExpressions:
+            - key: environment
+              operator: In
+              values:
+                - local-homelab
+        # Then sync production after local-homelab succeeds
+        - matchExpressions:
+            - key: environment
+              operator: In
+              values:
+                - production

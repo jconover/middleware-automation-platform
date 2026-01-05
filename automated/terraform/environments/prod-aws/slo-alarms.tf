@@ -51,7 +51,7 @@ resource "aws_cloudwatch_metric_alarm" "slo_availability_critical" {
   alarm_name          = "${local.name_prefix}-slo-availability-critical"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  threshold           = 0.72  # 14.4 * 0.05% = 0.72%
+  threshold           = 0.72 # 14.4 * 0.05% = 0.72%
   alarm_description   = <<-EOT
     CRITICAL: Liberty availability SLO burn rate is 14.4x - error budget exhaustion in 2 hours.
     At this rate, the entire monthly error budget (0.05%) will be exhausted in approximately 2 hours.
@@ -115,8 +115,8 @@ resource "aws_cloudwatch_metric_alarm" "slo_availability_warning" {
 
   alarm_name          = "${local.name_prefix}-slo-availability-warning"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 6  # 30 minutes (6 x 5-min periods)
-  threshold           = 0.3  # 6 * 0.05% = 0.3%
+  evaluation_periods  = 6   # 30 minutes (6 x 5-min periods)
+  threshold           = 0.3 # 6 * 0.05% = 0.3%
   alarm_description   = <<-EOT
     WARNING: Liberty availability SLO burn rate is 6x - error budget exhaustion in 5 days.
     Investigate degraded performance or partial outages.
@@ -189,7 +189,7 @@ resource "aws_cloudwatch_metric_alarm" "slo_latency_p95_critical" {
   namespace           = "AWS/ApplicationELB"
   period              = 300
   extended_statistic  = "p95"
-  threshold           = 0.5  # 500ms in seconds
+  threshold           = 0.5 # 500ms in seconds
   alarm_description   = <<-EOT
     CRITICAL: Liberty p95 latency exceeds 500ms SLO target.
     More than 5% of users are experiencing slow responses.
@@ -227,7 +227,7 @@ resource "aws_cloudwatch_metric_alarm" "slo_latency_p95_warning" {
   namespace           = "AWS/ApplicationELB"
   period              = 300
   extended_statistic  = "p95"
-  threshold           = 0.4  # 400ms - approaching threshold
+  threshold           = 0.4 # 400ms - approaching threshold
   alarm_description   = <<-EOT
     WARNING: Liberty p95 latency is 400ms, approaching 500ms SLO threshold.
     Investigate performance issues before SLO breach.
@@ -265,7 +265,7 @@ resource "aws_cloudwatch_metric_alarm" "slo_latency_p99_critical" {
   namespace           = "AWS/ApplicationELB"
   period              = 300
   extended_statistic  = "p99"
-  threshold           = 2  # 2 seconds
+  threshold           = 2 # 2 seconds
   alarm_description   = <<-EOT
     CRITICAL: Liberty p99 latency exceeds 2 seconds.
     1% of users are experiencing unacceptably slow responses.
@@ -303,7 +303,7 @@ resource "aws_cloudwatch_metric_alarm" "slo_error_rate_breach" {
   alarm_name          = "${local.name_prefix}-slo-error-rate-breach"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  threshold           = 0.5  # 0.5%
+  threshold           = 0.5 # 0.5%
   alarm_description   = <<-EOT
     CRITICAL: Liberty error rate exceeds 0.5% SLO target.
     Immediate investigation required. Check application logs, downstream dependencies, and resource utilization.
@@ -367,7 +367,7 @@ resource "aws_cloudwatch_metric_alarm" "slo_error_rate_warning" {
   alarm_name          = "${local.name_prefix}-slo-error-rate-warning"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  threshold           = 0.3  # 0.3% - approaching 0.5% threshold
+  threshold           = 0.3 # 0.3% - approaching 0.5% threshold
   alarm_description   = <<-EOT
     WARNING: Liberty error rate is approaching 0.5% SLO threshold.
     Investigate the source of errors to prevent SLO breach.

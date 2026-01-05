@@ -1,0 +1,559 @@
+# =============================================================================
+# Argo Rollouts: Liberty Canary Deployment
+# =============================================================================
+# Progressive delivery configuration for Liberty application using Argo Rollouts.
+# Provides automated canary analysis with incremental traffic shifting.
+#
+# Canary Strategy:
+#   - Step 1: 5% traffic  -> Pause 5m + analysis (early detection of critical issues)
+#   - Step 2: 25% traffic -> Pause 5m + analysis (broader validation)
+#   - Step 3: 50% traffic -> Pause 5m + analysis (significant traffic exposure)
+#   - Step 4: 100% traffic (full promotion, analysis complete)
+#
+# Auto-Promotion:
+#   - Analysis must pass at each step for automatic promotion
+#   - If analysis fails, rollout automatically aborts and reverts to stable
+#   - Manual promotion available via: kubectl argo rollouts promote liberty-app
+#
+# Prerequisites:
+#   - Argo Rollouts controller installed:
+#       kubectl create namespace argo-rollouts
+#       kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+#   - Prometheus collecting Liberty metrics
+#   - ServiceMonitor for Liberty metrics scraping
+#
+# Migration from Deployment to Rollout:
+# --------------------------------------
+# 1. Ensure Argo Rollouts controller is running:
+#      kubectl get pods -n argo-rollouts
+#
+# 2. Scale down the existing Deployment to 0 replicas:
+#      kubectl scale deployment liberty-app --replicas=0
+#
+# 3. Apply the Rollout resource:
+#      kubectl apply -f liberty-rollout.yaml
+#
+# 4. Verify the Rollout is managing pods:
+#      kubectl argo rollouts get rollout liberty-app --watch
+#
+# 5. (Optional) Delete the old Deployment after successful migration:
+#      kubectl delete deployment liberty-app
+#
+# Monitoring Rollouts:
+#   kubectl argo rollouts get rollout liberty-app --watch
+#   kubectl argo rollouts dashboard
+#
+# Manual Operations:
+#   Promote:   kubectl argo rollouts promote liberty-app
+#   Abort:     kubectl argo rollouts abort liberty-app
+#   Retry:     kubectl argo rollouts retry rollout liberty-app
+#   Rollback:  kubectl argo rollouts undo liberty-app
+# =============================================================================
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: liberty-app
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/managed-by: argo-rollouts
+  annotations:
+    description: "Open Liberty application with Argo Rollouts canary deployment"
+    security.kubernetes.io/pod-security-standards: restricted
+spec:
+  # ---------------------------------------------------------------------------
+  # Replica Configuration
+  # ---------------------------------------------------------------------------
+  # Number of desired pods. The Rollout controller manages both stable and
+  # canary ReplicaSets to achieve the desired replica count during rollouts.
+  replicas: 3
+  revisionHistoryLimit: 5
+
+  # ---------------------------------------------------------------------------
+  # Pod Selector
+  # ---------------------------------------------------------------------------
+  selector:
+    matchLabels:
+      app: liberty
+
+  # ---------------------------------------------------------------------------
+  # Canary Deployment Strategy
+  # ---------------------------------------------------------------------------
+  strategy:
+    canary:
+      # -----------------------------------------------------------------------
+      # Canary Service Configuration
+      # -----------------------------------------------------------------------
+      # The canary service routes traffic to canary pods during rollout.
+      # This enables traffic splitting at the service level.
+      canaryService: liberty-canary
+      stableService: liberty-service
+
+      # -----------------------------------------------------------------------
+      # Traffic Routing (Optional: Requires Ingress Controller Support)
+      # -----------------------------------------------------------------------
+      # For advanced traffic routing with nginx ingress controller.
+      # Uncomment if using nginx-ingress with canary annotations.
+      # trafficRouting:
+      #   nginx:
+      #     stableIngress: liberty-ingress
+      #     annotationPrefix: nginx.ingress.kubernetes.io
+
+      # -----------------------------------------------------------------------
+      # Canary Steps
+      # -----------------------------------------------------------------------
+      # Progressive traffic shifting with automated analysis at each step.
+      # Each step validates the canary before proceeding to the next level.
+      steps:
+        # Step 1: Minimal traffic exposure (5%)
+        # Detects critical failures early with minimal blast radius
+        - setWeight: 5
+        - pause:
+            duration: 5m
+        - analysis:
+            templates:
+              - templateName: liberty-success-rate
+            args:
+              - name: service-name
+                value: liberty-canary
+
+        # Step 2: Low traffic exposure (25%)
+        # Validates with broader traffic sample
+        - setWeight: 25
+        - pause:
+            duration: 5m
+        - analysis:
+            templates:
+              - templateName: liberty-success-rate
+            args:
+              - name: service-name
+                value: liberty-canary
+
+        # Step 3: Medium traffic exposure (50%)
+        # Significant traffic exposure before full promotion
+        - setWeight: 50
+        - pause:
+            duration: 5m
+        - analysis:
+            templates:
+              - templateName: liberty-success-rate
+            args:
+              - name: service-name
+                value: liberty-canary
+
+        # Step 4: Full promotion (100%)
+        # Canary becomes the new stable version
+        - setWeight: 100
+
+      # -----------------------------------------------------------------------
+      # Anti-Affinity Configuration
+      # -----------------------------------------------------------------------
+      # Ensures canary pods are distributed across different nodes
+      # for better failure isolation during rollouts.
+      antiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          weight: 100
+
+      # -----------------------------------------------------------------------
+      # Canary Metadata
+      # -----------------------------------------------------------------------
+      # Additional labels and annotations for canary pods to distinguish
+      # them from stable pods in metrics and logs.
+      canaryMetadata:
+        labels:
+          role: canary
+        annotations:
+          deployment.kubernetes.io/revision: canary
+      stableMetadata:
+        labels:
+          role: stable
+        annotations:
+          deployment.kubernetes.io/revision: stable
+
+      # -----------------------------------------------------------------------
+      # Maximum Surge and Unavailable
+      # -----------------------------------------------------------------------
+      # Controls how many pods can be created/unavailable during rollout.
+      maxSurge: "25%"
+      maxUnavailable: 0
+
+      # -----------------------------------------------------------------------
+      # Scale Down Delay
+      # -----------------------------------------------------------------------
+      # Delay before scaling down old ReplicaSet pods after successful rollout.
+      # Allows time for connections to drain gracefully.
+      scaleDownDelaySeconds: 30
+
+      # -----------------------------------------------------------------------
+      # Abort Scale Down Delay
+      # -----------------------------------------------------------------------
+      # Delay before scaling down canary pods after an abort.
+      # Allows investigation of failed canary before cleanup.
+      abortScaleDownDelaySeconds: 30
+
+  # ---------------------------------------------------------------------------
+  # Pod Template
+  # ---------------------------------------------------------------------------
+  # This template is identical to the original Deployment template,
+  # preserving all security hardening and configuration.
+  template:
+    metadata:
+      labels:
+        app: liberty
+        app.kubernetes.io/name: liberty
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: application-server
+        app.kubernetes.io/part-of: middleware-platform
+      annotations:
+        # Prometheus monitoring
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9080"
+        prometheus.io/path: "/metrics"
+        # Security annotations
+        container.apparmor.security.beta.kubernetes.io/liberty: runtime/default
+        # OpenTelemetry auto-instrumentation annotation
+        instrumentation.opentelemetry.io/inject-java: "tracing/liberty-instrumentation"
+    spec:
+      # Pod-level security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Prevent pods from being scheduled on the same node
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: liberty
+                topologyKey: kubernetes.io/hostname
+
+      # Distribute pods across availability zones and nodes
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: liberty
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: liberty
+
+      # Service account with minimal permissions
+      serviceAccountName: liberty-app
+      automountServiceAccountToken: false
+
+      # DNS policy for security
+      dnsPolicy: ClusterFirst
+
+      # Graceful termination
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        - name: liberty
+          image: docker.io/jconover/liberty-app:1.0.0
+          imagePullPolicy: Always
+
+          # Container-level security context (defense in depth)
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+
+          ports:
+            - name: http
+              containerPort: 9080
+              protocol: TCP
+            - name: https
+              containerPort: 9443
+              protocol: TCP
+
+          env:
+            - name: WLP_LOGGING_CONSOLE_FORMAT
+              value: "JSON"
+            - name: WLP_LOGGING_CONSOLE_LOGLEVEL
+              value: "info"
+            # Database Credentials (from liberty-secrets managed by ESO)
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: db.host
+                  optional: true
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: db.port
+                  optional: true
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: db.name
+                  optional: true
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: db.username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: db.password
+            # Redis Credentials (from liberty-secrets managed by ESO)
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: redis.host
+                  optional: true
+            - name: REDIS_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: redis.port
+                  optional: true
+            - name: REDIS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: liberty-secrets
+                  key: redis.auth
+                  optional: true
+            # JVM security settings
+            - name: JVM_ARGS
+              value: "-XX:+UseContainerSupport -Dcom.ibm.ws.logging.console.format=json"
+            # OpenTelemetry Configuration for Distributed Tracing
+            - name: OTEL_SERVICE_NAME
+              value: "liberty-app"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=middleware-platform,deployment.environment=local-kubernetes"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.tracing.svc.cluster.local:4317"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+            - name: OTEL_PROPAGATORS
+              value: "tracecontext,baggage"
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+              ephemeral-storage: "256Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+              ephemeral-storage: "1Gi"
+
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+            successThreshold: 1
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+              scheme: HTTP
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+              scheme: HTTP
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          # Graceful shutdown: allow load balancer to drain connections before SIGTERM
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 15
+
+          volumeMounts:
+            - name: config
+              mountPath: /config/server.xml
+              subPath: server.xml
+              readOnly: true
+            # Writable directories required by Liberty
+            - name: liberty-logs
+              mountPath: /logs
+            - name: liberty-tmp
+              mountPath: /tmp
+            - name: liberty-output
+              mountPath: /opt/ol/wlp/output/defaultServer
+
+      volumes:
+        - name: config
+          configMap:
+            name: liberty-config
+            defaultMode: 0440
+        # EmptyDir volumes for writable paths (ephemeral)
+        - name: liberty-logs
+          emptyDir:
+            sizeLimit: 500Mi
+        - name: liberty-tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: liberty-output
+          emptyDir:
+            sizeLimit: 512Mi
+
+---
+# =============================================================================
+# Canary Service
+# =============================================================================
+# Routes traffic exclusively to canary pods during rollout.
+# Argo Rollouts automatically manages the selector to target canary pods.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: liberty-canary
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+    role: canary
+  annotations:
+    description: "Liberty canary service for Argo Rollouts traffic splitting"
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 9080
+      targetPort: http
+      protocol: TCP
+    - name: https
+      port: 9443
+      targetPort: https
+      protocol: TCP
+  # Selector is managed by Argo Rollouts during canary deployment
+  selector:
+    app: liberty
+
+---
+# =============================================================================
+# Rollout-Aware HPA
+# =============================================================================
+# HorizontalPodAutoscaler configured to work with Argo Rollouts.
+# Note: When using Argo Rollouts, the HPA should target the Rollout, not Deployment.
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: liberty-rollout-hpa
+  labels:
+    app: liberty
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    description: "HPA for Liberty Rollout with custom metrics support"
+spec:
+  scaleTargetRef:
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    name: liberty-app
+
+  minReplicas: 3
+  maxReplicas: 10
+
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+    # Custom metrics (requires prometheus-adapter)
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "1000"
+
+    - type: Pods
+      pods:
+        metric:
+          name: http_request_duration_seconds_p95
+        target:
+          type: AverageValue
+          averageValue: "500m"
+
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 120
+      selectPolicy: Min
+
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max

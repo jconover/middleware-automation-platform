@@ -102,6 +102,54 @@ resource "aws_db_instance" "main" {
 }
 
 # -----------------------------------------------------------------------------
+# RDS Read Replica (Disaster Recovery)
+# -----------------------------------------------------------------------------
+resource "aws_db_instance" "replica" {
+  count = var.db_create_read_replica ? 1 : 0
+
+  identifier = "${local.name_prefix}-postgres-replica"
+
+  # Source database for replication
+  replicate_source_db = aws_db_instance.main.identifier
+
+  # Instance configuration (inherits engine, storage settings from source)
+  instance_class = var.db_replica_instance_class != "" ? var.db_replica_instance_class : var.db_instance_class
+
+  # Storage (inherited from source, but can enable autoscaling)
+  max_allocated_storage = var.db_allocated_storage * 2
+
+  # Performance Insights enabled for replica monitoring
+  performance_insights_enabled          = true
+  performance_insights_retention_period = 7
+
+  # Enhanced Monitoring (uses same role as primary)
+  monitoring_interval = 60
+  monitoring_role_arn = aws_iam_role.rds_monitoring.arn
+
+  # Network settings
+  # Note: For read replica, we don't specify db_subnet_group_name or vpc_security_group_ids
+  # as they are inherited from the source. However, we can override if needed.
+  vpc_security_group_ids = [aws_security_group.db.id]
+
+  # Replica-specific settings
+  publicly_accessible = false
+  skip_final_snapshot = true # Replicas don't need final snapshot
+
+  # Backup configuration (replicas can have independent backups)
+  backup_retention_period = 0 # Set to 0 for replica, primary handles backups
+
+  # Auto minor version upgrade
+  auto_minor_version_upgrade = true
+
+  tags = {
+    Name        = "${local.name_prefix}-postgres-replica"
+    Role        = "read-replica"
+    ReplicaOf   = aws_db_instance.main.identifier
+    Environment = var.environment
+  }
+}
+
+# -----------------------------------------------------------------------------
 # RDS Enhanced Monitoring Role
 # -----------------------------------------------------------------------------
 resource "aws_iam_role" "rds_monitoring" {

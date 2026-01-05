@@ -1,0 +1,109 @@
+---
+# ArgoCD Application for Liberty deployment to local-homelab
+# GitOps configuration with auto-sync and self-healing
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: liberty-local-homelab
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: liberty
+    app.kubernetes.io/instance: liberty-local-homelab
+    app.kubernetes.io/component: application-server
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/managed-by: argocd
+    environment: local-homelab
+  annotations:
+    description: "Liberty application deployed to local-homelab Kubernetes cluster"
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: argocd-notifications
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: argocd-notifications
+  # Finalizer ensures proper cleanup when Application is deleted
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Project reference - using default project
+  # For enterprise, create dedicated AppProject with RBAC
+  project: default
+
+  # Source repository configuration
+  source:
+    # Git repository URL - update to match your repository
+    repoURL: https://github.com/jconover/middleware-automation-platform.git
+    # Target revision - can be branch, tag, or commit SHA
+    targetRevision: main
+    # Path to Kustomize overlay for local-homelab environment
+    path: kubernetes/overlays/local-homelab
+    # Kustomize-specific configuration
+    kustomize:
+      # Common labels to add to all resources
+      commonLabels:
+        argocd.argoproj.io/managed-by: argocd
+      # Common annotations
+      commonAnnotations:
+        argocd.argoproj.io/tracking-id: liberty-local-homelab
+
+  # Destination cluster and namespace
+  destination:
+    # In-cluster deployment (ArgoCD running in same cluster)
+    # For external clusters, use the cluster URL or name from ArgoCD cluster secrets
+    server: https://kubernetes.default.svc
+    # Target namespace for Liberty deployment
+    namespace: liberty
+
+  # Sync policy configuration
+  syncPolicy:
+    # Automated sync configuration
+    automated:
+      # Enable automatic pruning of resources not in Git
+      prune: true
+      # Enable self-healing - revert manual changes to match Git state
+      selfHeal: true
+      # Allow sync when only metadata differs (annotations, labels)
+      allowEmpty: false
+    # Sync options
+    syncOptions:
+      # Create namespace if it doesn't exist
+      - CreateNamespace=true
+      # Prune resources marked as deleted
+      - PrunePropagationPolicy=foreground
+      # Wait for pruned resources to be deleted
+      - PruneLast=true
+      # Apply out-of-sync resources only (performance optimization)
+      - ApplyOutOfSyncOnly=true
+      # Validate resources before applying
+      - Validate=true
+      # Replace resources instead of patching (useful for immutable fields)
+      - RespectIgnoreDifferences=true
+      # Server-side apply for better conflict handling
+      - ServerSideApply=true
+    # Retry configuration for failed syncs
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Resource tracking method
+  # Use annotation-based tracking for better accuracy
+  revisionHistoryLimit: 10
+
+  # Health assessment configuration
+  # Custom health checks for Liberty-specific resources
+  ignoreDifferences:
+    # Ignore differences in HPA status (auto-managed by controller)
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+      jsonPointers:
+        - /status
+    # Ignore timestamp annotations added by controllers
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /metadata/annotations/deployment.kubernetes.io~1revision
+    # Ignore service cluster IP (auto-assigned)
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/clusterIP
+        - /spec/clusterIPs

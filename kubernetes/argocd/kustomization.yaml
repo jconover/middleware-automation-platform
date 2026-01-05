@@ -1,0 +1,78 @@
+---
+# Kustomize configuration for ArgoCD GitOps resources
+# Deploys ArgoCD Application and ApplicationSet CRs for Liberty management
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: argocd-liberty-gitops
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+# Common labels applied to all resources
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: middleware-platform
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+
+# Resources included in this kustomization
+resources:
+  # Namespace creation (if ArgoCD not already installed)
+  - namespace.yaml
+  # Single Application for local-homelab deployment
+  - liberty-application.yaml
+  # ApplicationSet for multi-environment deployment
+  # Note: Use either Application OR ApplicationSet, not both
+  # The ApplicationSet includes local-homelab, making liberty-application.yaml redundant
+  # Uncomment below and remove liberty-application.yaml for multi-env setup
+  # - liberty-applicationset.yaml
+
+# =============================================================================
+# USAGE INSTRUCTIONS
+# =============================================================================
+#
+# PREREQUISITE: ArgoCD must be installed in the cluster
+# Install ArgoCD:
+#   kubectl create namespace argocd
+#   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#
+# OPTION 1: Single Environment (local-homelab only)
+# -------------------------------------------------
+# Use liberty-application.yaml for deploying only to local-homelab.
+# Current configuration uses this approach.
+#
+# Apply:
+#   kubectl apply -k kubernetes/argocd/
+#
+# OPTION 2: Multi-Environment (local-homelab + prod)
+# ---------------------------------------------------
+# Use liberty-applicationset.yaml for deploying to multiple environments.
+#
+# Modify this kustomization.yaml:
+#   1. Remove liberty-application.yaml from resources
+#   2. Add liberty-applicationset.yaml to resources
+#
+# Apply:
+#   kubectl apply -k kubernetes/argocd/
+#
+# CONFIGURATION:
+# --------------
+# Before applying, update the repoURL in application files to match your
+# Git repository URL:
+#   - liberty-application.yaml: spec.source.repoURL
+#   - liberty-applicationset.yaml: spec.template.spec.source.repoURL
+#
+# VERIFY DEPLOYMENT:
+# ------------------
+#   kubectl get applications -n argocd
+#   kubectl get applicationsets -n argocd
+#   argocd app list
+#   argocd app get liberty-local-homelab
+#
+# SYNC STATUS:
+# ------------
+#   argocd app sync liberty-local-homelab
+#   argocd app wait liberty-local-homelab --health
+#
+# =============================================================================

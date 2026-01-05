@@ -19,6 +19,42 @@ resources:
   - liberty-deployment.yaml
   - liberty-hpa.yaml
   - liberty-ingress.yaml
+  # ==========================================================================
+  # Argo Rollouts for Canary Deployments (Optional)
+  # ==========================================================================
+  # Uncomment the following lines to use Argo Rollouts instead of standard
+  # Deployments. Argo Rollouts provides progressive delivery with automated
+  # canary analysis.
+  #
+  # Prerequisites:
+  #   1. Install Argo Rollouts controller:
+  #        kubectl create namespace argo-rollouts
+  #        kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+  #
+  #   2. (Optional) Install Argo Rollouts kubectl plugin:
+  #        curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+  #        chmod +x kubectl-argo-rollouts-linux-amd64
+  #        sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+  #
+  # Migration from Deployment to Rollout:
+  #   1. Ensure Argo Rollouts controller is running
+  #   2. Scale down the existing Deployment: kubectl scale deployment liberty-app --replicas=0
+  #   3. Comment out liberty-deployment.yaml and liberty-hpa.yaml below
+  #   4. Uncomment liberty-rollout.yaml and liberty-analysis-template.yaml
+  #   5. Apply: kubectl apply -k .
+  #   6. Verify: kubectl argo rollouts get rollout liberty-app --watch
+  #   7. Delete old Deployment: kubectl delete deployment liberty-app
+  #
+  # Rollback to standard Deployment:
+  #   1. Comment out liberty-rollout.yaml and liberty-analysis-template.yaml
+  #   2. Uncomment liberty-deployment.yaml and liberty-hpa.yaml
+  #   3. Delete the Rollout: kubectl delete rollout liberty-app
+  #   4. Apply: kubectl apply -k .
+  #
+  # - liberty-rollout.yaml
+  # - liberty-analysis-template.yaml
+  # ==========================================================================
+  #
   # Note: liberty-tls-secret.yaml is a template with instructions
   # TLS secrets should be created using one of these methods:
   #   1. kubectl create secret tls (see liberty-tls-secret.yaml for commands)
@@ -30,6 +66,9 @@ resources:
   # liberty-hpa.yaml provides custom metrics HPA using prometheus-adapter.
   # Requires prometheus-adapter to be deployed for request-based scaling.
   # See kubernetes/base/monitoring/prometheus-adapter/ for deployment.
+  #
+  # Note: When using Argo Rollouts, the HPA in liberty-rollout.yaml targets
+  # the Rollout resource instead of Deployment. Do not use both HPAs.
 
 # ConfigMap generator for non-sensitive application configuration
 # Note: Database and Redis connection details are now in liberty-secrets
