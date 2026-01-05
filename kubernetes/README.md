@@ -67,19 +67,19 @@ kubernetes/
 
 ### Base vs Overlays
 
-| Directory | Purpose |
-|-----------|---------|
-| `base/` | Common configuration shared across all environments. Contains the Deployment, Service, HPA, PDB, RBAC, and NetworkPolicy resources. |
+| Directory   | Purpose                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `base/`     | Common configuration shared across all environments. Contains the Deployment, Service, HPA, PDB, RBAC, and NetworkPolicy resources.  |
 | `overlays/` | Environment-specific customizations that patch the base. Each overlay adjusts replicas, resources, network CIDRs, and configuration. |
 
 ## Available Overlays
 
-| Overlay | Use Case | Replicas | Resources | Network |
-|---------|----------|----------|-----------|---------|
-| `local-homelab` | Beelink 3-node k3s cluster | 1-4 | 250m-2000m CPU, 512Mi-2Gi RAM | 192.168.68.0/24 |
-| `aws` | AWS EKS production | 2-10 | 500m-4000m CPU, 1Gi-4Gi RAM | VPC CIDR |
-| `dev` | Development/testing | 1-3 | 250m-1000m CPU, 512Mi-1Gi RAM | Inherits base |
-| `prod` | Production hardening | 3-20 | 1000m-4000m CPU, 2Gi-4Gi RAM | Inherits base |
+| Overlay         | Use Case                   | Replicas | Resources                     | Network         |
+| --------------- | -------------------------- | -------- | ----------------------------- | --------------- |
+| `local-homelab` | Beelink 3-node k3s cluster | 1-4      | 250m-2000m CPU, 512Mi-2Gi RAM | 192.168.68.0/24 |
+| `aws`           | AWS EKS production         | 2-10     | 500m-4000m CPU, 1Gi-4Gi RAM   | VPC CIDR        |
+| `dev`           | Development/testing        | 1-3      | 250m-1000m CPU, 512Mi-1Gi RAM | Inherits base   |
+| `prod`          | Production hardening       | 3-20     | 1000m-4000m CPU, 2Gi-4Gi RAM  | Inherits base   |
 
 ### When to Use Each Overlay
 
@@ -96,17 +96,20 @@ kubernetes/
 Follow this order when deploying to a new cluster:
 
 1. **Prerequisites**
+
    - [ ] Kubernetes cluster is running and accessible
    - [ ] kubectl configured with correct context
    - [ ] CNI plugin supports NetworkPolicies (Calico, Cilium, or Weave)
    - [ ] Prometheus Operator installed (for monitoring resources)
 
 2. **Create Namespace**
+
    ```bash
    kubectl create namespace liberty
    ```
 
 3. **Create Secrets**
+
    ```bash
    kubectl create secret generic liberty-secrets \
      --from-literal=db.password='YOUR_DB_PASSWORD' \
@@ -114,16 +117,19 @@ Follow this order when deploying to a new cluster:
    ```
 
 4. **Deploy Liberty Application**
+
    ```bash
    kubectl apply -k kubernetes/overlays/local-homelab/
    ```
 
 5. **Deploy Monitoring (Optional)**
+
    ```bash
    kubectl apply -k kubernetes/base/monitoring/
    ```
 
 6. **Deploy Network Policies (Optional)**
+
    ```bash
    # Apply allow policies first, then default deny
    kubectl apply -k kubernetes/base/network-policies/
@@ -218,36 +224,36 @@ kubectl delete namespace liberty
 
 The local homelab uses a 3-node Beelink cluster:
 
-| Node | IP | Role |
-|------|-----|------|
-| k8s-master-01 | 192.168.68.82 | Control Plane + Worker |
-| k8s-worker-01 | 192.168.68.86 | Worker |
-| k8s-worker-02 | 192.168.68.88 | Worker |
+| Node          | IP            | Role                   |
+| ------------- | ------------- | ---------------------- |
+| k8s-master-01 | 192.168.68.93 | Control Plane + Worker |
+| k8s-worker-01 | 192.168.68.86 | Worker                 |
+| k8s-worker-02 | 192.168.68.88 | Worker                 |
 
 ### MetalLB IP Assignments
 
-| Service | IP |
-|---------|-----|
-| Liberty | 192.168.68.200 |
-| Prometheus | 192.168.68.201 |
-| Grafana | 192.168.68.202 |
+| Service      | IP             |
+| ------------ | -------------- |
+| Liberty      | 192.168.68.200 |
+| Prometheus   | 192.168.68.201 |
+| Grafana      | 192.168.68.202 |
 | Alertmanager | 192.168.68.203 |
 
 ## Resources Included in Base
 
 The base configuration deploys these Kubernetes resources:
 
-| Resource | Name | Description |
-|----------|------|-------------|
-| Deployment | liberty-app | 3 replicas with rolling update strategy |
-| Service | liberty-service | ClusterIP service on ports 9080/9443 |
-| HorizontalPodAutoscaler | liberty-hpa | Scales 3-10 replicas based on CPU/memory |
-| PodDisruptionBudget | liberty-pdb | Maintains min 2 available pods |
-| ServiceAccount | liberty-app | Minimal privileges, no API token mounted |
-| Role/RoleBinding | liberty-app-role | Empty role (deny-all RBAC posture) |
-| NetworkPolicy | liberty-network-policy | Ingress/egress restrictions |
-| ResourceQuota | liberty-resource-quota | Namespace resource limits |
-| LimitRange | liberty-limit-range | Default container resource constraints |
+| Resource                | Name                   | Description                              |
+| ----------------------- | ---------------------- | ---------------------------------------- |
+| Deployment              | liberty-app            | 3 replicas with rolling update strategy  |
+| Service                 | liberty-service        | ClusterIP service on ports 9080/9443     |
+| HorizontalPodAutoscaler | liberty-hpa            | Scales 3-10 replicas based on CPU/memory |
+| PodDisruptionBudget     | liberty-pdb            | Maintains min 2 available pods           |
+| ServiceAccount          | liberty-app            | Minimal privileges, no API token mounted |
+| Role/RoleBinding        | liberty-app-role       | Empty role (deny-all RBAC posture)       |
+| NetworkPolicy           | liberty-network-policy | Ingress/egress restrictions              |
+| ResourceQuota           | liberty-resource-quota | Namespace resource limits                |
+| LimitRange              | liberty-limit-range    | Default container resource constraints   |
 
 ## Security Features
 

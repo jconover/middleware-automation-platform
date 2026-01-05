@@ -80,7 +80,7 @@ sudo hostnamectl set-hostname liberty-server-01
 
 # Configure /etc/hosts for cluster communication
 sudo bash -c 'cat >> /etc/hosts << EOF
-192.168.68.82  liberty-controller-01
+192.168.68.93  liberty-controller-01
 192.168.68.86  liberty-server-01
 192.168.68.88  liberty-server-02
 EOF'
@@ -1810,10 +1810,10 @@ echo "Import dashboard ID 14370 for Liberty metrics"
 | ---------------- | -------------------------------------- | ------------------- |
 | Liberty Server 1 | http://192.168.68.88:9080              | -                   |
 | Liberty Server 2 | http://192.168.68.86:9080              | -                   |
-| Admin Center     | https://192.168.68.82:9443/adminCenter | admin/adminpassword |
-| Load Balancer    | http://192.168.68.82                   | -                   |
-| Prometheus       | http://192.168.68.82:9090              | -                   |
-| Grafana          | http://192.168.68.82:3000              | admin/admin         |
+| Admin Center     | https://192.168.68.93:9443/adminCenter | admin/adminpassword |
+| Load Balancer    | http://192.168.68.93                   | -                   |
+| Prometheus       | http://192.168.68.93:9090              | -                   |
+| Grafana          | http://192.168.68.93:3000              | admin/admin         |
 
 ### Podman Demo (localhost)
 

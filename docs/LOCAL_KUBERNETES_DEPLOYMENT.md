@@ -8,13 +8,14 @@ This guide covers deploying the Middleware Automation Platform to a **multi-node
 
 This documentation targets the **Beelink Mini PC Kubernetes Lab**:
 
-| Node | Hostname | IP Address | Role | Hardware |
-|------|----------|------------|------|----------|
-| 1 | k8s-master-01 | 192.168.68.82 | Control Plane + Worker | Beelink Mini PC |
-| 2 | k8s-worker-01 | 192.168.68.86 | Worker | Beelink Mini PC |
-| 3 | k8s-worker-02 | 192.168.68.88 | Worker | Beelink Mini PC |
+| Node | Hostname      | IP Address    | Role                   | Hardware        |
+| ---- | ------------- | ------------- | ---------------------- | --------------- |
+| 1    | k8s-master-01 | 192.168.68.93 | Control Plane + Worker | Beelink Mini PC |
+| 2    | k8s-worker-01 | 192.168.68.86 | Worker                 | Beelink Mini PC |
+| 3    | k8s-worker-02 | 192.168.68.88 | Worker                 | Beelink Mini PC |
 
 The cluster uses:
+
 - **kubeadm** with containerd as the Kubernetes distribution
 - **MetalLB** for bare-metal LoadBalancer services
 - **Longhorn** for distributed persistent storage across nodes
@@ -38,7 +39,7 @@ Beelink Kubernetes Lab (192.168.68.0/24)
 Physical Nodes:
 ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
 │  k8s-master-01   │  │  k8s-worker-01   │  │  k8s-worker-02   │
-│  192.168.68.82   │  │  192.168.68.86   │  │  192.168.68.88   │
+│  192.168.68.93   │  │  192.168.68.86   │  │  192.168.68.88   │
 │  Control Plane   │  │     Worker       │  │     Worker       │
 │  + Worker        │  │                  │  │                  │
 └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
@@ -66,16 +67,16 @@ Physical Nodes:
 
 ## MetalLB IP Assignments
 
-| Service       | IP Address      | Port |
-|---------------|-----------------|------|
-| Liberty       | 192.168.68.200  | 9080 |
-| Prometheus    | 192.168.68.201  | 9090 |
-| Grafana       | 192.168.68.202  | 80   |
-| AlertManager  | 192.168.68.203  | 9093 |
-| ArgoCD        | 192.168.68.204  | 443  |
-| AWX           | 192.168.68.205  | 80   |
-| Jenkins       | 192.168.68.206  | 8080 |
-| Reserved      | 192.168.68.207-210 | - |
+| Service      | IP Address         | Port |
+| ------------ | ------------------ | ---- |
+| Liberty      | 192.168.68.200     | 9080 |
+| Prometheus   | 192.168.68.201     | 9090 |
+| Grafana      | 192.168.68.202     | 80   |
+| AlertManager | 192.168.68.203     | 9093 |
+| ArgoCD       | 192.168.68.204     | 443  |
+| AWX          | 192.168.68.205     | 80   |
+| Jenkins      | 192.168.68.206     | 8080 |
+| Reserved     | 192.168.68.207-210 | -    |
 
 ## Credential Configuration
 
@@ -134,6 +135,7 @@ podman images | grep liberty-app
 ```
 
 The Containerfile uses the official Open Liberty base image (`icr.io/appcafe/open-liberty:kernel-slim-java17-openj9-ubi`) and includes:
+
 - **server.xml** with configured features: `restfulWS-3.1`, `jsonb-3.0`, `cdi-4.0`, `mpHealth-4.0`, `mpMetrics-5.0`, `mpConfig-3.0`, `jdbc-4.3`, `ssl-1.0`
 - **jvm.options** for JVM tuning
 - Built-in health check using `/health/ready` endpoint
@@ -146,7 +148,7 @@ For the Beelink kubeadm cluster, import the image directly on each node:
 # Save the image to a tar file
 podman save liberty-app:1.0.0 -o /tmp/liberty-app.tar
 
-# Import on k8s-master-01 (192.168.68.82)
+# Import on k8s-master-01 (192.168.68.93)
 sudo ctr -n k8s.io images import /tmp/liberty-app.tar
 
 # Import on k8s-worker-01 (192.168.68.86)
@@ -213,12 +215,12 @@ kubectl apply -k kubernetes/overlays/local
 
 This creates the following resources:
 
-| Resource | Name | Description |
-|----------|------|-------------|
-| Deployment | liberty-app | 3 replicas with rolling update strategy |
-| Service | liberty-service | ClusterIP on ports 9080 (HTTP) and 9443 (HTTPS) |
-| HorizontalPodAutoscaler | liberty-hpa | Scales 3-10 replicas based on CPU |
-| PodDisruptionBudget | liberty-pdb | Minimum 2 pods during disruptions |
+| Resource                | Name            | Description                                     |
+| ----------------------- | --------------- | ----------------------------------------------- |
+| Deployment              | liberty-app     | 3 replicas with rolling update strategy         |
+| Service                 | liberty-service | ClusterIP on ports 9080 (HTTP) and 9443 (HTTPS) |
+| HorizontalPodAutoscaler | liberty-hpa     | Scales 3-10 replicas based on CPU               |
+| PodDisruptionBudget     | liberty-pdb     | Minimum 2 pods during disruptions               |
 
 #### Step 6: Verify Pods Are Running
 
@@ -234,6 +236,7 @@ kubectl logs -n liberty -l app=liberty --tail=50
 ```
 
 Expected output:
+
 ```
 NAME                          READY   STATUS    RESTARTS   AGE
 liberty-app-7d8f9b6c5-abc12   1/1     Running   0          2m
@@ -250,6 +253,7 @@ kubectl port-forward svc/liberty-service 9080:9080 -n liberty
 ```
 
 Then test endpoints:
+
 ```bash
 curl http://localhost:9080/health/ready
 curl http://localhost:9080/health/live
@@ -288,12 +292,12 @@ kubectl get svc liberty-service -n liberty
 
 #### Deployment Verification Checklist
 
-| Check | Command | Expected Result |
-|-------|---------|-----------------|
-| Pods running | `kubectl get pods -n liberty` | 3/3 Running |
-| Service exists | `kubectl get svc -n liberty` | liberty-service listed |
-| Health ready | `curl localhost:9080/health/ready` | `{"status":"UP"}` |
-| Metrics exposed | `curl localhost:9080/metrics` | Prometheus metrics |
+| Check           | Command                            | Expected Result        |
+| --------------- | ---------------------------------- | ---------------------- |
+| Pods running    | `kubectl get pods -n liberty`      | 3/3 Running            |
+| Service exists  | `kubectl get svc -n liberty`       | liberty-service listed |
+| Health ready    | `curl localhost:9080/health/ready` | `{"status":"UP"}`      |
+| Metrics exposed | `curl localhost:9080/metrics`      | Prometheus metrics     |
 
 #### Liberty Cleanup
 
@@ -310,13 +314,13 @@ This section covers deploying the NGINX Ingress Controller for external access t
 
 #### Overview
 
-| Property | Value |
-|----------|-------|
-| Namespace | `ingress-nginx` |
-| LoadBalancer IP | 192.168.68.200 |
-| HTTP Port | 80 |
-| HTTPS Port | 443 |
-| Access URL | https://liberty.local |
+| Property        | Value                 |
+| --------------- | --------------------- |
+| Namespace       | `ingress-nginx`       |
+| LoadBalancer IP | 192.168.68.200        |
+| HTTP Port       | 80                    |
+| HTTPS Port      | 443                   |
+| Access URL      | https://liberty.local |
 
 #### Step 2.1: Install NGINX Ingress Controller
 
@@ -347,6 +351,7 @@ kubectl get svc -n ingress-nginx
 ```
 
 Expected output:
+
 ```
 NAME                                 TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)
 ingress-nginx-controller             LoadBalancer   10.43.x.x      192.168.68.200   80:xxxxx/TCP,443:xxxxx/TCP
@@ -398,6 +403,7 @@ kubectl get pods -n cert-manager
 ```
 
 Expected output:
+
 ```
 NAME                                       READY   STATUS    RESTARTS   AGE
 cert-manager-xxxxxx-xxxxx                  1/1     Running   0          2m
@@ -429,6 +435,7 @@ kubectl get secret liberty-tls-secret -n liberty
 ```
 
 Expected output for certificate:
+
 ```
 NAME                  READY   SECRET               AGE
 liberty-certificate   True    liberty-tls-secret   2m
@@ -472,6 +479,7 @@ kubectl describe ingress liberty-ingress -n liberty
 ```
 
 Expected output:
+
 ```
 NAME              CLASS   HOSTS          ADDRESS          PORTS     AGE
 liberty-ingress   nginx   liberty.local  192.168.68.200   80, 443   2m
@@ -492,6 +500,7 @@ curl -k -I https://liberty.local/ | grep -E "X-Frame|X-Content-Type|Strict-Trans
 ```
 
 Expected headers:
+
 ```
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
@@ -500,18 +509,19 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
 #### Ingress Features Summary
 
-| Feature | Configuration | Description |
-|---------|--------------|-------------|
-| TLS Termination | `spec.tls` | HTTPS with certificate from secret |
-| SSL Redirect | `ssl-redirect: "true"` | Forces HTTP to HTTPS |
-| Rate Limiting | `limit-rps: "100"` | 100 requests/second per IP |
-| Connection Limit | `limit-connections: "50"` | 50 concurrent connections per IP |
-| Security Headers | `configuration-snippet` | X-Frame-Options, CSP, HSTS, etc. |
-| Strong TLS | `ssl-protocols`, `ssl-ciphers` | TLS 1.2/1.3 with strong ciphers |
+| Feature          | Configuration                  | Description                        |
+| ---------------- | ------------------------------ | ---------------------------------- |
+| TLS Termination  | `spec.tls`                     | HTTPS with certificate from secret |
+| SSL Redirect     | `ssl-redirect: "true"`         | Forces HTTP to HTTPS               |
+| Rate Limiting    | `limit-rps: "100"`             | 100 requests/second per IP         |
+| Connection Limit | `limit-connections: "50"`      | 50 concurrent connections per IP   |
+| Security Headers | `configuration-snippet`        | X-Frame-Options, CSP, HSTS, etc.   |
+| Strong TLS       | `ssl-protocols`, `ssl-ciphers` | TLS 1.2/1.3 with strong ciphers    |
 
 #### Troubleshooting Ingress
 
 **Issue: 502 Bad Gateway**
+
 ```bash
 # Check if backend pods are running
 kubectl get pods -n liberty
@@ -524,11 +534,13 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx
 ```
 
 **Issue: Certificate not trusted in browser**
+
 - For self-signed certificates, this is expected
 - Add an exception in your browser, or
 - Use cert-manager with Let's Encrypt for trusted certificates (requires public domain)
 
 **Issue: 308 Redirect Loop**
+
 ```bash
 # Check if you're accessing via HTTP but have ssl-redirect enabled
 # Solution: Use https:// in your URL
@@ -659,6 +671,7 @@ kubectl get svc -n monitoring | grep LoadBalancer
 ```
 
 Expected output:
+
 ```
 prometheus-kube-prometheus-prometheus   LoadBalancer   10.43.x.x   192.168.68.201   9090:xxxxx/TCP
 prometheus-grafana                      LoadBalancer   10.43.x.x   192.168.68.202   80:xxxxx/TCP
@@ -667,10 +680,10 @@ prometheus-kube-prometheus-alertmanager LoadBalancer   10.43.x.x   192.168.68.20
 
 #### Step 3.5: Access Monitoring Services
 
-| Service | URL | Default Credentials |
-|---------|-----|---------------------|
-| Prometheus | http://192.168.68.201:9090 | No authentication required |
-| Grafana | http://192.168.68.202:3000 | admin / admin |
+| Service      | URL                        | Default Credentials        |
+| ------------ | -------------------------- | -------------------------- |
+| Prometheus   | http://192.168.68.201:9090 | No authentication required |
+| Grafana      | http://192.168.68.202:3000 | admin / admin              |
 | AlertManager | http://192.168.68.203:9093 | No authentication required |
 
 #### Step 3.6: Configure Liberty Scrape Targets
@@ -775,14 +788,14 @@ The Grafana sidecar automatically loads dashboards from ConfigMaps with the `gra
 
 #### Liberty Dashboard Panels
 
-| Panel | Description | Key Metrics |
-|-------|-------------|-------------|
-| Healthy Tasks | Liberty instances reporting up | `up{job="liberty"} == 1` |
-| Unhealthy Tasks | Liberty instances reporting down | `up{job="liberty"} == 0` |
-| Request Rate | HTTP requests per second | `rate(servlet_request_total{mp_scope="base"}[5m])` |
-| Error Rates | 4xx and 5xx error percentages | `servlet_request_total{mp_scope="base", status=~"4.."}` |
-| Heap Usage % | JVM heap utilization | `memory_usedHeap_bytes{mp_scope="base"} / memory_maxHeap_bytes{mp_scope="base"}` |
-| Heap Memory | Used vs maximum heap bytes | `memory_usedHeap_bytes{mp_scope="base"}`, `memory_maxHeap_bytes{mp_scope="base"}` |
+| Panel           | Description                      | Key Metrics                                                                       |
+| --------------- | -------------------------------- | --------------------------------------------------------------------------------- |
+| Healthy Tasks   | Liberty instances reporting up   | `up{job="liberty"} == 1`                                                          |
+| Unhealthy Tasks | Liberty instances reporting down | `up{job="liberty"} == 0`                                                          |
+| Request Rate    | HTTP requests per second         | `rate(servlet_request_total{mp_scope="base"}[5m])`                                |
+| Error Rates     | 4xx and 5xx error percentages    | `servlet_request_total{mp_scope="base", status=~"4.."}`                           |
+| Heap Usage %    | JVM heap utilization             | `memory_usedHeap_bytes{mp_scope="base"} / memory_maxHeap_bytes{mp_scope="base"}`  |
+| Heap Memory     | Used vs maximum heap bytes       | `memory_usedHeap_bytes{mp_scope="base"}`, `memory_maxHeap_bytes{mp_scope="base"}` |
 
 ### 4. Deploy AWX
 
@@ -805,13 +818,13 @@ Jenkins provides CI/CD pipeline capabilities with dynamic Kubernetes pod agents 
 
 #### Overview
 
-| Property | Value |
-|----------|-------|
-| Namespace | `jenkins` |
-| LoadBalancer IP | 192.168.68.206 |
-| Port | 8080 |
-| Storage | 20Gi (Longhorn) |
-| Access URL | http://192.168.68.206:8080 |
+| Property        | Value                      |
+| --------------- | -------------------------- |
+| Namespace       | `jenkins`                  |
+| LoadBalancer IP | 192.168.68.206             |
+| Port            | 8080                       |
+| Storage         | 20Gi (Longhorn)            |
+| Access URL      | http://192.168.68.206:8080 |
 
 #### Step 1: Create the Jenkins Namespace
 
@@ -910,16 +923,17 @@ jenkins-agent   ClusterIP      10.43.x.x       <none>           50000/TCP       
 ```
 
 If `EXTERNAL-IP` shows `<pending>`:
+
 1. Verify MetalLB is running: `kubectl get pods -n metallb-system`
 2. Check that 192.168.68.206 is within MetalLB's configured IP pool
 3. Review MetalLB logs: `kubectl logs -n metallb-system -l app=metallb`
 
 #### Step 6: Access Jenkins
 
-| Property | Value |
-|----------|-------|
-| **URL** | http://192.168.68.206:8080 |
-| **Username** | `admin` |
+| Property     | Value                              |
+| ------------ | ---------------------------------- |
+| **URL**      | http://192.168.68.206:8080         |
+| **Username** | `admin`                            |
 | **Password** | The password you created in Step 2 |
 
 **Retrieve the password if needed:**
@@ -1004,11 +1018,11 @@ The agent pod contains three containers (maven, podman, ansible) as defined in t
 
 The values file configures a `middleware-agent` pod template with the following containers:
 
-| Container | Image | Purpose | Resources |
-|-----------|-------|---------|-----------|
-| maven | `maven:3.9-eclipse-temurin-17` | Build Java WAR files | 512Mi-1Gi RAM |
-| podman | `quay.io/podman/stable:latest` | Build and push container images | 512Mi-2Gi RAM |
-| ansible | `cytopia/ansible:latest` | Run deployment playbooks | 256Mi-512Mi RAM |
+| Container | Image                          | Purpose                         | Resources       |
+| --------- | ------------------------------ | ------------------------------- | --------------- |
+| maven     | `maven:3.9-eclipse-temurin-17` | Build Java WAR files            | 512Mi-1Gi RAM   |
+| podman    | `quay.io/podman/stable:latest` | Build and push container images | 512Mi-2Gi RAM   |
+| ansible   | `cytopia/ansible:latest`       | Run deployment playbooks        | 256Mi-512Mi RAM |
 
 This matches the container requirements in `ci-cd/Jenkinsfile`.
 
@@ -1016,18 +1030,18 @@ This matches the container requirements in `ci-cd/Jenkinsfile`.
 
 The Helm deployment installs these plugins automatically:
 
-| Plugin | Purpose |
-|--------|---------|
-| kubernetes | Dynamic pod agents in Kubernetes |
-| workflow-aggregator | Pipeline support |
-| git | Git SCM integration |
-| configuration-as-code | JCasC support |
-| credentials-binding | Secure credential usage in pipelines |
-| aws-credentials | AWS IAM credential management |
-| amazon-ecr | Amazon ECR authentication for container pushes |
-| pipeline-stage-view | Visual pipeline stage progress |
-| blueocean | Modern pipeline UI |
-| job-dsl | Programmatic job creation |
+| Plugin                | Purpose                                        |
+| --------------------- | ---------------------------------------------- |
+| kubernetes            | Dynamic pod agents in Kubernetes               |
+| workflow-aggregator   | Pipeline support                               |
+| git                   | Git SCM integration                            |
+| configuration-as-code | JCasC support                                  |
+| credentials-binding   | Secure credential usage in pipelines           |
+| aws-credentials       | AWS IAM credential management                  |
+| amazon-ecr            | Amazon ECR authentication for container pushes |
+| pipeline-stage-view   | Visual pipeline stage progress                 |
+| blueocean             | Modern pipeline UI                             |
+| job-dsl               | Programmatic job creation                      |
 
 #### Upgrade Jenkins
 
@@ -1148,15 +1162,15 @@ Verify that Prometheus is successfully scraping all configured targets.
 
 ```bash
 # Prometheus readiness
-curl -s http://192.168.68.82:9090/-/ready
+curl -s http://192.168.68.93:9090/-/ready
 # Expected output: Prometheus Server is Ready.
 
 # Prometheus health
-curl -s http://192.168.68.82:9090/-/healthy
+curl -s http://192.168.68.93:9090/-/healthy
 # Expected output: Prometheus Server is Healthy.
 
 # Check with HTTP status code
-curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:9090/-/ready
+curl -s -o /dev/null -w "%{http_code}" http://192.168.68.93:9090/-/ready
 # Expected output: 200
 ```
 
@@ -1164,19 +1178,19 @@ curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:9090/-/ready
 
 ```bash
 # Query Prometheus API for all target status
-curl -s http://192.168.68.82:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, instance: .labels.instance, health: .health}'
+curl -s http://192.168.68.93:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, instance: .labels.instance, health: .health}'
 
 # Expected output (all targets should show "health": "up"):
 # {"job":"liberty","instance":"192.168.68.88:9080","health":"up"}
 # {"job":"liberty","instance":"192.168.68.86:9080","health":"up"}
-# {"job":"node","instance":"192.168.68.82:9100","health":"up"}
+# {"job":"node","instance":"192.168.68.93:9100","health":"up"}
 # {"job":"node","instance":"192.168.68.88:9100","health":"up"}
 # {"job":"node","instance":"192.168.68.86:9100","health":"up"}
 # {"job":"prometheus","instance":"localhost:9090","health":"up"}
 # {"job":"jenkins","instance":"192.168.68.206:8080","health":"up"}
 
 # Count healthy vs unhealthy targets
-curl -s http://192.168.68.82:9090/api/v1/targets | jq '[.data.activeTargets[] | .health] | group_by(.) | map({health: .[0], count: length})'
+curl -s http://192.168.68.93:9090/api/v1/targets | jq '[.data.activeTargets[] | .health] | group_by(.) | map({health: .[0], count: length})'
 # Expected output: [{"health":"up","count":7}]
 ```
 
@@ -1184,13 +1198,13 @@ curl -s http://192.168.68.82:9090/api/v1/targets | jq '[.data.activeTargets[] | 
 
 ```bash
 # Query Liberty up status
-curl -s 'http://192.168.68.82:9090/api/v1/query?query=up{job="liberty"}' | jq '.data.result[] | {instance: .metric.instance, value: .value[1]}'
+curl -s 'http://192.168.68.93:9090/api/v1/query?query=up{job="liberty"}' | jq '.data.result[] | {instance: .metric.instance, value: .value[1]}'
 # Expected output:
 # {"instance":"192.168.68.86:9080","value":"1"}
 # {"instance":"192.168.68.88:9080","value":"1"}
 
 # Check JVM heap usage across Liberty servers (MicroProfile Metrics 5.0 naming)
-curl -s 'http://192.168.68.82:9090/api/v1/query?query=memory_usedHeap_bytes{mp_scope="base"}' | jq '.data.result[] | {instance: .metric.instance, heap_bytes: .value[1]}'
+curl -s 'http://192.168.68.93:9090/api/v1/query?query=memory_usedHeap_bytes{mp_scope="base"}' | jq '.data.result[] | {instance: .metric.instance, heap_bytes: .value[1]}'
 ```
 
 ### 4. Grafana Dashboard Access
@@ -1199,17 +1213,17 @@ curl -s 'http://192.168.68.82:9090/api/v1/query?query=memory_usedHeap_bytes{mp_s
 
 ```bash
 # API health check
-curl -s http://192.168.68.82:3000/api/health
+curl -s http://192.168.68.93:3000/api/health
 # Expected output: {"commit":"...","database":"ok","version":"..."}
 
 # Check with HTTP status code
-curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:3000/api/health
+curl -s -o /dev/null -w "%{http_code}" http://192.168.68.93:3000/api/health
 # Expected output: 200
 ```
 
 #### Access Grafana UI
 
-1. Open browser: `http://192.168.68.82:3000`
+1. Open browser: `http://192.168.68.93:3000`
 2. Login with credentials (see [CREDENTIAL_SETUP.md](./CREDENTIAL_SETUP.md))
 3. Navigate to Dashboards > Liberty Performance
 
@@ -1217,11 +1231,11 @@ curl -s -o /dev/null -w "%{http_code}" http://192.168.68.82:3000/api/health
 
 ```bash
 # List configured data sources (requires authentication)
-curl -s -u admin:PASSWORD http://192.168.68.82:3000/api/datasources | jq '.[].name'
+curl -s -u admin:PASSWORD http://192.168.68.93:3000/api/datasources | jq '.[].name'
 # Expected output: "Prometheus"
 
 # Test Prometheus data source connectivity
-curl -s -u admin:PASSWORD http://192.168.68.82:3000/api/datasources/proxy/1/api/v1/query?query=up | jq '.status'
+curl -s -u admin:PASSWORD http://192.168.68.93:3000/api/datasources/proxy/1/api/v1/query?query=up | jq '.status'
 # Expected output: "success"
 ```
 
@@ -1334,8 +1348,8 @@ YELLOW='[1;33m'
 NC='[0m'
 
 LIBERTY_SERVERS=("192.168.68.86" "192.168.68.88")
-PROMETHEUS_HOST="192.168.68.82"
-GRAFANA_HOST="192.168.68.82"
+PROMETHEUS_HOST="192.168.68.93"
+GRAFANA_HOST="192.168.68.93"
 JENKINS_HOST="192.168.68.206"
 AWX_HOST="192.168.68.205"
 
@@ -1386,17 +1400,17 @@ echo -e "${RED}Issues detected${NC}" && exit 1
 
 ### 8. End-to-End Verification Checklist
 
-| Step | Action | Expected Result |
-|------|--------|-----------------|
-| 1 | `curl http://192.168.68.86:9080/health/ready` | `{"status":"UP"}` |
-| 2 | `curl http://192.168.68.88:9080/health/ready` | `{"status":"UP"}` |
-| 3 | `curl http://192.168.68.82:9090/-/ready` | `Prometheus Server is Ready.` |
-| 4 | Access `http://192.168.68.82:3000` | Grafana login page loads |
-| 5 | Access `http://192.168.68.206:8080` | Jenkins login page loads |
-| 6 | Access `http://192.168.68.205` | AWX login page loads |
-| 7 | Query Prometheus targets API | All targets show `"health":"up"` |
-| 8 | Run Health Check job in AWX | Job completes successfully |
-| 9 | Trigger dry-run build in Jenkins | Pipeline completes without errors |
+| Step | Action                                        | Expected Result                   |
+| ---- | --------------------------------------------- | --------------------------------- |
+| 1    | `curl http://192.168.68.86:9080/health/ready` | `{"status":"UP"}`                 |
+| 2    | `curl http://192.168.68.88:9080/health/ready` | `{"status":"UP"}`                 |
+| 3    | `curl http://192.168.68.93:9090/-/ready`      | `Prometheus Server is Ready.`     |
+| 4    | Access `http://192.168.68.93:3000`            | Grafana login page loads          |
+| 5    | Access `http://192.168.68.206:8080`           | Jenkins login page loads          |
+| 6    | Access `http://192.168.68.205`                | AWX login page loads              |
+| 7    | Query Prometheus targets API                  | All targets show `"health":"up"`  |
+| 8    | Run Health Check job in AWX                   | Job completes successfully        |
+| 9    | Trigger dry-run build in Jenkins              | Pipeline completes without errors |
 
 ---
 
@@ -1409,6 +1423,7 @@ This section covers common issues encountered when deploying to local Kubernetes
 #### ImagePullBackOff
 
 **Symptoms:**
+
 ```bash
 $ kubectl get pods -n liberty
 NAME                          READY   STATUS             RESTARTS   AGE
@@ -1416,6 +1431,7 @@ liberty-app-7d8f9b6c4-x2k9m   0/1     ImagePullBackOff   0          5m
 ```
 
 **Diagnosis:**
+
 ```bash
 # Get detailed error message
 kubectl describe pod liberty-app-7d8f9b6c4-x2k9m -n liberty | grep -A 10 "Events:"
@@ -1427,6 +1443,7 @@ kubectl get pod liberty-app-7d8f9b6c4-x2k9m -n liberty -o jsonpath='{.spec.conta
 **Common Causes and Solutions:**
 
 1. **Image does not exist or wrong tag:**
+
    ```bash
    # Verify image exists in registry
    podman search icr.io/appcafe/open-liberty
@@ -1436,6 +1453,7 @@ kubectl get pod liberty-app-7d8f9b6c4-x2k9m -n liberty -o jsonpath='{.spec.conta
    ```
 
 2. **Private registry authentication required:**
+
    ```bash
    # Create image pull secret
    kubectl create secret docker-registry regcred \
@@ -1450,6 +1468,7 @@ kubectl get pod liberty-app-7d8f9b6c4-x2k9m -n liberty -o jsonpath='{.spec.conta
    ```
 
 3. **Network issues reaching registry:**
+
    ```bash
    # Test connectivity from a debug pod
    kubectl run debug --rm -it --image=busybox --restart=Never -- wget -q -O- https://icr.io/v2/
@@ -1461,6 +1480,7 @@ kubectl get pod liberty-app-7d8f9b6c4-x2k9m -n liberty -o jsonpath='{.spec.conta
 #### CrashLoopBackOff
 
 **Symptoms:**
+
 ```bash
 $ kubectl get pods -n liberty
 NAME                          READY   STATUS             RESTARTS   AGE
@@ -1468,6 +1488,7 @@ liberty-app-7d8f9b6c4-x2k9m   0/1     CrashLoopBackOff   5          10m
 ```
 
 **Diagnosis:**
+
 ```bash
 # Check container logs
 kubectl logs liberty-app-7d8f9b6c4-x2k9m -n liberty
@@ -1482,6 +1503,7 @@ kubectl describe pod liberty-app-7d8f9b6c4-x2k9m -n liberty
 **Common Causes and Solutions:**
 
 1. **Application startup failure:**
+
    ```bash
    # Check Liberty server logs
    kubectl logs liberty-app-7d8f9b6c4-x2k9m -n liberty | grep -i error
@@ -1493,6 +1515,7 @@ kubectl describe pod liberty-app-7d8f9b6c4-x2k9m -n liberty
    ```
 
 2. **Missing ConfigMap or Secret:**
+
    ```bash
    # Verify ConfigMap exists
    kubectl get configmap liberty-config -n liberty
@@ -1507,6 +1530,7 @@ kubectl describe pod liberty-app-7d8f9b6c4-x2k9m -n liberty
    ```
 
 3. **Health probe failures:**
+
    ```bash
    # Check probe configuration
    kubectl get deployment liberty-app -n liberty -o yaml | grep -A 10 "livenessProbe:"
@@ -1517,6 +1541,7 @@ kubectl describe pod liberty-app-7d8f9b6c4-x2k9m -n liberty
    ```
 
 4. **Resource constraints (OOMKilled):**
+
    ```bash
    # Check if pod was OOMKilled
    kubectl describe pod liberty-app-7d8f9b6c4-x2k9m -n liberty | grep -i oom
@@ -1531,6 +1556,7 @@ kubectl describe pod liberty-app-7d8f9b6c4-x2k9m -n liberty
 ### 2. LoadBalancer Pending (MetalLB Issues)
 
 **Symptoms:**
+
 ```bash
 $ kubectl get svc -n liberty
 NAME              TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
@@ -1538,6 +1564,7 @@ liberty-service   LoadBalancer   10.96.45.123    <pending>     9080:31234/TCP   
 ```
 
 **Diagnosis:**
+
 ```bash
 # Check if MetalLB is installed and running
 kubectl get pods -n metallb-system
@@ -1555,6 +1582,7 @@ kubectl get ipaddresspools -n metallb-system -o yaml
 **Common Causes and Solutions:**
 
 1. **MetalLB not installed:**
+
    ```bash
    # Install MetalLB
    kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
@@ -1567,6 +1595,7 @@ kubectl get ipaddresspools -n metallb-system -o yaml
    ```
 
 2. **Missing IPAddressPool configuration:**
+
    ```bash
    # Create IPAddressPool
    cat <<EOF | kubectl apply -f -
@@ -1591,6 +1620,7 @@ kubectl get ipaddresspools -n metallb-system -o yaml
    ```
 
 3. **IP address already in use:**
+
    ```bash
    # Check which service has the IP
    kubectl get svc -A -o wide | grep "192.168.68.205"
@@ -1614,10 +1644,12 @@ kubectl get ipaddresspools -n metallb-system -o yaml
 ### 3. Services Not Accessible
 
 **Symptoms:**
+
 - Cannot reach services from outside the cluster
 - Connection timeouts or refused connections
 
 **Diagnosis:**
+
 ```bash
 # Test connectivity from within the cluster
 kubectl run debug --rm -it --image=busybox --restart=Never -- wget -q -O- http://liberty-service.liberty.svc.cluster.local:9080/health/ready
@@ -1632,6 +1664,7 @@ kubectl get endpoints liberty-service -n liberty
 **Common Causes and Solutions:**
 
 1. **Firewall blocking traffic:**
+
    ```bash
    # Check firewall status on nodes
    sudo firewall-cmd --state
@@ -1649,6 +1682,7 @@ kubectl get endpoints liberty-service -n liberty
    ```
 
 2. **Kube-proxy issues:**
+
    ```bash
    # Check kube-proxy logs
    kubectl logs -n kube-system -l k8s-app=kube-proxy
@@ -1658,6 +1692,7 @@ kubectl get endpoints liberty-service -n liberty
    ```
 
 3. **Service selector mismatch:**
+
    ```bash
    # Check service selectors
    kubectl get svc liberty-service -n liberty -o jsonpath='{.spec.selector}'
@@ -1671,6 +1706,7 @@ kubectl get endpoints liberty-service -n liberty
    ```
 
 4. **No endpoints available:**
+
    ```bash
    # If endpoints are empty, pods are not matching the service selector
    kubectl get endpoints liberty-service -n liberty
@@ -1680,6 +1716,7 @@ kubectl get endpoints liberty-service -n liberty
    ```
 
 5. **Client machine routing:**
+
    ```bash
    # Ensure client can reach the LoadBalancer network
    ip route | grep 192.168.68
@@ -1693,10 +1730,12 @@ kubectl get endpoints liberty-service -n liberty
 ### 4. Prometheus Not Scraping Targets
 
 **Symptoms:**
+
 - Targets showing as DOWN in Prometheus UI
 - Missing metrics in Grafana dashboards
 
 **Diagnosis:**
+
 ```bash
 # Access Prometheus UI and check targets
 curl http://192.168.68.201:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, health: .health, lastError: .lastError}'
@@ -1711,6 +1750,7 @@ kubectl logs -n monitoring prometheus-prometheus-kube-prometheus-prometheus-0
 **Common Causes and Solutions:**
 
 1. **ServiceMonitor not configured correctly:**
+
    ```bash
    # Check if ServiceMonitor exists
    kubectl get servicemonitor -n liberty
@@ -1736,6 +1776,7 @@ kubectl logs -n monitoring prometheus-prometheus-kube-prometheus-prometheus-0
    ```
 
 2. **Network policy blocking scrape:**
+
    ```bash
    # Check network policies
    kubectl get networkpolicy -A
@@ -1763,6 +1804,7 @@ kubectl logs -n monitoring prometheus-prometheus-kube-prometheus-prometheus-0
    ```
 
 3. **Target endpoint not exposing metrics:**
+
    ```bash
    # Test metrics endpoint directly
    kubectl exec -n liberty deploy/liberty-app -- curl -s localhost:9080/metrics | head -20
@@ -1772,6 +1814,7 @@ kubectl logs -n monitoring prometheus-prometheus-kube-prometheus-prometheus-0
    ```
 
 4. **Wrong scrape configuration:**
+
    ```bash
    # Check static config targets
    kubectl get configmap prometheus-prometheus-kube-prometheus-prometheus -n monitoring -o yaml | grep -A 20 "scrape_configs"
@@ -1791,10 +1834,12 @@ kubectl logs -n monitoring prometheus-prometheus-kube-prometheus-prometheus-0
 ### 5. AWX Operator Not Ready
 
 **Symptoms:**
+
 - AWX pods not starting
 - AWX operator in CrashLoopBackOff
 
 **Diagnosis:**
+
 ```bash
 # Check AWX operator status
 kubectl get pods -n awx -l app.kubernetes.io/name=awx-operator
@@ -1812,6 +1857,7 @@ kubectl get all -n awx
 **Common Causes and Solutions:**
 
 1. **Missing admin password secret:**
+
    ```bash
    # Check if secret exists
    kubectl get secret awx-admin-password -n awx
@@ -1823,6 +1869,7 @@ kubectl get all -n awx
    ```
 
 2. **Storage class not available:**
+
    ```bash
    # Check storage classes
    kubectl get storageclass
@@ -1839,6 +1886,7 @@ kubectl get all -n awx
    ```
 
 3. **Resource constraints:**
+
    ```bash
    # Check node resources
    kubectl describe nodes | grep -A 5 "Allocated resources"
@@ -1849,6 +1897,7 @@ kubectl get all -n awx
    ```
 
 4. **PostgreSQL pod failing:**
+
    ```bash
    # Check PostgreSQL pod
    kubectl get pods -n awx -l app.kubernetes.io/component=database
@@ -1862,6 +1911,7 @@ kubectl get all -n awx
    ```
 
 5. **AWX web pod failing:**
+
    ```bash
    # Check AWX web pod logs
    kubectl logs -n awx -l app.kubernetes.io/name=awx-web
@@ -1879,11 +1929,13 @@ kubectl get all -n awx
 ### 6. Jenkins Agents Not Connecting
 
 **Symptoms:**
+
 - Jenkins builds stuck in queue
 - Agent shows as offline in Jenkins UI
 - "Waiting for next available executor" messages
 
 **Diagnosis:**
+
 ```bash
 # Check Jenkins controller logs
 kubectl logs -n jenkins -l app.kubernetes.io/name=jenkins
@@ -1898,6 +1950,7 @@ kubectl logs -n jenkins -l jenkins/label=jenkins-agent
 **Common Causes and Solutions:**
 
 1. **JNLP port not accessible:**
+
    ```bash
    # Check if JNLP service exists
    kubectl get svc -n jenkins | grep agent
@@ -1911,6 +1964,7 @@ kubectl logs -n jenkins -l jenkins/label=jenkins-agent
    ```
 
 2. **ServiceAccount permissions:**
+
    ```bash
    # Check Jenkins ServiceAccount
    kubectl get serviceaccount jenkins -n jenkins
@@ -1933,6 +1987,7 @@ kubectl logs -n jenkins -l jenkins/label=jenkins-agent
    ```
 
 3. **Kubernetes cloud not configured in Jenkins:**
+
    ```bash
    # Access Jenkins UI and navigate to:
    # Manage Jenkins -> Nodes and Clouds -> Configure Clouds
@@ -1943,6 +1998,7 @@ kubectl logs -n jenkins -l jenkins/label=jenkins-agent
    ```
 
 4. **Agent image pull issues:**
+
    ```bash
    # Check agent pod events
    kubectl describe pod -n jenkins -l jenkins/label=jenkins-agent
@@ -1980,6 +2036,7 @@ kubectl logs -n jenkins -l jenkins/label=jenkins-agent
 ### 7. Useful kubectl Debugging Commands
 
 #### Pod Inspection
+
 ```bash
 # Get all pods with wide output (includes node and IP)
 kubectl get pods -A -o wide
@@ -1998,6 +2055,7 @@ kubectl get pods -n <namespace> -w
 ```
 
 #### Log Analysis
+
 ```bash
 # Get current logs
 kubectl logs <pod-name> -n <namespace>
@@ -2022,6 +2080,7 @@ kubectl logs <pod-name> -n <namespace> --tail=100
 ```
 
 #### Interactive Debugging
+
 ```bash
 # Execute command in running container
 kubectl exec -it <pod-name> -n <namespace> -- /bin/bash
@@ -2040,6 +2099,7 @@ kubectl port-forward <pod-name> -n <namespace> 8080:9080
 ```
 
 #### Resource Inspection
+
 ```bash
 # Get all resources in a namespace
 kubectl get all -n <namespace>
@@ -2059,6 +2119,7 @@ kubectl describe resourcequota -n <namespace>
 ```
 
 #### Network Debugging
+
 ```bash
 # Test DNS resolution
 kubectl run debug --rm -it --image=busybox --restart=Never -- nslookup kubernetes.default
@@ -2074,6 +2135,7 @@ kubectl get networkpolicy -A
 ```
 
 #### Cluster Health
+
 ```bash
 # Check node status
 kubectl get nodes -o wide
@@ -2096,6 +2158,7 @@ kubectl get --raw='/healthz/etcd'
 ### 8. How to Reset/Reinstall Components
 
 #### Reset Liberty Deployment
+
 ```bash
 # Delete and recreate Liberty resources
 kubectl delete -f kubernetes/base/liberty-deployment.yaml -n liberty
@@ -2114,6 +2177,7 @@ kubectl apply -f kubernetes/base/liberty-deployment.yaml -n liberty
 ```
 
 #### Reset Monitoring Stack
+
 ```bash
 # Uninstall Prometheus stack
 helm uninstall prometheus -n monitoring
@@ -2135,6 +2199,7 @@ helm install prometheus prometheus-community/kube-prometheus-stack \
 ```
 
 #### Reset AWX
+
 ```bash
 # Delete AWX CR (this deletes all AWX pods but preserves data)
 kubectl delete awx awx -n awx
@@ -2157,6 +2222,7 @@ kubectl apply -f awx/awx-deployment.yaml
 ```
 
 #### Reset Jenkins
+
 ```bash
 # Uninstall Jenkins
 helm uninstall jenkins -n jenkins
@@ -2176,6 +2242,7 @@ helm install jenkins jenkins/jenkins \
 ```
 
 #### Reset MetalLB
+
 ```bash
 # Delete MetalLB
 kubectl delete -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
@@ -2215,6 +2282,7 @@ EOF
 ```
 
 #### Full Cluster Reset (Nuclear Option)
+
 ```bash
 # WARNING: This deletes ALL workloads and data
 
@@ -2240,16 +2308,16 @@ kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Doc
 
 ## Quick Reference: Common Error Messages
 
-| Error Message | Likely Cause | Quick Fix |
-|--------------|--------------|-----------|
-| `ImagePullBackOff` | Image not found or auth required | Check image name, create pull secret |
-| `CrashLoopBackOff` | Application crashing on startup | Check logs with `kubectl logs --previous` |
-| `Pending` (Pod) | No node with sufficient resources | Check node resources, adjust requests |
-| `Pending` (PVC) | No storage class or capacity | Check storage class, PV availability |
-| `<pending>` (External-IP) | MetalLB not configured | Install MetalLB, create IPAddressPool |
-| `connection refused` | Service/pod not running | Check pod status, service endpoints |
-| `no endpoints available` | No pods match service selector | Verify labels match selector |
-| `context deadline exceeded` | Timeout reaching target | Check network connectivity, firewall |
+| Error Message               | Likely Cause                      | Quick Fix                                 |
+| --------------------------- | --------------------------------- | ----------------------------------------- |
+| `ImagePullBackOff`          | Image not found or auth required  | Check image name, create pull secret      |
+| `CrashLoopBackOff`          | Application crashing on startup   | Check logs with `kubectl logs --previous` |
+| `Pending` (Pod)             | No node with sufficient resources | Check node resources, adjust requests     |
+| `Pending` (PVC)             | No storage class or capacity      | Check storage class, PV availability      |
+| `<pending>` (External-IP)   | MetalLB not configured            | Install MetalLB, create IPAddressPool     |
+| `connection refused`        | Service/pod not running           | Check pod status, service endpoints       |
+| `no endpoints available`    | No pods match service selector    | Verify labels match selector              |
+| `context deadline exceeded` | Timeout reaching target           | Check network connectivity, firewall      |
 
 ---
 
@@ -2257,28 +2325,28 @@ kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/master/Doc
 
 ### Service URLs
 
-| Service | IP Address | Port | URL |
-|---------|------------|------|-----|
-| **Liberty Server 1** | 192.168.68.86 | 9080/9443 | http://192.168.68.86:9080 |
-| **Liberty Server 2** | 192.168.68.88 | 9080/9443 | http://192.168.68.88:9080 |
-| **NGINX Ingress** | 192.168.68.200 | 80/443 | https://liberty.local |
-| **Prometheus** | 192.168.68.201 | 9090 | http://192.168.68.201:9090 |
-| **Grafana** | 192.168.68.202 | 3000 | http://192.168.68.202:3000 |
-| **AlertManager** | 192.168.68.203 | 9093 | http://192.168.68.203:9093 |
-| **ArgoCD** | 192.168.68.204 | 443 | https://192.168.68.204 |
-| **AWX** | 192.168.68.205 | 80 | http://192.168.68.205 |
-| **Jenkins** | 192.168.68.206 | 8080 | http://192.168.68.206:8080 |
-| **Liberty Controller** | 192.168.68.82 | 9080 | http://192.168.68.82:9080 |
+| Service                | IP Address     | Port      | URL                        |
+| ---------------------- | -------------- | --------- | -------------------------- |
+| **Liberty Server 1**   | 192.168.68.86  | 9080/9443 | http://192.168.68.86:9080  |
+| **Liberty Server 2**   | 192.168.68.88  | 9080/9443 | http://192.168.68.88:9080  |
+| **NGINX Ingress**      | 192.168.68.200 | 80/443    | https://liberty.local      |
+| **Prometheus**         | 192.168.68.201 | 9090      | http://192.168.68.201:9090 |
+| **Grafana**            | 192.168.68.202 | 3000      | http://192.168.68.202:3000 |
+| **AlertManager**       | 192.168.68.203 | 9093      | http://192.168.68.203:9093 |
+| **ArgoCD**             | 192.168.68.204 | 443       | https://192.168.68.204     |
+| **AWX**                | 192.168.68.205 | 80        | http://192.168.68.205      |
+| **Jenkins**            | 192.168.68.206 | 8080      | http://192.168.68.206:8080 |
+| **Liberty Controller** | 192.168.68.93  | 9080      | http://192.168.68.93:9080  |
 
 #### Liberty Endpoints
 
-| Endpoint | URL |
-|----------|-----|
-| Health (Ready) | http://192.168.68.86:9080/health/ready |
-| Health (Live) | http://192.168.68.86:9080/health/live |
+| Endpoint         | URL                                      |
+| ---------------- | ---------------------------------------- |
+| Health (Ready)   | http://192.168.68.86:9080/health/ready   |
+| Health (Live)    | http://192.168.68.86:9080/health/live    |
 | Health (Started) | http://192.168.68.86:9080/health/started |
-| Metrics | http://192.168.68.86:9080/metrics |
-| Admin Console | https://192.168.68.86:9443/adminCenter |
+| Metrics          | http://192.168.68.86:9080/metrics        |
+| Admin Console    | https://192.168.68.86:9443/adminCenter   |
 
 ---
 
@@ -2728,23 +2796,23 @@ curl -s -o /dev/null -w "%{http_code}" http://192.168.68.206:8080/login && echo 
 
 ### Related Documentation
 
-| Document | Description |
-|----------|-------------|
-| [CREDENTIAL_SETUP.md](./CREDENTIAL_SETUP.md) | Complete credential configuration for all services |
-| [README.md](../README.md) | Project overview, quick start, and AWS deployment guide |
-| [HYBRID_ARCHITECTURE.md](./architecture/HYBRID_ARCHITECTURE.md) | Detailed local vs AWS architecture comparison |
-| [Jenkins Kubernetes README](../ci-cd/jenkins/kubernetes/README.md) | Jenkins Helm deployment details |
-| [terraform-aws.md](./troubleshooting/terraform-aws.md) | AWS/Terraform troubleshooting guide |
-| [ecs-migration-plan.md](./plans/ecs-migration-plan.md) | ECS Fargate migration documentation |
+| Document                                                           | Description                                             |
+| ------------------------------------------------------------------ | ------------------------------------------------------- |
+| [CREDENTIAL_SETUP.md](./CREDENTIAL_SETUP.md)                       | Complete credential configuration for all services      |
+| [README.md](../README.md)                                          | Project overview, quick start, and AWS deployment guide |
+| [HYBRID_ARCHITECTURE.md](./architecture/HYBRID_ARCHITECTURE.md)    | Detailed local vs AWS architecture comparison           |
+| [Jenkins Kubernetes README](../ci-cd/jenkins/kubernetes/README.md) | Jenkins Helm deployment details                         |
+| [terraform-aws.md](./troubleshooting/terraform-aws.md)             | AWS/Terraform troubleshooting guide                     |
+| [ecs-migration-plan.md](./plans/ecs-migration-plan.md)             | ECS Fargate migration documentation                     |
 
 ### External Resources
 
-| Resource | URL |
-|----------|-----|
-| Open Liberty Documentation | https://openliberty.io/docs/ |
-| Kubernetes Documentation | https://kubernetes.io/docs/home/ |
-| Helm Documentation | https://helm.sh/docs/ |
-| AWX Documentation | https://ansible.readthedocs.io/projects/awx/en/latest/ |
-| Jenkins Helm Chart | https://github.com/jenkinsci/helm-charts |
-| Prometheus Operator | https://prometheus-operator.dev/ |
-| MetalLB Documentation | https://metallb.universe.tf/ |
+| Resource                   | URL                                                    |
+| -------------------------- | ------------------------------------------------------ |
+| Open Liberty Documentation | https://openliberty.io/docs/                           |
+| Kubernetes Documentation   | https://kubernetes.io/docs/home/                       |
+| Helm Documentation         | https://helm.sh/docs/                                  |
+| AWX Documentation          | https://ansible.readthedocs.io/projects/awx/en/latest/ |
+| Jenkins Helm Chart         | https://github.com/jenkinsci/helm-charts               |
+| Prometheus Operator        | https://prometheus-operator.dev/                       |
+| MetalLB Documentation      | https://metallb.universe.tf/                           |

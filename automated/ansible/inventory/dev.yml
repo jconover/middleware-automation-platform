@@ -59,20 +59,20 @@ all:
     collective_controller:
       hosts:
         liberty-controller:
-          ansible_host: 192.168.68.82
+          ansible_host: 192.168.68.93
           liberty_server_name: collectiveController
 
     database_servers:
       hosts:
         db-dev:
-          ansible_host: 192.168.68.82
+          ansible_host: 192.168.68.93
           postgresql_enabled: true
           redis_enabled: true
 
     load_balancers:
       hosts:
         lb-dev:
-          ansible_host: 192.168.68.82
+          ansible_host: 192.168.68.93
           nginx_upstream_servers:
             - { host: "192.168.68.88", port: 9080 }
             - { host: "192.168.68.86", port: 9080 }
@@ -80,4 +80,4 @@ all:
     monitoring_servers:
       hosts:
         monitoring-dev:
-          ansible_host: 192.168.68.82
+          ansible_host: 192.168.68.93

@@ -103,19 +103,20 @@ curl -s http://localhost:9080/sample-app/api/hello
 ```
 
 **Expected:**
+
 - Health endpoints return `{"status":"UP"}`
 - Metrics return Prometheus-format data
 - Sample app returns hello message
 
 ### 1.6 Podman Verification Checklist
 
-| Check | Command | Expected |
-|-------|---------|----------|
-| Container running | `podman ps \| grep liberty` | Shows `liberty-server` |
-| Health ready | `curl localhost:9080/health/ready` | `{"status":"UP"}` |
-| Health live | `curl localhost:9080/health/live` | `{"status":"UP"}` |
-| Metrics exposed | `curl localhost:9080/metrics \| wc -l` | 100+ lines |
-| App responding | `curl localhost:9080/sample-app/api/hello` | JSON response |
+| Check             | Command                                    | Expected               |
+| ----------------- | ------------------------------------------ | ---------------------- |
+| Container running | `podman ps \| grep liberty`                | Shows `liberty-server` |
+| Health ready      | `curl localhost:9080/health/ready`         | `{"status":"UP"}`      |
+| Health live       | `curl localhost:9080/health/live`          | `{"status":"UP"}`      |
+| Metrics exposed   | `curl localhost:9080/metrics \| wc -l`     | 100+ lines             |
+| App responding    | `curl localhost:9080/sample-app/api/hello` | JSON response          |
 
 ### 1.7 Cleanup (Before Moving to Kubernetes)
 
@@ -196,7 +197,7 @@ cd /home/justin/Projects/middleware-automation-platform
 # Save image to tar
 podman save liberty-app:1.0.0 -o /tmp/liberty-app.tar
 
-# Import on k8s-master-01 (192.168.68.82)
+# Import on k8s-master-01 (192.168.68.93)
 sudo ctr -n k8s.io images import /tmp/liberty-app.tar
 
 # Import on k8s-worker-01 (liberty-dev-01, 192.168.68.86)
@@ -417,15 +418,15 @@ kubectl get pods -n awx -w
 
 ### 2.12 Kubernetes Verification Checklist
 
-| Service | URL | Verification |
-|---------|-----|--------------|
-| Liberty | http://192.168.68.200:9080 | `curl http://192.168.68.200:9080/health/ready` |
-| Liberty Metrics | http://192.168.68.200:9080/metrics | Prometheus-format metrics |
-| Prometheus | http://192.168.68.201:9090 | UI loads, Status > Targets shows liberty-service UP |
-| Grafana | http://192.168.68.202 | Login with admin/admin123 |
-| Alertmanager | http://192.168.68.203:9093 | UI loads |
-| Jenkins | http://192.168.68.206:8080 | Login page loads (optional) |
-| AWX | http://192.168.68.205 | Login page loads (optional) |
+| Service         | URL                                | Verification                                        |
+| --------------- | ---------------------------------- | --------------------------------------------------- |
+| Liberty         | http://192.168.68.200:9080         | `curl http://192.168.68.200:9080/health/ready`      |
+| Liberty Metrics | http://192.168.68.200:9080/metrics | Prometheus-format metrics                           |
+| Prometheus      | http://192.168.68.201:9090         | UI loads, Status > Targets shows liberty-service UP |
+| Grafana         | http://192.168.68.202              | Login with admin/admin123                           |
+| Alertmanager    | http://192.168.68.203:9093         | UI loads                                            |
+| Jenkins         | http://192.168.68.206:8080         | Login page loads (optional)                         |
+| AWX             | http://192.168.68.205              | Login page loads (optional)                         |
 
 ### 2.13 Get Credentials
 
@@ -481,6 +482,7 @@ cp terraform.tfvars.example terraform.tfvars
 ```
 
 **Important:** Set `management_allowed_cidrs` to your public IP:
+
 ```bash
 MY_IP=$(curl -s ifconfig.me)
 echo "Your IP: $MY_IP/32"
@@ -535,12 +537,12 @@ curl -s http://$ALB_DNS/sample-app/api/hello
 
 ### 3.6 AWS Verification Checklist
 
-| Check | Command | Expected |
-|-------|---------|----------|
-| ECS tasks running | `aws ecs list-tasks --cluster mw-prod-cluster` | 2+ task ARNs |
-| ALB health | `curl $ALB_DNS/health/ready` | `{"status":"UP"}` |
-| Prometheus | `terraform output prometheus_url` | UI accessible |
-| Grafana | `terraform output grafana_url` | Login page loads |
+| Check             | Command                                        | Expected          |
+| ----------------- | ---------------------------------------------- | ----------------- |
+| ECS tasks running | `aws ecs list-tasks --cluster mw-prod-cluster` | 2+ task ARNs      |
+| ALB health        | `curl $ALB_DNS/health/ready`                   | `{"status":"UP"}` |
+| Prometheus        | `terraform output prometheus_url`              | UI accessible     |
+| Grafana           | `terraform output grafana_url`                 | Login page loads  |
 
 ### 3.7 Cleanup AWS Resources
 
@@ -632,27 +634,27 @@ echo "========================================"
 
 ### Podman
 
-| Issue | Solution |
-|-------|----------|
-| SELinux denying volume mounts | Add `:Z` suffix to volume mounts |
-| Image pull slow | Use `podman pull` beforehand to cache base image |
-| Port already in use | Check with `ss -tlnp \| grep 9080` and stop conflicting process |
+| Issue                         | Solution                                                        |
+| ----------------------------- | --------------------------------------------------------------- |
+| SELinux denying volume mounts | Add `:Z` suffix to volume mounts                                |
+| Image pull slow               | Use `podman pull` beforehand to cache base image                |
+| Port already in use           | Check with `ss -tlnp \| grep 9080` and stop conflicting process |
 
 ### Kubernetes
 
-| Issue | Solution |
-|-------|----------|
-| ImagePullBackOff | Image not imported to all nodes - run `ctr -n k8s.io images import` on each |
+| Issue                | Solution                                                                      |
+| -------------------- | ----------------------------------------------------------------------------- |
+| ImagePullBackOff     | Image not imported to all nodes - run `ctr -n k8s.io images import` on each   |
 | LoadBalancer pending | MetalLB not configured - check `kubectl get ipaddresspools -n metallb-system` |
-| Pods not scheduling | Check node resources with `kubectl describe nodes` |
+| Pods not scheduling  | Check node resources with `kubectl describe nodes`                            |
 
 ### AWS
 
-| Issue | Solution |
-|-------|----------|
-| ECS tasks failing | Check CloudWatch logs at `/ecs/mw-prod-liberty` |
-| ALB returning 503 | Wait for ECS tasks to pass health checks (~2-3 min) |
-| Cannot reach ALB | Check security group allows your IP in `management_allowed_cidrs` |
+| Issue             | Solution                                                          |
+| ----------------- | ----------------------------------------------------------------- |
+| ECS tasks failing | Check CloudWatch logs at `/ecs/mw-prod-liberty`                   |
+| ALB returning 503 | Wait for ECS tasks to pass health checks (~2-3 min)               |
+| Cannot reach ALB  | Check security group allows your IP in `management_allowed_cidrs` |
 
 ---
 
@@ -681,10 +683,10 @@ echo "========================================"
 
 ## Related Documentation
 
-| Document | Purpose |
-|----------|---------|
-| [LOCAL_PODMAN_DEPLOYMENT.md](LOCAL_PODMAN_DEPLOYMENT.md) | Complete Podman deployment guide |
-| [LOCAL_KUBERNETES_DEPLOYMENT.md](LOCAL_KUBERNETES_DEPLOYMENT.md) | Complete Kubernetes deployment guide |
-| [README.md](../README.md) | AWS deployment and project overview |
-| [CREDENTIAL_SETUP.md](CREDENTIAL_SETUP.md) | All credential configuration |
-| [troubleshooting/terraform-aws.md](troubleshooting/terraform-aws.md) | AWS troubleshooting |
+| Document                                                             | Purpose                              |
+| -------------------------------------------------------------------- | ------------------------------------ |
+| [LOCAL_PODMAN_DEPLOYMENT.md](LOCAL_PODMAN_DEPLOYMENT.md)             | Complete Podman deployment guide     |
+| [LOCAL_KUBERNETES_DEPLOYMENT.md](LOCAL_KUBERNETES_DEPLOYMENT.md)     | Complete Kubernetes deployment guide |
+| [README.md](../README.md)                                            | AWS deployment and project overview  |
+| [CREDENTIAL_SETUP.md](CREDENTIAL_SETUP.md)                           | All credential configuration         |
+| [troubleshooting/terraform-aws.md](troubleshooting/terraform-aws.md) | AWS troubleshooting                  |
