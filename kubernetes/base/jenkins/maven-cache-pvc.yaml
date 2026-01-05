@@ -1,0 +1,25 @@
+---
+# PersistentVolumeClaim for Maven repository caching
+# Provides shared storage for Maven dependencies across Jenkins build pods
+# Reduces build times by caching downloaded artifacts
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: maven-cache-pvc
+  namespace: jenkins
+  labels:
+    app.kubernetes.io/name: maven-cache
+    app.kubernetes.io/component: build-cache
+    app.kubernetes.io/part-of: jenkins
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  # StorageClass should support RWX access mode
+  # For local clusters: use NFS-based storage class
+  # For cloud: use appropriate CSI driver (EFS for AWS, Filestore for GCP)
+  # Uncomment and set appropriate storage class:
+  # storageClassName: nfs-client

@@ -251,6 +251,26 @@
   notify: Restart Liberty
 
 # Database Driver (PostgreSQL)
+# =============================================================================
+# SECURITY: Validate JDBC checksum is defined in production
+# This prevents supply chain attacks via tampered JDBC drivers
+# =============================================================================
+- name: Validate PostgreSQL JDBC checksum is defined (production)
+  ansible.builtin.assert:
+    that:
+      - postgresql_jdbc_checksum is defined
+      - postgresql_jdbc_checksum | length > 0
+      - postgresql_jdbc_checksum is match('^sha256:[a-fA-F0-9]{64}$')
+    fail_msg: >
+      SECURITY ERROR: postgresql_jdbc_checksum must be defined in production environments.
+      This prevents supply chain attacks via tampered JDBC drivers.
+      Expected format: sha256:<64-character-hex-hash>
+      Current value for PostgreSQL JDBC {{ postgresql_jdbc_version | default('42.7.1') }}:
+      postgresql_jdbc_checksum: "sha256:49bba9c3200d4f64ae73903d56ce1bd09c74517dfe31acb44745506b4fcede53"
+  when:
+    - postgresql_host is defined and postgresql_host != ''
+    - env_name is defined and env_name == 'production'
+
 - name: Create JDBC directory
   ansible.builtin.file:
     path: "{{ liberty_install_dir }}/usr/servers/{{ liberty_server_name }}/jdbc"
@@ -268,7 +288,7 @@
     group: "{{ liberty_user }}"
     mode: "0644"
     timeout: 120
-    checksum: "{{ postgresql_jdbc_checksum | default(omit) }}"
+    checksum: "{{ postgresql_jdbc_checksum }}"
   register: postgresql_jdbc_download
   retries: 3
   delay: 10

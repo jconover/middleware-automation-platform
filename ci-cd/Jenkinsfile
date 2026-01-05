@@ -14,6 +14,9 @@ spec:
     image: maven:3.9-eclipse-temurin-17
     command: [cat]
     tty: true
+    volumeMounts:
+    - name: maven-cache
+      mountPath: /root/.m2/repository
   - name: podman
     image: quay.io/podman/stable:latest
     command: [cat]
@@ -29,6 +32,9 @@ spec:
     command: [cat]
     tty: true
   volumes:
+  - name: maven-cache
+    persistentVolumeClaim:
+      claimName: jenkins-maven-cache
   - name: podman-storage
     emptyDir: {}
 '''
@@ -152,7 +158,7 @@ spec:
             steps {
                 container('maven') {
                     dir('sample-app') {
-                        sh 'mvn clean package -DskipTests -B'
+                        sh 'mvn clean package -DskipTests -B -Dmaven.repo.local=/root/.m2/repository'
                     }
                 }
             }
@@ -169,7 +175,7 @@ spec:
             steps {
                 container('maven') {
                     dir('sample-app') {
-                        sh 'mvn test -B'
+                        sh 'mvn test -B -Dmaven.repo.local=/root/.m2/repository'
                     }
                 }
             }
@@ -188,7 +194,7 @@ spec:
             steps {
                 container('maven') {
                     dir('sample-app') {
-                        sh 'mvn pmd:pmd checkstyle:checkstyle -B'
+                        sh 'mvn pmd:pmd checkstyle:checkstyle -B -Dmaven.repo.local=/root/.m2/repository'
                     }
                 }
             }
@@ -342,16 +348,19 @@ spec:
                         sh '''#!/bin/bash
                             set -e
 
+                            # Maven repository location for build caching
+                            MAVEN_REPO="/root/.m2/repository"
+
                             echo "================================================================"
                             echo "Integration Tests - Starting Liberty Server"
                             echo "================================================================"
 
                             # Create Liberty server, install features, and deploy application
-                            mvn liberty:create liberty:install-feature liberty:deploy -B
+                            mvn liberty:create liberty:install-feature liberty:deploy -B -Dmaven.repo.local=${MAVEN_REPO}
 
                             # Start Liberty server in background
                             echo "Starting Liberty server..."
-                            mvn liberty:start -B
+                            mvn liberty:start -B -Dmaven.repo.local=${MAVEN_REPO}
 
                             # Wait for server to be ready
                             echo "Waiting for Liberty server to be ready..."
@@ -361,7 +370,7 @@ spec:
                                 RETRY_COUNT=$((RETRY_COUNT + 1))
                                 if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
                                     echo "ERROR: Liberty server failed to start within timeout"
-                                    mvn liberty:stop -B || true
+                                    mvn liberty:stop -B -Dmaven.repo.local=${MAVEN_REPO} || true
                                     exit 1
                                 fi
                                 echo "  Waiting for server... (attempt ${RETRY_COUNT}/${MAX_RETRIES})"
@@ -376,7 +385,7 @@ spec:
 
                             # Run integration tests
                             TEST_EXIT_CODE=0
-                            mvn failsafe:integration-test failsafe:verify -B || TEST_EXIT_CODE=$?
+                            mvn failsafe:integration-test failsafe:verify -B -Dmaven.repo.local=${MAVEN_REPO} || TEST_EXIT_CODE=$?
 
                             echo ""
                             echo "================================================================"
@@ -384,7 +393,7 @@ spec:
                             echo "================================================================"
 
                             # Stop Liberty server
-                            mvn liberty:stop -B
+                            mvn liberty:stop -B -Dmaven.repo.local=${MAVEN_REPO}
 
                             # Exit with test result code
                             exit $TEST_EXIT_CODE
@@ -501,6 +510,9 @@ spec:
 
                                     cd sample-app
 
+                                    # Maven repository location for build caching
+                                    MAVEN_REPO="/root/.m2/repository"
+
                                     # Source credentials and run validation
                                     export FLYWAY_URL
                                     export FLYWAY_USER="${DB_USER}"
@@ -508,6 +520,7 @@ spec:
 
                                     # Validate migration files before applying
                                     mvn flyway:validate -B \
+                                        -Dmaven.repo.local=${MAVEN_REPO} \
                                         -Dflyway.url="${FLYWAY_URL}" \
                                         -Dflyway.user="${DB_USER}" \
                                         -Dflyway.password="${DB_PASS}" \
@@ -520,6 +533,7 @@ spec:
 
                                     # Apply pending migrations
                                     mvn flyway:migrate -B \
+                                        -Dmaven.repo.local=${MAVEN_REPO} \
                                         -Dflyway.url="${FLYWAY_URL}" \
                                         -Dflyway.user="${DB_USER}" \
                                         -Dflyway.password="${DB_PASS}" \
@@ -532,6 +546,7 @@ spec:
 
                                     # Show current migration status
                                     mvn flyway:info -B \
+                                        -Dmaven.repo.local=${MAVEN_REPO} \
                                         -Dflyway.url="${FLYWAY_URL}" \
                                         -Dflyway.user="${DB_USER}" \
                                         -Dflyway.password="${DB_PASS}"
@@ -561,6 +576,9 @@ spec:
                                     set -e
                                     set +x  # Disable command tracing to prevent credential exposure
 
+                                    # Maven repository location for build caching
+                                    MAVEN_REPO="/root/.m2/repository"
+
                                     echo "================================================================"
                                     echo "Database Migration - ${ENVIRONMENT}"
                                     echo "================================================================"
@@ -569,6 +587,7 @@ spec:
 
                                     echo "Validating migrations..."
                                     mvn flyway:validate -B \
+                                        -Dmaven.repo.local=${MAVEN_REPO} \
                                         -Dflyway.url="${DB_URL}" \
                                         -Dflyway.user="${DB_USER}" \
                                         -Dflyway.password="${DB_PASS}" \
@@ -577,6 +596,7 @@ spec:
                                     echo ""
                                     echo "Applying migrations..."
                                     mvn flyway:migrate -B \
+                                        -Dmaven.repo.local=${MAVEN_REPO} \
                                         -Dflyway.url="${DB_URL}" \
                                         -Dflyway.user="${DB_USER}" \
                                         -Dflyway.password="${DB_PASS}" \
@@ -585,6 +605,7 @@ spec:
                                     echo ""
                                     echo "Current schema info:"
                                     mvn flyway:info -B \
+                                        -Dmaven.repo.local=${MAVEN_REPO} \
                                         -Dflyway.url="${DB_URL}" \
                                         -Dflyway.user="${DB_USER}" \
                                         -Dflyway.password="${DB_PASS}"
@@ -1407,6 +1428,130 @@ spec:
                 Automated Pipeline:   ~25 minutes
                 ════════════════════════════════════════════════════════════
                 """
+
+                // =============================================================
+                // Push Pipeline Metrics to Prometheus Pushgateway
+                // =============================================================
+                // Metrics are collected and pushed conditionally - the pipeline
+                // will NOT fail if the pushgateway is unavailable or unreachable.
+                // =============================================================
+                try {
+                    // Calculate build duration in seconds
+                    def durationSeconds = currentBuild.duration / 1000.0
+
+                    // Build status: 1 = success, 0 = failure/unstable/aborted
+                    def buildStatus = (currentBuild.currentResult == 'SUCCESS') ? 1 : 0
+
+                    // Sanitize job name for Prometheus label (only alphanumeric and underscore)
+                    def jobName = env.JOB_NAME?.replaceAll('[^a-zA-Z0-9_]', '_') ?: 'unknown'
+                    def buildNumber = env.BUILD_NUMBER ?: '0'
+                    def environment = params.ENVIRONMENT ?: 'unknown'
+                    def gitCommit = env.GIT_COMMIT_SHORT ?: 'unknown'
+
+                    // Collect test metrics from JUnit results if available
+                    def testsPassed = 0
+                    def testsFailed = 0
+                    def testsSkipped = 0
+                    def testsTotal = 0
+
+                    try {
+                        def testResultAction = currentBuild.rawBuild?.getAction(hudson.tasks.junit.TestResultAction.class)
+                        if (testResultAction) {
+                            testsPassed = testResultAction.result?.passCount ?: 0
+                            testsFailed = testResultAction.result?.failCount ?: 0
+                            testsSkipped = testResultAction.result?.skipCount ?: 0
+                            testsTotal = testsPassed + testsFailed + testsSkipped
+                            echo "Test metrics collected: ${testsPassed} passed, ${testsFailed} failed, ${testsSkipped} skipped"
+                        }
+                    } catch (Exception testEx) {
+                        echo "Could not retrieve test metrics (non-critical): ${testEx.message}"
+                    }
+
+                    // Build Prometheus metrics payload in text exposition format
+                    def metricsPayload = """# HELP jenkins_build_duration_seconds Duration of Jenkins build in seconds
+# TYPE jenkins_build_duration_seconds gauge
+jenkins_build_duration_seconds{job="${jobName}",build_number="${buildNumber}",environment="${environment}",commit="${gitCommit}"} ${durationSeconds}
+
+# HELP jenkins_build_status Build status (1=success, 0=failure)
+# TYPE jenkins_build_status gauge
+jenkins_build_status{job="${jobName}",build_number="${buildNumber}",environment="${environment}",commit="${gitCommit}"} ${buildStatus}
+
+# HELP jenkins_build_tests_passed_total Number of tests passed
+# TYPE jenkins_build_tests_passed_total gauge
+jenkins_build_tests_passed_total{job="${jobName}",build_number="${buildNumber}",environment="${environment}"} ${testsPassed}
+
+# HELP jenkins_build_tests_failed_total Number of tests failed
+# TYPE jenkins_build_tests_failed_total gauge
+jenkins_build_tests_failed_total{job="${jobName}",build_number="${buildNumber}",environment="${environment}"} ${testsFailed}
+
+# HELP jenkins_build_tests_skipped_total Number of tests skipped
+# TYPE jenkins_build_tests_skipped_total gauge
+jenkins_build_tests_skipped_total{job="${jobName}",build_number="${buildNumber}",environment="${environment}"} ${testsSkipped}
+
+# HELP jenkins_build_tests_total Total number of tests executed
+# TYPE jenkins_build_tests_total gauge
+jenkins_build_tests_total{job="${jobName}",build_number="${buildNumber}",environment="${environment}"} ${testsTotal}
+
+# HELP jenkins_build_timestamp_seconds Unix timestamp when build completed
+# TYPE jenkins_build_timestamp_seconds gauge
+jenkins_build_timestamp_seconds{job="${jobName}",build_number="${buildNumber}",environment="${environment}"} ${System.currentTimeMillis() / 1000}
+"""
+
+                    // Write metrics to temp file for curl to read
+                    writeFile file: '/tmp/jenkins_metrics.prom', text: metricsPayload
+
+                    // Push metrics to Pushgateway
+                    // PUSHGATEWAY_URL can be set as an environment variable to override default
+                    def pushResult = sh(
+                        script: '''#!/bin/bash
+                            # Pushgateway URL - configurable via environment variable
+                            # Default assumes pushgateway is accessible via Kubernetes DNS
+                            PUSHGATEWAY_URL="${PUSHGATEWAY_URL:-prometheus-pushgateway:9091}"
+
+                            echo "Pushing pipeline metrics to Pushgateway at ${PUSHGATEWAY_URL}..."
+
+                            # Push metrics with short timeout to avoid blocking pipeline
+                            # Use job label 'jenkins' and instance label with build number
+                            # The || true ensures we don't fail if pushgateway is unavailable
+                            HTTP_CODE=$(curl --silent --show-error \
+                                --connect-timeout 5 \
+                                --max-time 10 \
+                                --write-out "%{http_code}" \
+                                --output /tmp/pushgateway_response.txt \
+                                --data-binary @/tmp/jenkins_metrics.prom \
+                                "http://${PUSHGATEWAY_URL}/metrics/job/jenkins/instance/${BUILD_NUMBER}" \
+                                2>&1) || HTTP_CODE="000"
+
+                            # Cleanup temp files
+                            rm -f /tmp/jenkins_metrics.prom
+
+                            # Check response
+                            if [ "${HTTP_CODE}" = "200" ] || [ "${HTTP_CODE}" = "202" ]; then
+                                echo "Metrics pushed successfully (HTTP ${HTTP_CODE})"
+                                rm -f /tmp/pushgateway_response.txt
+                                exit 0
+                            elif [ "${HTTP_CODE}" = "000" ]; then
+                                echo "WARNING: Could not connect to Pushgateway - metrics not pushed"
+                                rm -f /tmp/pushgateway_response.txt
+                                exit 0
+                            else
+                                echo "WARNING: Pushgateway returned HTTP ${HTTP_CODE}"
+                                cat /tmp/pushgateway_response.txt 2>/dev/null || true
+                                rm -f /tmp/pushgateway_response.txt
+                                exit 0
+                            fi
+                        ''',
+                        returnStatus: true
+                    )
+
+                    if (pushResult == 0) {
+                        echo "Pipeline metrics collection completed"
+                    }
+
+                } catch (Exception metricsEx) {
+                    // Never fail the pipeline due to metrics collection issues
+                    echo "Metrics collection skipped (non-critical): ${metricsEx.message}"
+                }
             }
             cleanWs()
         }
