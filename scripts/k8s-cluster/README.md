@@ -137,7 +137,7 @@ Prepares a node for Kubernetes installation. Run on each node before cluster ini
 sudo ./node-prep.sh
 
 # Specify Kubernetes version
-sudo ./node-prep.sh --k8s-version 1.30
+sudo ./node-prep.sh --k8s-version 1.34
 
 # Preview
 sudo ./node-prep.sh --dry-run

@@ -100,3 +100,4 @@ kubernetes/**/liberty-secrets.yaml
 
 # AWS
 .aws/
+backups/

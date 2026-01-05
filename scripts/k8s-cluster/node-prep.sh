@@ -15,7 +15,7 @@
 #   ./node-prep.sh [OPTIONS]
 #
 # Options:
-#   --k8s-version VERSION  Kubernetes version (default: 1.30)
+#   --k8s-version VERSION  Kubernetes version (default: 1.34)
 #   --dry-run              Show what would be done
 #   -h, --help             Show this help message
 #
@@ -24,7 +24,7 @@
 set -euo pipefail
 
 # Configuration
-K8S_VERSION="1.30"
+K8S_VERSION="1.34"
 DRY_RUN=false
 
 # Colors
@@ -224,12 +224,15 @@ install_kubernetes() {
 configure_kubelet() {
     log "Configuring kubelet..."
 
-    # Ensure kubelet uses systemd cgroup driver
-    run mkdir -p /etc/systemd/system/kubelet.service.d/
-
-    cat <<EOF | run tee /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
-[Service]
-Environment="KUBELET_EXTRA_ARGS=--container-runtime-endpoint=unix:///var/run/containerd/containerd.sock"
+    # Create kubelet defaults file for any extra args
+    # Note: Do NOT create 10-kubeadm.conf here - kubeadm handles that
+    # The proper kubeadm drop-in file includes the kubeconfig and config
+    # arguments that kubelet needs to connect to the API server
+    run mkdir -p /etc/default
+    cat <<EOF | run tee /etc/default/kubelet
+# Extra kubelet arguments (optional)
+# These are picked up by the kubeadm-generated systemd dropin
+KUBELET_EXTRA_ARGS=
 EOF
 
     run systemctl daemon-reload
