@@ -318,18 +318,18 @@ output "ecr_push_commands" {
 output "deployment_summary" {
   description = "Summary of deployed resources"
   value = {
-    environment     = var.environment
-    region          = var.aws_region
-    vpc_id          = module.networking.vpc_id
-    ecs_enabled     = var.ecs_enabled
-    ec2_count       = var.liberty_instance_count
-    monitoring      = var.create_monitoring_server
-    app_url         = module.loadbalancer.app_url
-    db_endpoint     = module.database.db_effective_endpoint
-    cache_endpoint  = module.database.cache_endpoint
-    grafana_url     = var.create_monitoring_server ? module.monitoring[0].grafana_url : null
-    waf_enabled     = var.enable_waf
-    guardduty_enabled = var.enable_guardduty
+    environment        = var.environment
+    region             = var.aws_region
+    vpc_id             = module.networking.vpc_id
+    ecs_enabled        = var.ecs_enabled
+    ec2_count          = var.liberty_instance_count
+    monitoring         = var.create_monitoring_server
+    app_url            = module.loadbalancer.app_url
+    db_endpoint        = module.database.db_effective_endpoint
+    cache_endpoint     = module.database.cache_endpoint
+    grafana_url        = var.create_monitoring_server ? module.monitoring[0].grafana_url : null
+    waf_enabled        = var.enable_waf
+    guardduty_enabled  = var.enable_guardduty
     cloudtrail_enabled = var.enable_cloudtrail
   }
 }

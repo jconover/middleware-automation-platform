@@ -1,220 +1,137 @@
 # Terraform Modules
 
-```
-+------------------------------------------------------------------------+
-|                                                                        |
-|   WARNING: THESE MODULES ARE NOT USED BY PROD-AWS                      |
-|                                                                        |
-|   The production AWS environment (automated/terraform/environments/   |
-|   prod-aws/) implements all infrastructure INLINE in separate .tf     |
-|   files rather than calling these modules.                            |
-|                                                                        |
-|   These modules exist for potential future use but are NOT deployed.  |
-|                                                                        |
-+------------------------------------------------------------------------+
-```
-
 ## Overview
 
-This directory contains reusable Terraform modules that were created for potential multi-environment deployments. However, the current `prod-aws` environment implements all infrastructure directly in individual `.tf` files.
-
-## Why Prod-AWS Does Not Use These Modules
-
-The decision to use inline resources instead of modules was intentional:
-
-1. **Simpler Debugging** - All resources visible in one location without module abstraction
-2. **Reduced Complexity** - Easier for new engineers to understand the infrastructure
-3. **Rapid Iteration** - Faster to modify inline code during initial development
-4. **Flexibility** - No need to define module interfaces upfront
-5. **Single Environment** - No immediate need for module reuse across dev/staging/prod
+This directory contains reusable Terraform modules for the AWS infrastructure. These modules are used by the unified `environments/aws/` environment, which supports dev/stage/prod deployments from a single codebase.
 
 ## Module Inventory
 
-| Module | Status | Files | Description |
-|--------|--------|-------|-------------|
-| `networking/` | Complete | main.tf, variables.tf, outputs.tf | VPC, subnets, NAT gateway, route tables, VPC flow logs |
-| `security-groups/` | Complete | main.tf, variables.tf, outputs.tf | Security groups for ALB, Liberty EC2, ECS, RDS, ElastiCache |
-| `ecs/` | Complete | main.tf, variables.tf, outputs.tf | ECS cluster, task definition, service, ECR repository |
-| `compute/` | Stub Only | README.md only | Intended for EC2 Liberty instances - never implemented |
-| `storage/` | Empty | No files | Empty directory - never implemented |
+| Module | Status | Description |
+|--------|--------|-------------|
+| `networking/` | Complete | VPC, subnets, NAT gateway, route tables, VPC flow logs |
+| `security-groups/` | Complete | Security groups for ALB, Liberty EC2, ECS, RDS, ElastiCache, monitoring |
+| `compute/` | Complete | EC2 Liberty instances with IAM roles, key pairs, CloudWatch logs |
+| `database/` | Complete | RDS PostgreSQL, ElastiCache Redis, RDS Proxy, Secrets Manager |
+| `ecs/` | Complete | ECS Fargate cluster, service, task definition, auto-scaling, blue-green |
+| `loadbalancer/` | Complete | ALB, target groups, listeners, HTTPS/self-signed certs |
+| `monitoring/` | Complete | Prometheus/Grafana EC2 with ECS discovery, AlertManager |
+| `security-compliance/` | Complete | CloudTrail, GuardDuty, Security Hub, WAF |
+| `storage/` | Placeholder | Reserved for future S3/EBS implementations |
 
-## Detailed Module Status
+## Environment Architecture
 
-### networking/ - COMPLETE, UNUSED
+The `environments/aws/` directory uses these modules with a unified codebase pattern:
 
-A fully implemented VPC module providing:
-
-- VPC with configurable CIDR block
-- Public and private subnets across multiple availability zones
-- Internet gateway
-- NAT gateway (optional)
-- Route tables and associations
-- VPC flow logs (optional)
-
-**Comparable prod-aws file:** `networking.tf`
-
-### security-groups/ - COMPLETE, UNUSED
-
-A fully implemented security groups module providing:
-
-- ALB security group (HTTP/HTTPS ingress)
-- Liberty EC2 security group (HTTP/HTTPS from ALB, SSH from VPC)
-- ECS task security group (HTTP/HTTPS from ALB)
-- RDS database security group (PostgreSQL from Liberty/ECS)
-- ElastiCache security group (Redis from Liberty/ECS)
-
-**Comparable prod-aws file:** `security.tf`
-
-### ecs/ - COMPLETE, UNUSED
-
-A fully implemented ECS module providing:
-
-- ECS Fargate cluster with container insights
-- Task definition with health checks and logging
-- ECS service with deployment circuit breaker
-- IAM roles for task execution and task runtime
-- ECR repository with lifecycle policies
-- CloudWatch log group
-
-**Comparable prod-aws files:** `ecs.tf`, `ecs-iam.tf`, `ecr.tf`
-
-### compute/ - STUB ONLY
-
-An empty placeholder that was never implemented. Contains only a README.md explaining its intended purpose.
-
-- No main.tf
-- No variables.tf
-- No outputs.tf
-
-**Comparable prod-aws file:** `compute.tf` (fully implemented inline)
-
-### storage/ - EMPTY
-
-An empty directory with no files. Was likely intended for S3 buckets or EBS volumes but was never started.
-
-## Using These Modules (If Refactoring)
-
-If you decide to refactor `prod-aws` to use these modules, here is an example configuration:
-
-```hcl
-# In automated/terraform/environments/prod-aws/main.tf
-
-module "networking" {
-  source = "../../modules/networking"
-
-  name_prefix        = local.name_prefix
-  vpc_cidr           = var.vpc_cidr
-  availability_zones = 2
-
-  enable_nat_gateway = true
-  enable_flow_logs   = true
-
-  tags = local.common_tags
-}
-
-module "security_groups" {
-  source = "../../modules/security-groups"
-
-  name_prefix = local.name_prefix
-  vpc_id      = module.networking.vpc_id
-  vpc_cidr    = module.networking.vpc_cidr
-
-  create_liberty_sg = var.liberty_instance_count > 0
-  create_ecs_sg     = var.ecs_enabled
-
-  tags = local.common_tags
-}
-
-module "ecs" {
-  source = "../../modules/ecs"
-
-  name_prefix        = local.name_prefix
-  aws_region         = var.aws_region
-  private_subnet_ids = module.networking.private_subnet_ids
-  security_group_ids = [module.security_groups.ecs_security_group_id]
-
-  container_image = "${aws_ecr_repository.liberty.repository_url}:latest"
-  task_cpu        = var.ecs_task_cpu
-  task_memory     = var.ecs_task_memory
-  desired_count   = var.ecs_desired_count
-
-  target_group_arn = aws_lb_target_group.liberty_ecs[0].arn
-
-  tags = local.common_tags
-}
+```
+environments/aws/
+├── backends/
+│   ├── dev.backend.hcl      # State: environments/dev/terraform.tfstate
+│   ├── stage.backend.hcl    # State: environments/stage/terraform.tfstate
+│   └── prod.backend.hcl     # State: environments/prod/terraform.tfstate
+├── envs/
+│   ├── dev.tfvars           # Minimal resources, no security features
+│   ├── stage.tfvars         # Prod-like but smaller scale
+│   └── prod.tfvars          # Full HA, security, blue-green
+├── main.tf                  # Orchestrates all modules
+├── variables.tf             # 55+ variables with validation
+├── outputs.tf
+└── providers.tf
 ```
 
-## Refactoring Checklist
-
-If you want to migrate `prod-aws` to use these modules:
-
-1. **Backup current state**
-   ```bash
-   cd automated/terraform/environments/prod-aws
-   terraform state pull > terraform.tfstate.backup
-   ```
-
-2. **Replace inline resources with module calls**
-   - Start with `networking` module first
-   - Use `terraform state mv` to move resources into modules without destroying
-
-3. **Handle state migration**
-   ```bash
-   # Example: Move VPC from inline to module
-   terraform state mv aws_vpc.main module.networking.aws_vpc.main
-   terraform state mv aws_subnet.public module.networking.aws_subnet.public
-   # ... repeat for all resources
-   ```
-
-4. **Verify with plan**
-   ```bash
-   terraform plan
-   # Should show no changes if state migration was correct
-   ```
-
-5. **Complete incomplete modules**
-   - Implement `compute/` module if EC2 instances are needed
-   - Remove empty `storage/` directory or implement if needed
-
-## Recommendations
-
-### Keep Inline If:
-
-- You have a single production environment
-- Your team is small (1-5 engineers)
-- You are still iterating on infrastructure design
-- You value simplicity over abstraction
-
-### Switch to Modules If:
-
-- You are adding dev/staging environments
-- Your team grows beyond 5 engineers
-- You want to enforce consistent infrastructure standards
-- You are deploying to multiple AWS accounts
-
-### Cleanup Option
-
-If modules will never be used, consider removing them to avoid confusion:
+### Usage
 
 ```bash
-cd automated/terraform
-rm -rf modules/compute  # Empty stub
-rm -rf modules/storage  # Empty directory
-# Keep networking, security-groups, ecs if they serve as reference implementations
+# Initialize for specific environment
+cd automated/terraform/environments/aws
+terraform init -backend-config=backends/dev.backend.hcl
+
+# Plan/Apply with environment-specific variables
+terraform plan -var-file=envs/dev.tfvars
+terraform apply -var-file=envs/dev.tfvars
+
+# Switch environments (re-init required)
+terraform init -backend-config=backends/prod.backend.hcl -reconfigure
+terraform plan -var-file=envs/prod.tfvars
 ```
 
-## Related Files
+## Module Details
 
-| Location | Description |
-|----------|-------------|
-| `../environments/prod-aws/` | Production AWS environment (inline resources) |
-| `../environments/prod-aws/networking.tf` | Inline VPC implementation |
-| `../environments/prod-aws/security.tf` | Inline security groups |
-| `../environments/prod-aws/ecs.tf` | Inline ECS implementation |
-| `../environments/prod-aws/compute.tf` | Inline EC2 implementation |
+### networking/
+VPC infrastructure with security best practices:
+- Configurable CIDR and availability zones (2-6 AZs)
+- Public/private subnet separation
+- NAT gateway (single or HA per-AZ)
+- VPC flow logs with KMS encryption
+- Internet gateway and route tables
+
+### security-groups/
+Conditional security group creation:
+- ALB, ECS, Liberty EC2, RDS, ElastiCache, monitoring, management, bastion
+- Configurable ingress CIDRs
+- Optional egress restriction
+
+### compute/
+EC2 Liberty instances:
+- Auto-scaling across subnets
+- IAM roles with SSM and CloudWatch permissions
+- SSH key pair management
+- CloudWatch log groups
+- Configurable instance types and storage
+
+### database/
+Managed data stores:
+- RDS PostgreSQL with Multi-AZ option
+- ElastiCache Redis cluster with AUTH tokens
+- RDS Proxy for connection pooling
+- Secrets Manager for credentials
+- Automated backups and encryption
+
+### ecs/
+ECS Fargate deployment:
+- Cluster with Container Insights
+- Service with circuit breaker
+- Task definition with health checks
+- Auto-scaling (CPU, memory, request count)
+- Fargate Spot capacity provider
+- Blue-green deployment support
+- X-Ray tracing integration
+
+### loadbalancer/
+Application Load Balancer:
+- HTTP/HTTPS listeners
+- ECS and EC2 target groups
+- Self-signed certificate fallback
+- Access logging to S3
+- Health check configuration
+- Sticky sessions support
+
+### monitoring/
+Observability stack:
+- Prometheus with ECS service discovery
+- Grafana with auto-generated credentials
+- AlertManager with Slack integration
+- CloudWatch log groups
+- Static target configuration
+
+### security-compliance/
+Security and compliance features:
+- CloudTrail with S3 storage
+- GuardDuty threat detection
+- Security Hub aggregation
+- WAF with rate limiting and managed rules
+- SNS alerts for security events
+
+## Legacy Environment
+
+The `environments/prod-aws/` directory contains the original production deployment with mostly inline resources. It is being superseded by the unified `environments/aws/` architecture but remains operational.
+
+| Aspect | prod-aws (Legacy) | aws (Current) |
+|--------|-------------------|---------------|
+| Module usage | 1 of 8 (networking only) | All 8 modules |
+| Multi-environment | No | Yes (dev/stage/prod) |
+| Backend config | Hardcoded | Partial backend files |
+| Maintenance | Higher overhead | Lower overhead |
 
 ---
 
-**Current State:** Modules complete but unused
-**Recommended Action:** Continue using inline resources unless multi-environment is needed
-**Last Updated:** 2026-01-02
+**Last Updated:** 2026-01-06

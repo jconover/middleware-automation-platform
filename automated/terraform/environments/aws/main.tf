@@ -46,17 +46,17 @@ module "networking" {
 module "security_groups" {
   source = "../../modules/security-groups"
 
-  name_prefix  = local.name_prefix
-  vpc_id       = module.networking.vpc_id
-  vpc_cidr     = module.networking.vpc_cidr
-  tags         = local.common_tags
+  name_prefix = local.name_prefix
+  vpc_id      = module.networking.vpc_id
+  vpc_cidr    = module.networking.vpc_cidr
+  tags        = local.common_tags
 
   # Security group creation flags based on deployment options
   create_liberty_sg    = var.liberty_instance_count > 0
   create_ecs_sg        = var.ecs_enabled
   create_monitoring_sg = var.create_monitoring_server
-  create_management_sg = false  # AWX/Jenkins management server
-  create_bastion_sg    = false  # No bastion in this deployment
+  create_management_sg = false # AWX/Jenkins management server
+  create_bastion_sg    = false # No bastion in this deployment
   create_rds_proxy_sg  = var.enable_rds_proxy
 
   # Restrict egress for security compliance
@@ -78,36 +78,36 @@ module "security_groups" {
 module "database" {
   source = "../../modules/database"
 
-  name_prefix            = local.name_prefix
-  aws_region             = var.aws_region
-  vpc_id                 = module.networking.vpc_id
-  private_subnet_ids     = module.networking.private_subnet_ids
-  db_security_group_id   = module.security_groups.db_security_group_id
+  name_prefix             = local.name_prefix
+  aws_region              = var.aws_region
+  vpc_id                  = module.networking.vpc_id
+  private_subnet_ids      = module.networking.private_subnet_ids
+  db_security_group_id    = module.security_groups.db_security_group_id
   cache_security_group_id = module.security_groups.cache_security_group_id
-  tags                   = local.common_tags
+  tags                    = local.common_tags
 
   # RDS Configuration
-  db_instance_class     = var.db_instance_class
-  db_allocated_storage  = var.db_allocated_storage
-  db_name               = var.db_name
-  db_username           = var.db_username
-  db_multi_az           = var.db_multi_az
-  db_backup_retention   = var.db_backup_retention_period
-  db_deletion_protection = var.environment == "prod" || var.environment == "production"
+  db_instance_class               = var.db_instance_class
+  db_allocated_storage            = var.db_allocated_storage
+  db_name                         = var.db_name
+  db_username                     = var.db_username
+  db_multi_az                     = var.db_multi_az
+  db_backup_retention             = var.db_backup_retention_period
+  db_deletion_protection          = var.environment == "prod" || var.environment == "production"
   db_performance_insights_enabled = true
-  db_monitoring_interval = 60
+  db_monitoring_interval          = 60
 
   # ElastiCache Configuration
-  cache_node_type     = var.cache_node_type
-  cache_multi_az      = var.cache_multi_az
+  cache_node_type = var.cache_node_type
+  cache_multi_az  = var.cache_multi_az
 
   # RDS Proxy Configuration (optional)
-  enable_rds_proxy                = var.enable_rds_proxy
-  rds_proxy_security_group_id     = var.enable_rds_proxy ? module.security_groups.rds_proxy_security_group_id : ""
-  rds_proxy_idle_timeout          = var.rds_proxy_idle_timeout
+  enable_rds_proxy                  = var.enable_rds_proxy
+  rds_proxy_security_group_id       = var.enable_rds_proxy ? module.security_groups.rds_proxy_security_group_id : ""
+  rds_proxy_idle_timeout            = var.rds_proxy_idle_timeout
   rds_proxy_max_connections_percent = var.rds_proxy_max_connections_percent
-  rds_proxy_require_iam           = false
-  enable_rds_proxy_read_endpoint  = false
+  rds_proxy_require_iam             = false
+  enable_rds_proxy_read_endpoint    = false
 }
 
 # -----------------------------------------------------------------------------
@@ -137,7 +137,7 @@ module "loadbalancer" {
   certificate_arn = var.certificate_arn
 
   # Access Logs
-  enable_access_logs       = true
+  enable_access_logs         = true
   access_logs_retention_days = 90
 
   # Target Groups - create based on deployment type
@@ -146,12 +146,12 @@ module "loadbalancer" {
   target_port             = 9080
 
   # Health Check Configuration
-  health_check_path              = "/health/ready"
-  health_check_healthy_threshold = 2
+  health_check_path                = "/health/ready"
+  health_check_healthy_threshold   = 2
   health_check_unhealthy_threshold = 3
-  health_check_timeout           = 5
-  health_check_interval          = 30
-  health_check_matcher           = "200"
+  health_check_timeout             = 5
+  health_check_interval            = 30
+  health_check_matcher             = "200"
 
   # Session Stickiness
   stickiness_enabled  = true
@@ -179,11 +179,11 @@ module "ecs" {
   tags               = local.common_tags
 
   # Container Configuration
-  container_name = "liberty"
-  container_image = local.container_image != null ? local.container_image : "${local.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${local.name_prefix}-liberty:${var.container_image_tag}"
-  task_cpu       = var.ecs_task_cpu
-  task_memory    = var.ecs_task_memory
-  desired_count  = var.ecs_desired_count
+  container_name        = "liberty"
+  container_image       = local.container_image != null ? local.container_image : "${local.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${local.name_prefix}-liberty:${var.container_image_tag}"
+  task_cpu              = var.ecs_task_cpu
+  task_memory           = var.ecs_task_memory
+  desired_count         = var.ecs_desired_count
   create_ecr_repository = true
 
   # Environment Variables for Container
@@ -254,16 +254,16 @@ module "ecs" {
   fargate_spot_weight = var.fargate_spot_weight
 
   # Blue-Green Deployment (optional)
-  enable_blue_green = var.enable_blue_green
-  vpc_id            = module.networking.vpc_id
-  listener_arn      = module.loadbalancer.http_listener_arn
-  codedeploy_deployment_config = "CodeDeployDefault.ECSLinear10PercentEvery1Minutes"
+  enable_blue_green                   = var.enable_blue_green
+  vpc_id                              = module.networking.vpc_id
+  listener_arn                        = module.loadbalancer.http_listener_arn
+  codedeploy_deployment_config        = "CodeDeployDefault.ECSLinear10PercentEvery1Minutes"
   blue_green_termination_wait_minutes = 5
 
   # Observability
-  enable_xray        = false
-  enable_slo_alarms  = var.environment == "prod" || var.environment == "production"
-  slo_cpu_threshold  = 85
+  enable_xray          = false
+  enable_slo_alarms    = var.environment == "prod" || var.environment == "production"
+  slo_cpu_threshold    = 85
   slo_memory_threshold = 85
 }
 
@@ -287,19 +287,19 @@ module "compute" {
   tags               = local.common_tags
 
   # AMI Configuration
-  ami_id = null  # Uses latest Ubuntu 22.04 LTS
+  ami_id = null # Uses latest Ubuntu 22.04 LTS
 
   # SSH Key Configuration
-  create_key_pair  = true
-  ssh_public_key   = local.ssh_public_key
+  create_key_pair = true
+  ssh_public_key  = local.ssh_public_key
 
   # IAM Configuration
   create_iam_role = true
   enable_ssm      = true
   iam_inline_policy_statements = [
     {
-      Effect   = "Allow"
-      Action   = ["secretsmanager:GetSecretValue"]
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
       Resource = [
         module.database.db_secret_arn,
         module.database.cache_auth_token_secret_arn
@@ -322,9 +322,9 @@ module "compute" {
   imds_hop_limit = 1
 
   # Monitoring
-  detailed_monitoring        = false
+  detailed_monitoring         = false
   create_cloudwatch_log_group = true
-  log_retention_days         = 30
+  log_retention_days          = 30
 
   # Instance tags for Ansible targeting
   instance_tags = {
@@ -344,14 +344,14 @@ module "monitoring" {
   count  = var.create_monitoring_server ? 1 : 0
   source = "../../modules/monitoring"
 
-  name_prefix    = local.name_prefix
-  aws_region     = var.aws_region
-  vpc_id         = module.networking.vpc_id
-  vpc_cidr       = module.networking.vpc_cidr
-  subnet_id      = module.networking.public_subnet_ids[0]
-  ami_id         = data.aws_ami.ubuntu.id
-  ssh_key_name   = var.liberty_instance_count > 0 ? module.compute[0].ssh_key_name : "${local.name_prefix}-monitoring"
-  tags           = local.common_tags
+  name_prefix  = local.name_prefix
+  aws_region   = var.aws_region
+  vpc_id       = module.networking.vpc_id
+  vpc_cidr     = module.networking.vpc_cidr
+  subnet_id    = module.networking.public_subnet_ids[0]
+  ami_id       = data.aws_ami.ubuntu.id
+  ssh_key_name = var.liberty_instance_count > 0 ? module.compute[0].ssh_key_name : "${local.name_prefix}-monitoring"
+  tags         = local.common_tags
 
   # Security Group
   create_security_group = false
