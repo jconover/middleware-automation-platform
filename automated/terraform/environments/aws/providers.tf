@@ -50,3 +50,27 @@ data "aws_ami" "ubuntu" {
     values = ["hvm"]
   }
 }
+
+# -----------------------------------------------------------------------------
+# Disaster Recovery Region Provider
+# -----------------------------------------------------------------------------
+# Secondary AWS provider for cross-region replication of S3 buckets.
+# Used for disaster recovery of ALB access logs and CloudTrail audit logs.
+# -----------------------------------------------------------------------------
+
+provider "aws" {
+  alias  = "dr"
+  region = var.dr_region
+
+  default_tags {
+    tags = merge(
+      {
+        Project     = var.project
+        Environment = var.environment
+        ManagedBy   = "terraform"
+        Purpose     = "disaster-recovery"
+      },
+      var.additional_tags
+    )
+  }
+}

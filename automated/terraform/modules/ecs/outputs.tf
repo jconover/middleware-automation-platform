@@ -180,3 +180,17 @@ output "service_discovery" {
     service_arn  = aws_ecs_service.main.id
   }
 }
+
+# =============================================================================
+# ECR Cross-Region Replication Outputs
+# =============================================================================
+
+output "ecr_replication_enabled" {
+  description = "Whether ECR cross-region replication is enabled"
+  value       = var.ecr_replication_enabled
+}
+
+output "ecr_replication_region" {
+  description = "ECR replication destination region"
+  value       = var.ecr_replication_enabled ? var.ecr_replication_region : null
+}

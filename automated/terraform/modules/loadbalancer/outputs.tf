@@ -90,6 +90,19 @@ output "access_logs_bucket_arn" {
 }
 
 # -----------------------------------------------------------------------------
+# Aliases for S3 Replication and SLO Alarm Configuration
+# -----------------------------------------------------------------------------
+output "alb_logs_bucket_arn" {
+  description = "ARN of the ALB access logs S3 bucket (alias for access_logs_bucket_arn)"
+  value       = var.enable_access_logs ? aws_s3_bucket.alb_logs[0].arn : null
+}
+
+output "alb_logs_bucket_id" {
+  description = "Name/ID of the ALB access logs S3 bucket (alias for access_logs_bucket_name)"
+  value       = var.enable_access_logs ? aws_s3_bucket.alb_logs[0].id : null
+}
+
+# -----------------------------------------------------------------------------
 # Certificate Outputs
 # -----------------------------------------------------------------------------
 output "effective_certificate_arn" {

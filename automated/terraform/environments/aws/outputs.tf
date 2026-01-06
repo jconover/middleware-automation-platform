@@ -243,6 +243,41 @@ output "monitoring_ssh_command" {
 }
 
 # -----------------------------------------------------------------------------
+# Management Server Outputs (Conditional)
+# -----------------------------------------------------------------------------
+
+output "management_instance_id" {
+  description = "ID of the management EC2 instance"
+  value       = var.create_management_server ? aws_instance.management[0].id : null
+}
+
+output "management_public_ip" {
+  description = "Public IP of the management server"
+  value       = var.create_management_server ? aws_eip.management[0].public_ip : null
+}
+
+output "management_private_ip" {
+  description = "Private IP of the management server"
+  value       = var.create_management_server ? aws_instance.management[0].private_ip : null
+}
+
+output "awx_url" {
+  description = "AWX Web UI URL"
+  value       = var.create_management_server ? "http://${aws_eip.management[0].public_ip}:30080" : null
+}
+
+output "awx_admin_password_command" {
+  description = "Command to get AWX admin password"
+  value       = var.create_management_server ? "ssh ubuntu@${aws_eip.management[0].public_ip} 'sudo kubectl get secret awx-admin-password -n awx -o jsonpath=\"{.data.password}\" | base64 -d'" : null
+  sensitive   = true
+}
+
+output "management_ssh_command" {
+  description = "SSH command to connect to management server"
+  value       = var.create_management_server ? "ssh -i ~/.ssh/ansible_ed25519 ubuntu@${aws_eip.management[0].public_ip}" : null
+}
+
+# -----------------------------------------------------------------------------
 # Security Compliance Outputs
 # -----------------------------------------------------------------------------
 
@@ -282,6 +317,158 @@ output "security_alerts_sns_topic_arn" {
 }
 
 # -----------------------------------------------------------------------------
+# SLO/SLI Alerting Outputs
+# -----------------------------------------------------------------------------
+
+output "slo_sns_topic_arn" {
+  description = "ARN of the SNS topic for SLO alerts"
+  value       = var.enable_slo_alarms && (var.ecs_enabled || var.liberty_instance_count > 0) ? aws_sns_topic.slo_alerts[0].arn : null
+}
+
+output "slo_composite_alarm_arn" {
+  description = "ARN of the composite SLO health alarm"
+  value       = var.enable_slo_alarms && (var.ecs_enabled || var.liberty_instance_count > 0) ? aws_cloudwatch_composite_alarm.slo_overall_health[0].arn : null
+}
+
+output "slo_alarms" {
+  description = "Map of all SLO alarm ARNs"
+  value = var.enable_slo_alarms && (var.ecs_enabled || var.liberty_instance_count > 0) ? {
+    availability_critical = aws_cloudwatch_metric_alarm.slo_availability_critical[0].arn
+    availability_warning  = aws_cloudwatch_metric_alarm.slo_availability_warning[0].arn
+    latency_p99_critical  = aws_cloudwatch_metric_alarm.slo_latency_p99_critical[0].arn
+    latency_p99_warning   = aws_cloudwatch_metric_alarm.slo_latency_p99_warning[0].arn
+    latency_tail_critical = aws_cloudwatch_metric_alarm.slo_latency_tail_critical[0].arn
+    error_rate_breach     = aws_cloudwatch_metric_alarm.slo_error_rate_breach[0].arn
+    error_rate_warning    = aws_cloudwatch_metric_alarm.slo_error_rate_warning[0].arn
+    unhealthy_targets     = aws_cloudwatch_metric_alarm.slo_unhealthy_targets[0].arn
+    low_healthy_targets   = aws_cloudwatch_metric_alarm.slo_low_healthy_targets[0].arn
+    overall_health        = aws_cloudwatch_composite_alarm.slo_overall_health[0].arn
+  } : null
+}
+
+output "slo_configuration" {
+  description = "SLO configuration summary"
+  value = var.enable_slo_alarms ? {
+    enabled              = true
+    availability_target  = var.slo_availability_target
+    latency_threshold_ms = var.slo_latency_threshold_ms
+    alert_email          = var.slo_alert_email != "" ? var.slo_alert_email : var.security_alert_email
+    monitoring_ecs       = var.ecs_enabled
+    monitoring_ec2       = !var.ecs_enabled && var.liberty_instance_count > 0
+    } : {
+    enabled = false
+  }
+}
+
+# -----------------------------------------------------------------------------
+# S3 Cross-Region Replication Outputs
+# -----------------------------------------------------------------------------
+
+output "s3_replication_enabled" {
+  description = "Whether S3 cross-region replication is enabled"
+  value       = var.enable_s3_replication
+}
+
+output "dr_bucket_arn" {
+  description = "ARN of the DR destination bucket for ALB logs"
+  value       = var.enable_s3_replication ? aws_s3_bucket.alb_logs_dr[0].arn : null
+}
+
+output "dr_region" {
+  description = "DR region for S3 replication"
+  value       = var.enable_s3_replication ? var.dr_region : null
+}
+
+output "alb_logs_dr_bucket" {
+  description = "ALB logs DR destination bucket name"
+  value       = var.enable_s3_replication ? aws_s3_bucket.alb_logs_dr[0].id : null
+}
+
+output "cloudtrail_logs_dr_bucket" {
+  description = "CloudTrail logs DR destination bucket name"
+  value       = var.enable_s3_replication && var.enable_cloudtrail ? aws_s3_bucket.cloudtrail_dr[0].id : null
+}
+
+output "cloudtrail_logs_dr_bucket_arn" {
+  description = "CloudTrail logs DR destination bucket ARN"
+  value       = var.enable_s3_replication && var.enable_cloudtrail ? aws_s3_bucket.cloudtrail_dr[0].arn : null
+}
+
+output "s3_replication_role_arn" {
+  description = "IAM role ARN used for S3 replication"
+  value       = var.enable_s3_replication ? aws_iam_role.s3_replication[0].arn : null
+}
+
+output "dr_kms_key_arn" {
+  description = "KMS key ARN in DR region for replication encryption"
+  value       = var.enable_s3_replication ? aws_kms_key.dr_replication[0].arn : null
+}
+
+output "s3_replication_configuration" {
+  description = "Summary of S3 cross-region replication configuration"
+  value = var.enable_s3_replication ? {
+    enabled                   = true
+    source_region             = var.aws_region
+    destination_region        = var.dr_region
+    alb_logs_source           = module.loadbalancer.alb_logs_bucket_id
+    alb_logs_destination      = aws_s3_bucket.alb_logs_dr[0].id
+    cloudtrail_source         = var.enable_cloudtrail ? module.security_compliance.cloudtrail_s3_bucket : null
+    cloudtrail_destination    = var.enable_cloudtrail ? aws_s3_bucket.cloudtrail_dr[0].id : null
+    replication_time_control  = "15 minutes"
+    delete_marker_replication = true
+    encryption                = "KMS"
+    } : {
+    enabled = false
+    message = "S3 cross-region replication is disabled. Set enable_s3_replication = true to enable DR."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Route53 DNS Failover Outputs
+# -----------------------------------------------------------------------------
+
+output "route53_health_check_id" {
+  description = "ID of the Route53 health check for the ALB"
+  value       = local.route53_enabled ? aws_route53_health_check.alb_primary[0].id : null
+}
+
+output "route53_health_check_fqdn" {
+  description = "FQDN being monitored by the Route53 health check"
+  value       = local.route53_enabled ? aws_route53_health_check.alb_primary[0].fqdn : null
+}
+
+output "route53_primary_record" {
+  description = "Route53 primary failover record FQDN"
+  value       = local.route53_enabled ? aws_route53_record.primary[0].fqdn : null
+}
+
+output "maintenance_page_url" {
+  description = "URL of the S3 maintenance page (for testing)"
+  value       = local.route53_enabled && var.enable_maintenance_page ? "http://${aws_s3_bucket_website_configuration.maintenance[0].website_endpoint}" : null
+}
+
+output "route53_failover_configuration" {
+  description = "Route53 failover configuration summary"
+  value = local.route53_enabled ? {
+    enabled               = true
+    domain                = var.domain_name
+    hosted_zone_id        = data.aws_route53_zone.main[0].zone_id
+    health_check_id       = aws_route53_health_check.alb_primary[0].id
+    health_check_type     = local.has_certificate ? "HTTPS" : "HTTP"
+    health_check_path     = "/health/ready"
+    health_check_interval = var.route53_health_check_interval
+    failure_threshold     = var.route53_health_check_failure_threshold
+    maintenance_page      = var.enable_maintenance_page
+    maintenance_bucket    = var.enable_maintenance_page ? aws_s3_bucket.maintenance[0].bucket : null
+    maintenance_url       = var.enable_maintenance_page ? "http://${aws_s3_bucket_website_configuration.maintenance[0].website_endpoint}" : null
+    cloudwatch_alarm      = aws_cloudwatch_metric_alarm.route53_health_check[0].alarm_name
+    } : {
+    enabled = false
+    message = "Route53 failover is disabled. Set domain_name and enable_route53_failover = true to enable."
+  }
+}
+
+# -----------------------------------------------------------------------------
 # Security Groups Outputs
 # -----------------------------------------------------------------------------
 
@@ -318,18 +505,23 @@ output "ecr_push_commands" {
 output "deployment_summary" {
   description = "Summary of deployed resources"
   value = {
-    environment        = var.environment
-    region             = var.aws_region
-    vpc_id             = module.networking.vpc_id
-    ecs_enabled        = var.ecs_enabled
-    ec2_count          = var.liberty_instance_count
-    monitoring         = var.create_monitoring_server
-    app_url            = module.loadbalancer.app_url
-    db_endpoint        = module.database.db_effective_endpoint
-    cache_endpoint     = module.database.cache_endpoint
-    grafana_url        = var.create_monitoring_server ? module.monitoring[0].grafana_url : null
-    waf_enabled        = var.enable_waf
-    guardduty_enabled  = var.enable_guardduty
-    cloudtrail_enabled = var.enable_cloudtrail
+    environment            = var.environment
+    region                 = var.aws_region
+    vpc_id                 = module.networking.vpc_id
+    ecs_enabled            = var.ecs_enabled
+    ec2_count              = var.liberty_instance_count
+    monitoring             = var.create_monitoring_server
+    management             = var.create_management_server
+    app_url                = module.loadbalancer.app_url
+    db_endpoint            = module.database.db_effective_endpoint
+    cache_endpoint         = module.database.cache_endpoint
+    grafana_url            = var.create_monitoring_server ? module.monitoring[0].grafana_url : null
+    awx_url                = var.create_management_server ? "http://${aws_eip.management[0].public_ip}:30080" : null
+    waf_enabled            = var.enable_waf
+    guardduty_enabled      = var.enable_guardduty
+    cloudtrail_enabled     = var.enable_cloudtrail
+    slo_alarms_enabled     = var.enable_slo_alarms
+    s3_replication_enabled = var.enable_s3_replication
+    dr_region              = var.enable_s3_replication ? var.dr_region : null
   }
 }

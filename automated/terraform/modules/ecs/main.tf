@@ -327,6 +327,30 @@ resource "aws_ecr_lifecycle_policy" "main" {
   })
 }
 
+# -----------------------------------------------------------------------------
+# ECR Cross-Region Replication Configuration
+# -----------------------------------------------------------------------------
+data "aws_caller_identity" "current" {
+  count = var.ecr_replication_enabled ? 1 : 0
+}
+
+resource "aws_ecr_replication_configuration" "cross_region" {
+  count = var.ecr_replication_enabled ? 1 : 0
+
+  replication_configuration {
+    rule {
+      destination {
+        region      = var.ecr_replication_region
+        registry_id = data.aws_caller_identity.current[0].account_id
+      }
+      repository_filter {
+        filter      = var.name_prefix
+        filter_type = "PREFIX_MATCH"
+      }
+    }
+  }
+}
+
 # =============================================================================
 # Auto-Scaling Resources
 # =============================================================================

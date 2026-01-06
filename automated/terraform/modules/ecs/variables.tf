@@ -356,3 +356,19 @@ variable "sns_topic_arn" {
   type        = string
   default     = null
 }
+
+# =============================================================================
+# ECR Cross-Region Replication Variables
+# =============================================================================
+
+variable "ecr_replication_enabled" {
+  description = "Enable ECR cross-region replication for disaster recovery"
+  type        = bool
+  default     = false
+}
+
+variable "ecr_replication_region" {
+  description = "AWS region for ECR cross-region replication"
+  type        = string
+  default     = "us-west-2"
+}

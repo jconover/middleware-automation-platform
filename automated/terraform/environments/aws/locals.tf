@@ -66,4 +66,10 @@ locals {
   # ---------------------------------------------------------------------------
   # Read SSH public key from file if path is provided
   ssh_public_key = var.ssh_public_key_path != "" ? file(pathexpand(var.ssh_public_key_path)) : null
+
+  # ---------------------------------------------------------------------------
+  # Route53 DNS Failover
+  # ---------------------------------------------------------------------------
+  # Route53 is enabled when domain is configured and failover is enabled
+  route53_enabled = var.domain_name != "" && var.enable_route53_failover
 }

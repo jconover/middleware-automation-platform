@@ -261,7 +261,7 @@ module "ecs" {
   blue_green_termination_wait_minutes = 5
 
   # Observability
-  enable_xray          = false
+  enable_xray          = var.enable_xray
   enable_slo_alarms    = var.environment == "prod" || var.environment == "production"
   slo_cpu_threshold    = 85
   slo_memory_threshold = 85

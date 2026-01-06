@@ -406,6 +406,27 @@ variable "alertmanager_slack_secret_arn" {
 }
 
 # -----------------------------------------------------------------------------
+# Management Server Configuration
+# -----------------------------------------------------------------------------
+
+variable "create_management_server" {
+  description = "Create AWX/Jenkins management server for CI/CD and automation"
+  type        = bool
+  default     = false
+}
+
+variable "management_instance_type" {
+  description = "EC2 instance type for management server (AWX needs 4GB+ RAM)"
+  type        = string
+  default     = "t3.medium"
+
+  validation {
+    condition     = can(regex("^[a-z][0-9][a-z]?\\.(small|medium|large|[0-9]*xlarge|metal)$", var.management_instance_type))
+    error_message = "Management instance type must be a valid EC2 instance type (e.g., t3.medium, m5.large). Note: AWX requires at least 4GB RAM, so t3.small and smaller are not recommended."
+  }
+}
+
+# -----------------------------------------------------------------------------
 # Security Compliance Configuration
 # -----------------------------------------------------------------------------
 
@@ -489,6 +510,268 @@ variable "container_image_tag" {
   validation {
     condition     = var.container_image_tag != "latest"
     error_message = "Using 'latest' tag is not allowed. Use a specific version tag for deterministic deployments and rollbacks."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# X-Ray Distributed Tracing
+# -----------------------------------------------------------------------------
+
+variable "enable_xray" {
+  description = "Enable AWS X-Ray for distributed tracing"
+  type        = bool
+  default     = false
+}
+
+variable "xray_sampling_rate" {
+  description = "Default sampling rate for X-Ray traces (0.0 to 1.0, where 0.1 = 10%)"
+  type        = number
+  default     = 0.1
+
+  validation {
+    condition     = var.xray_sampling_rate >= 0 && var.xray_sampling_rate <= 1
+    error_message = "X-Ray sampling rate must be between 0.0 and 1.0."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# SLO/SLI Alerting Configuration
+# -----------------------------------------------------------------------------
+
+variable "enable_slo_alarms" {
+  description = "Enable SLO/SLI CloudWatch alarms for availability, latency, and error rate monitoring"
+  type        = bool
+  default     = false
+}
+
+variable "slo_alert_email" {
+  description = "Email address for SLO alerts (uses security_alert_email if not set)"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.slo_alert_email == "" || can(regex("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$", var.slo_alert_email))
+    error_message = "slo_alert_email must be empty or a valid email address format."
+  }
+}
+
+variable "slo_availability_target" {
+  description = "Availability SLO target as percentage (e.g., 99.9 for 99.9% availability)"
+  type        = number
+  default     = 99.9
+
+  validation {
+    condition     = var.slo_availability_target >= 90 && var.slo_availability_target <= 99.999
+    error_message = "SLO availability target must be between 90 and 99.999 percent."
+  }
+}
+
+variable "slo_latency_threshold_ms" {
+  description = "p99 latency SLO threshold in milliseconds"
+  type        = number
+  default     = 500
+
+  validation {
+    condition     = var.slo_latency_threshold_ms >= 50 && var.slo_latency_threshold_ms <= 10000
+    error_message = "SLO latency threshold must be between 50 and 10000 milliseconds."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Disaster Recovery Configuration
+# -----------------------------------------------------------------------------
+
+variable "enable_s3_replication" {
+  description = "Enable S3 cross-region replication for disaster recovery of ALB and CloudTrail logs"
+  type        = bool
+  default     = false
+}
+
+variable "dr_region" {
+  description = "AWS region for disaster recovery (S3 cross-region replication destination)"
+  type        = string
+  default     = "us-west-2"
+
+  validation {
+    condition     = can(regex("^[a-z]{2}-[a-z]+-[0-9]{1}$", var.dr_region))
+    error_message = "DR region must be a valid AWS region format (e.g., us-west-2, eu-west-1)."
+  }
+}
+
+# -----------------------------------------------------------------------------
+# Route53 DNS Failover Configuration
+# -----------------------------------------------------------------------------
+
+variable "domain_name" {
+  description = "Domain name for Route53 DNS records (e.g., app.example.com)"
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.domain_name == "" ||
+      can(regex("^([a-z0-9]+(-[a-z0-9]+)*\\.)+[a-z]{2,}$", var.domain_name))
+    )
+    error_message = "Domain name must be empty or a valid DNS hostname (e.g., app.example.com)."
+  }
+}
+
+variable "enable_route53_failover" {
+  description = <<-EOT
+    Enable Route53 health checks and DNS failover routing.
+    When enabled, creates:
+    - Route53 health check monitoring ALB /health/ready endpoint
+    - Primary DNS record pointing to ALB
+    - Secondary DNS record for failover (S3 maintenance page or DR region)
+    - CloudWatch alarms for health check failures
+
+    Prerequisites:
+    - domain_name must be set
+    - Route53 hosted zone must exist for the domain
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "route53_zone_name" {
+  description = <<-EOT
+    Route53 hosted zone name (e.g., example.com).
+    If empty, uses the domain_name variable.
+    Useful when domain_name is a subdomain (e.g., app.example.com) but the
+    hosted zone is the parent domain (example.com).
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.route53_zone_name == "" ||
+      can(regex("^([a-z0-9]+(-[a-z0-9]+)*\\.)+[a-z]{2,}$", var.route53_zone_name))
+    )
+    error_message = "Route53 zone name must be empty or a valid DNS hostname."
+  }
+}
+
+variable "route53_health_check_interval" {
+  description = <<-EOT
+    Interval in seconds between Route53 health checks.
+    Valid values: 10 or 30 seconds.
+    10-second intervals cost more but detect failures faster.
+  EOT
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = contains([10, 30], var.route53_health_check_interval)
+    error_message = "Route53 health check interval must be either 10 or 30 seconds."
+  }
+}
+
+variable "route53_health_check_failure_threshold" {
+  description = <<-EOT
+    Number of consecutive health check failures before Route53 considers the endpoint unhealthy.
+    Range: 1-10. Lower values trigger failover faster but may cause false positives.
+    Recommended: 3 for production (allows for transient issues).
+  EOT
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.route53_health_check_failure_threshold >= 1 && var.route53_health_check_failure_threshold <= 10
+    error_message = "Route53 health check failure threshold must be between 1 and 10."
+  }
+}
+
+variable "route53_health_check_regions" {
+  description = <<-EOT
+    AWS regions from which Route53 performs health checks.
+    Health checks are performed from multiple regions for redundancy.
+    At least 3 regions are recommended for reliable health check results.
+
+    Available regions:
+    - us-east-1, us-west-1, us-west-2
+    - eu-west-1, ap-southeast-1, ap-northeast-1
+    - sa-east-1
+  EOT
+  type        = list(string)
+  default     = ["us-east-1", "us-west-1", "eu-west-1"]
+
+  validation {
+    condition     = length(var.route53_health_check_regions) >= 3
+    error_message = "At least 3 health check regions are required for reliable results."
+  }
+}
+
+variable "route53_latency_threshold_ms" {
+  description = <<-EOT
+    Threshold in milliseconds for Route53 latency alarm.
+    Triggers a warning when average TTFB exceeds this value.
+    Default: 500ms (matches the p95 latency SLO).
+  EOT
+  type        = number
+  default     = 500
+
+  validation {
+    condition     = var.route53_latency_threshold_ms >= 100 && var.route53_latency_threshold_ms <= 10000
+    error_message = "Route53 latency threshold must be between 100 and 10000 milliseconds."
+  }
+}
+
+variable "enable_maintenance_page" {
+  description = <<-EOT
+    Create an S3-hosted maintenance page as the failover target.
+    When enabled, traffic is routed to a static maintenance page when the
+    primary ALB is unhealthy.
+
+    When disabled, you must provide dr_alb_dns_name and dr_alb_zone_id for
+    a DR region ALB as the failover target.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "create_www_record" {
+  description = <<-EOT
+    Create a www subdomain CNAME record pointing to the apex domain.
+    When enabled, www.example.com will redirect to example.com.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "dr_alb_dns_name" {
+  description = <<-EOT
+    DNS name of the DR region ALB for failover.
+    Only used when enable_maintenance_page = false.
+    Example: my-dr-alb-123456.us-west-2.elb.amazonaws.com
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.dr_alb_dns_name == "" ||
+      can(regex("^[a-z0-9-]+\\.[a-z0-9-]+\\.elb\\.amazonaws\\.com$", var.dr_alb_dns_name))
+    )
+    error_message = "DR ALB DNS name must be empty or a valid ALB DNS name."
+  }
+}
+
+variable "dr_alb_zone_id" {
+  description = <<-EOT
+    Route53 hosted zone ID of the DR region ALB.
+    Only used when enable_maintenance_page = false.
+    Find this value from the ALB in the DR region.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.dr_alb_zone_id == "" ||
+      can(regex("^Z[A-Z0-9]+$", var.dr_alb_zone_id))
+    )
+    error_message = "DR ALB zone ID must be empty or a valid Route53 zone ID (starts with Z)."
   }
 }
 
