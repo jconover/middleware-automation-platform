@@ -53,6 +53,9 @@ NAMESPACES=(
     "secrets-source"
     "metallb-system"
     "longhorn-system"
+    "calico-system"
+    "tigera-operator"
+    "calico-apiserver"
 )
 
 # Colors for output
@@ -518,8 +521,12 @@ phase_cluster_reset() {
                 sudo rm -rf /etc/cni/net.d && \
                 sudo rm -rf /var/lib/kubelet/* && \
                 sudo rm -rf /var/lib/etcd/* && \
+                sudo rm -rf /var/lib/calico && \
+                sudo rm -rf /var/lib/cni && \
                 sudo rm -rf ~/.kube && \
                 sudo iptables -F && sudo iptables -t nat -F && sudo iptables -t mangle -F && sudo iptables -X && \
+                sudo ip link delete cni0 2>/dev/null; \
+                sudo ip link delete vxlan.calico 2>/dev/null; \
                 sudo systemctl restart containerd" 2>/dev/null || \
                 log WARN "Could not reset worker $worker"
         fi
@@ -532,8 +539,12 @@ phase_cluster_reset() {
             sudo rm -rf /etc/cni/net.d && \
             sudo rm -rf /var/lib/kubelet/* && \
             sudo rm -rf /var/lib/etcd/* && \
+            sudo rm -rf /var/lib/calico && \
+            sudo rm -rf /var/lib/cni && \
             sudo rm -rf ~/.kube && \
             sudo iptables -F && sudo iptables -t nat -F && sudo iptables -t mangle -F && sudo iptables -X && \
+            sudo ip link delete cni0 2>/dev/null; \
+            sudo ip link delete vxlan.calico 2>/dev/null; \
             sudo systemctl restart containerd" 2>/dev/null || \
             log WARN "Could not reset master $MASTER_IP"
     fi

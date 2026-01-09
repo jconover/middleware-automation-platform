@@ -43,7 +43,7 @@ MASTER_IP="192.168.68.93"
 WORKER_IPS=("192.168.68.86" "192.168.68.88")
 POD_CIDR="10.244.0.0/16"
 SERVICE_CIDR="10.96.0.0/12"
-K8S_VERSION="v1.34.1"
+K8S_VERSION="v1.33.1"
 CLUSTER_NAME="beelink-homelab"
 
 # MetalLB IP assignments
@@ -216,9 +216,10 @@ phase_cluster_init() {
     fi
 
     # Create kubeadm config
+    # Note: K8s 1.31+ requires v1beta4 API with list-based extraArgs format
     local kubeadm_config="/tmp/kubeadm-config.yaml"
     cat > "$kubeadm_config" << EOF
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 kubernetesVersion: ${K8S_VERSION}
 controlPlaneEndpoint: "${MASTER_IP}:6443"
@@ -228,21 +229,32 @@ networking:
 clusterName: "${CLUSTER_NAME}"
 apiServer:
   extraArgs:
-    audit-log-path: "/var/log/kubernetes/audit.log"
-    audit-log-maxage: "30"
-    audit-log-maxbackup: "10"
-    audit-log-maxsize: "100"
+  - name: audit-log-path
+    value: "/var/log/kubernetes/audit.log"
+  - name: audit-log-maxage
+    value: "30"
+  - name: audit-log-maxbackup
+    value: "10"
+  - name: audit-log-maxsize
+    value: "100"
+  extraVolumes:
+  - name: audit-log
+    hostPath: /var/log/kubernetes
+    mountPath: /var/log/kubernetes
+    pathType: DirectoryOrCreate
 controllerManager:
   extraArgs:
-    bind-address: "0.0.0.0"
+  - name: bind-address
+    value: "0.0.0.0"
 scheduler:
   extraArgs:
-    bind-address: "0.0.0.0"
+  - name: bind-address
+    value: "0.0.0.0"
 etcd:
   local:
     dataDir: /var/lib/etcd
 ---
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
 nodeRegistration:
   criSocket: unix:///var/run/containerd/containerd.sock

@@ -24,7 +24,7 @@
 set -euo pipefail
 
 # Configuration
-K8S_VERSION="1.34"
+K8S_VERSION="1.33"
 DRY_RUN=false
 
 # Colors

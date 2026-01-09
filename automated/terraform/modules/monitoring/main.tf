@@ -258,6 +258,33 @@ resource "aws_eip_association" "monitoring" {
 }
 
 # -----------------------------------------------------------------------------
+# User Data with Gzip Compression
+# -----------------------------------------------------------------------------
+# The monitoring user-data script exceeds EC2's 16 KB limit (~20 KB).
+# Using cloudinit_config with gzip compression reduces it to ~6-7 KB.
+# -----------------------------------------------------------------------------
+data "cloudinit_config" "monitoring" {
+  gzip          = true
+  base64_encode = true
+
+  part {
+    content_type = "text/x-shellscript"
+    content = templatefile("${path.module}/templates/monitoring-user-data.sh", {
+      name_prefix                   = var.name_prefix
+      aws_region                    = var.aws_region
+      ecs_enabled                   = var.ecs_cluster_name != ""
+      ecs_cluster_name              = var.ecs_cluster_name
+      grafana_credentials_secret_id = aws_secretsmanager_secret.grafana_credentials.id
+      alertmanager_slack_secret_id  = var.alertmanager_slack_secret_arn
+      prometheus_retention_days     = var.prometheus_retention_days
+      grafana_version               = var.grafana_version
+      liberty_targets               = local.valid_liberty_targets
+      alertmanager_config           = var.alertmanager_config
+    })
+  }
+}
+
+# -----------------------------------------------------------------------------
 # EC2 Instance
 # -----------------------------------------------------------------------------
 resource "aws_instance" "monitoring" {
@@ -285,18 +312,7 @@ resource "aws_instance" "monitoring" {
     http_put_response_hop_limit = 1
   }
 
-  user_data = base64encode(templatefile("${path.module}/templates/monitoring-user-data.sh", {
-    name_prefix                   = var.name_prefix
-    aws_region                    = var.aws_region
-    ecs_enabled                   = var.ecs_cluster_name != ""
-    ecs_cluster_name              = var.ecs_cluster_name
-    grafana_credentials_secret_id = aws_secretsmanager_secret.grafana_credentials.id
-    alertmanager_slack_secret_id  = var.alertmanager_slack_secret_arn
-    prometheus_retention_days     = var.prometheus_retention_days
-    grafana_version               = var.grafana_version
-    liberty_targets               = local.valid_liberty_targets
-    alertmanager_config           = var.alertmanager_config
-  }))
+  user_data = data.cloudinit_config.monitoring.rendered
 
   tags = merge(var.tags, {
     Name         = "${var.name_prefix}-monitoring"

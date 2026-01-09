@@ -334,6 +334,36 @@ module "compute" {
 }
 
 # -----------------------------------------------------------------------------
+# Monitoring SSH Key (Conditional)
+# -----------------------------------------------------------------------------
+# Creates an SSH key pair for the monitoring server when the compute module
+# is not being created (i.e., when liberty_instance_count = 0).
+# -----------------------------------------------------------------------------
+
+resource "tls_private_key" "monitoring" {
+  count     = var.create_monitoring_server && var.liberty_instance_count == 0 ? 1 : 0
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "monitoring" {
+  count      = var.create_monitoring_server && var.liberty_instance_count == 0 ? 1 : 0
+  key_name   = "${local.name_prefix}-monitoring"
+  public_key = tls_private_key.monitoring[0].public_key_openssh
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-monitoring-key"
+  })
+}
+
+resource "local_file" "monitoring_private_key" {
+  count           = var.create_monitoring_server && var.liberty_instance_count == 0 ? 1 : 0
+  content         = tls_private_key.monitoring[0].private_key_pem
+  filename        = pathexpand("~/.ssh/${local.name_prefix}-monitoring.pem")
+  file_permission = "0400"
+}
+
+# -----------------------------------------------------------------------------
 # Monitoring Module (Conditional)
 # -----------------------------------------------------------------------------
 # Creates dedicated EC2 instance with Prometheus, Grafana, and AlertManager.
@@ -350,7 +380,7 @@ module "monitoring" {
   vpc_cidr     = module.networking.vpc_cidr
   subnet_id    = module.networking.public_subnet_ids[0]
   ami_id       = data.aws_ami.ubuntu.id
-  ssh_key_name = var.liberty_instance_count > 0 ? module.compute[0].ssh_key_name : "${local.name_prefix}-monitoring"
+  ssh_key_name = var.liberty_instance_count > 0 ? module.compute[0].ssh_key_name : aws_key_pair.monitoring[0].key_name
   tags         = local.common_tags
 
   # Security Group
