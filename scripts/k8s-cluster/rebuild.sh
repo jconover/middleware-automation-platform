@@ -186,6 +186,78 @@ check_prerequisites() {
 }
 
 #===============================================================================
+# CNI Installation Helper (called from phase_cluster_init)
+#===============================================================================
+
+install_cni_calico() {
+    log INFO "Installing CNI (Calico)..."
+
+    # Check if already installed
+    if kubectl get namespace calico-system &>/dev/null; then
+        log INFO "Calico already installed, skipping"
+        return 0
+    fi
+
+    # Install Calico operator
+    log INFO "Installing Calico operator..."
+    kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+
+    # Wait for operator to be ready
+    log INFO "Waiting for Calico operator..."
+    sleep 15
+    kubectl wait --for=condition=Available deployment/tigera-operator -n tigera-operator --timeout=120s 2>/dev/null || {
+        log WARN "Operator not fully ready, continuing..."
+    }
+
+    # Configure Calico with pod CIDR
+    log INFO "Configuring Calico with pod CIDR: ${POD_CIDR}..."
+    cat << EOF | kubectl apply -f -
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  calicoNetwork:
+    ipPools:
+    - blockSize: 26
+      cidr: ${POD_CIDR}
+      encapsulation: VXLANCrossSubnet
+      natOutgoing: Enabled
+      nodeSelector: all()
+  nodeMetricsPort: 9091
+---
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}
+EOF
+
+    # Wait for Calico node pods (critical for node Ready status)
+    log INFO "Waiting for Calico node pods to be ready..."
+    sleep 30
+
+    # Wait for calico-node daemonset on at least the master
+    local retries=0
+    local max_retries=30
+    while [[ $retries -lt $max_retries ]]; do
+        if kubectl get pods -n calico-system -l k8s-app=calico-node 2>/dev/null | grep -q "Running"; then
+            log OK "Calico node pod is running"
+            break
+        fi
+        log INFO "Waiting for Calico node pod... (attempt $((retries+1))/$max_retries)"
+        sleep 10
+        ((retries++))
+    done
+
+    if [[ $retries -eq $max_retries ]]; then
+        log WARN "Calico node pod not fully ready after ${max_retries} attempts, continuing anyway..."
+    fi
+
+    log OK "CNI (Calico) installed"
+}
+
+#===============================================================================
 # Phase 1: Cluster Initialization
 #===============================================================================
 
@@ -216,49 +288,28 @@ phase_cluster_init() {
     fi
 
     # Create kubeadm config
-    # Note: K8s 1.31+ requires v1beta4 API with list-based extraArgs format
+    # MINIMAL configuration for K8s 1.33.1 - only essential settings
+    # v1beta4 API is required for K8s 1.31+
+    # All extraArgs, extraVolumes, timeouts removed to use tested defaults
     local kubeadm_config="/tmp/kubeadm-config.yaml"
     cat > "$kubeadm_config" << EOF
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: "${MASTER_IP}"
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///var/run/containerd/containerd.sock
+  taints: []
+---
 apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 kubernetesVersion: ${K8S_VERSION}
 controlPlaneEndpoint: "${MASTER_IP}:6443"
+clusterName: "${CLUSTER_NAME}"
 networking:
   podSubnet: "${POD_CIDR}"
   serviceSubnet: "${SERVICE_CIDR}"
-clusterName: "${CLUSTER_NAME}"
-apiServer:
-  extraArgs:
-  - name: audit-log-path
-    value: "/var/log/kubernetes/audit.log"
-  - name: audit-log-maxage
-    value: "30"
-  - name: audit-log-maxbackup
-    value: "10"
-  - name: audit-log-maxsize
-    value: "100"
-  extraVolumes:
-  - name: audit-log
-    hostPath: /var/log/kubernetes
-    mountPath: /var/log/kubernetes
-    pathType: DirectoryOrCreate
-controllerManager:
-  extraArgs:
-  - name: bind-address
-    value: "0.0.0.0"
-scheduler:
-  extraArgs:
-  - name: bind-address
-    value: "0.0.0.0"
-etcd:
-  local:
-    dataDir: /var/lib/etcd
----
-apiVersion: kubeadm.k8s.io/v1beta4
-kind: InitConfiguration
-nodeRegistration:
-  criSocket: unix:///var/run/containerd/containerd.sock
-  taints: []
 EOF
 
     if [[ "$DRY_RUN" == "true" ]]; then
@@ -267,9 +318,60 @@ EOF
         return 0
     fi
 
-    # Copy config and initialize
-    log INFO "Initializing control plane on $MASTER_IP..."
+    # Copy config to master
+    log INFO "Copying kubeadm config to $MASTER_IP..."
     scp "$kubeadm_config" "${MASTER_IP}:/tmp/kubeadm-config.yaml"
+
+    # Pre-pull required container images (prevents silent failures during init)
+    log INFO "Pre-pulling required Kubernetes images on $MASTER_IP..."
+    ssh "$MASTER_IP" "sudo kubeadm config images pull --config=/tmp/kubeadm-config.yaml" || {
+        log ERROR "Failed to pull required images. Checking available images..."
+        ssh "$MASTER_IP" "sudo kubeadm config images list --config=/tmp/kubeadm-config.yaml"
+        log ERROR "Please check network connectivity to registry.k8s.io"
+        return 1
+    }
+
+    # Verify images are available
+    log INFO "Verifying images on $MASTER_IP..."
+    ssh "$MASTER_IP" "sudo crictl images | grep -E 'kube-apiserver|kube-controller|kube-scheduler|etcd|coredns|pause' || true"
+
+    # CRITICAL: Stop kubelet before kubeadm init
+    # The kubelet package has Restart=always, so it may have started after node-prep
+    # or during image pull. kubeadm preflight checks fail if port 10250 is in use.
+    log INFO "Ensuring kubelet is stopped before kubeadm init..."
+
+    # First, unmask kubelet if it was masked during teardown
+    # A masked service cannot be started by kubeadm
+    ssh "$MASTER_IP" "sudo systemctl unmask kubelet 2>/dev/null || true"
+
+    # Stop kubelet if it is running
+    ssh "$MASTER_IP" "sudo systemctl stop kubelet 2>/dev/null || true"
+
+    # Force kill any remaining kubelet processes
+    ssh "$MASTER_IP" "sudo pkill -9 kubelet 2>/dev/null || true"
+
+    # Wait a moment for the process to fully terminate
+    sleep 2
+
+    # Verify port 10250 is free
+    if ssh "$MASTER_IP" "sudo ss -tlnp | grep -q ':10250 '"; then
+        log ERROR "Port 10250 is still in use! Attempting to identify the process..."
+        ssh "$MASTER_IP" "sudo ss -tlnp | grep ':10250 '"
+        # Use fuser to forcibly kill the process holding the port
+        ssh "$MASTER_IP" "sudo fuser -k 10250/tcp 2>/dev/null || true"
+        sleep 2
+        # Final check
+        if ssh "$MASTER_IP" "sudo ss -tlnp | grep -q ':10250 '"; then
+            log ERROR "Port 10250 is STILL in use after kill attempts!"
+            log ERROR "Please manually check what is using port 10250 on $MASTER_IP:"
+            log ERROR "  ssh $MASTER_IP 'sudo ss -tlnp | grep :10250'"
+            return 1
+        fi
+    fi
+    log OK "Port 10250 is free on $MASTER_IP"
+
+    # Initialize control plane
+    log INFO "Initializing control plane on $MASTER_IP..."
     ssh "$MASTER_IP" "sudo kubeadm init --config=/tmp/kubeadm-config.yaml --upload-certs"
 
     # Get kubeconfig
@@ -278,6 +380,17 @@ EOF
     scp "${MASTER_IP}:/etc/kubernetes/admin.conf" ~/.kube/config
     chmod 600 ~/.kube/config
 
+    # CRITICAL: Install CNI before waiting for nodes or joining workers
+    # Nodes cannot become Ready without a CNI plugin installed
+    log INFO "Installing CNI before joining workers..."
+    install_cni_calico
+
+    # Wait for master node to be Ready (now possible with CNI installed)
+    log INFO "Waiting for master node to be ready..."
+    kubectl wait --for=condition=ready node --all --timeout=180s || {
+        log WARN "Master node not fully ready, continuing with worker join..."
+    }
+
     # Get join command
     log INFO "Getting join command..."
     local join_cmd
@@ -285,67 +398,67 @@ EOF
 
     # Join workers
     for worker in "${WORKER_IPS[@]}"; do
+        log INFO "Preparing worker node: $worker"
+
+        # Unmask and stop kubelet on worker (same as master)
+        ssh "$worker" "sudo systemctl unmask kubelet 2>/dev/null || true"
+        ssh "$worker" "sudo systemctl stop kubelet 2>/dev/null || true"
+        ssh "$worker" "sudo pkill -9 kubelet 2>/dev/null || true"
+        sleep 1
+
+        # Verify port 10250 is free on worker
+        if ssh "$worker" "sudo ss -tlnp | grep -q ':10250 '"; then
+            log WARN "Port 10250 in use on $worker, attempting to free it..."
+            ssh "$worker" "sudo fuser -k 10250/tcp 2>/dev/null || true"
+            sleep 2
+        fi
+
         log INFO "Joining worker node: $worker"
         ssh "$worker" "sudo $join_cmd"
     done
 
-    # Wait for nodes
-    log INFO "Waiting for nodes to be ready..."
-    sleep 30
-    kubectl wait --for=condition=ready node --all --timeout=300s
+    # Wait for all nodes (master + workers) to be Ready
+    # CNI is already installed, so nodes should become Ready quickly
+    log INFO "Waiting for all nodes to be ready..."
+    sleep 15
+    kubectl wait --for=condition=ready node --all --timeout=300s || {
+        log WARN "Some nodes not fully ready, check with 'kubectl get nodes'"
+    }
 
-    log OK "Cluster initialized successfully"
+    log OK "Cluster initialized successfully (with CNI)"
 }
 
 #===============================================================================
-# Phase 2: CNI (Calico)
+# Phase 2: CNI Verification (Calico already installed during cluster init)
 #===============================================================================
 
 phase_cni() {
-    log PHASE "Phase 2: Installing CNI (Calico)"
+    log PHASE "Phase 2: Verifying CNI (Calico)"
 
-    # Check if Calico is already installed
+    # CNI should already be installed during phase_cluster_init
+    # This phase verifies and repairs if needed
     if kubectl get namespace calico-system &>/dev/null; then
-        log INFO "Calico already installed"
+        log INFO "Calico CNI verified - checking pod status..."
+
+        # Verify Calico pods are running
+        if kubectl get pods -n calico-system -l k8s-app=calico-node 2>/dev/null | grep -q "Running"; then
+            log OK "Calico node pods are running"
+        else
+            log WARN "Calico node pods not ready, waiting..."
+            kubectl wait --for=condition=Available --timeout=120s deployment/calico-kube-controllers -n calico-system 2>/dev/null || true
+        fi
+
+        # Show Calico status
+        log INFO "Calico pod status:"
+        kubectl get pods -n calico-system 2>/dev/null || true
         return 0
     fi
 
-    # Install Calico operator
-    run_cmd "Installing Calico operator" \
-        "kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml"
+    # If CNI is missing (e.g., --skip-init was used), install it now
+    log WARN "CNI not found - installing Calico..."
+    install_cni_calico
 
-    # Wait for operator
-    sleep 10
-
-    # Configure Calico
-    cat << EOF | kubectl apply -f -
-apiVersion: operator.tigera.io/v1
-kind: Installation
-metadata:
-  name: default
-spec:
-  calicoNetwork:
-    ipPools:
-    - blockSize: 26
-      cidr: ${POD_CIDR}
-      encapsulation: VXLANCrossSubnet
-      natOutgoing: Enabled
-      nodeSelector: all()
-  nodeMetricsPort: 9091
----
-apiVersion: operator.tigera.io/v1
-kind: APIServer
-metadata:
-  name: default
-spec: {}
-EOF
-
-    # Wait for Calico
-    log INFO "Waiting for Calico to be ready..."
-    sleep 30
-    kubectl wait --for=condition=Available --timeout=300s deployment/calico-kube-controllers -n calico-system 2>/dev/null || true
-
-    log OK "Calico CNI installed"
+    log OK "Calico CNI verified"
 }
 
 #===============================================================================

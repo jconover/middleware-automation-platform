@@ -513,49 +513,124 @@ phase_cluster_reset() {
         return 0
     fi
 
+    # Comprehensive node reset command
+    # This handles version downgrades (e.g., 1.34 -> 1.33) by cleaning ALL state
+    local node_reset_cmd='
+        echo "=== Stopping and disabling kubelet ==="
+        # Stop kubelet first
+        sudo systemctl stop kubelet 2>/dev/null || true
+
+        # Disable kubelet to prevent restart on boot
+        sudo systemctl disable kubelet 2>/dev/null || true
+
+        # CRITICAL: Mask kubelet to prevent ANY restart (by systemd, timers, or dependencies)
+        # This is stronger than disable - it links the unit to /dev/null
+        sudo systemctl mask kubelet 2>/dev/null || true
+
+        # Kill any remaining kubelet processes (in case systemctl stop failed)
+        sudo pkill -9 kubelet 2>/dev/null || true
+
+        # Wait a moment to ensure kubelet is fully stopped
+        sleep 2
+
+        # Verify kubelet is not running
+        if pgrep kubelet > /dev/null 2>&1; then
+            echo "WARNING: kubelet still running, attempting force kill..."
+            sudo pkill -9 -f kubelet 2>/dev/null || true
+            sleep 1
+        fi
+
+        echo "=== Running kubeadm reset ==="
+        sudo kubeadm reset -f --cleanup-tmp-dir 2>/dev/null || true
+
+        echo "=== Removing Kubernetes directories ==="
+        # /etc/kubernetes - manifests, certs, configs (CRITICAL for version changes)
+        sudo rm -rf /etc/kubernetes
+        # /var/lib/kubelet - kubelet state, pods, plugins
+        sudo rm -rf /var/lib/kubelet
+        # /var/lib/etcd - etcd database (control plane only, harmless on workers)
+        sudo rm -rf /var/lib/etcd
+
+        echo "=== Removing CNI state ==="
+        sudo rm -rf /etc/cni/net.d
+        sudo rm -rf /var/lib/cni
+        sudo rm -rf /var/lib/calico
+        sudo rm -rf /var/run/calico
+        sudo rm -rf /run/calico
+
+        echo "=== Cleaning user kubeconfig ==="
+        sudo rm -rf /root/.kube
+        rm -rf ~/.kube
+
+        echo "=== Flushing iptables rules ==="
+        sudo iptables -F
+        sudo iptables -t nat -F
+        sudo iptables -t mangle -F
+        sudo iptables -t raw -F
+        sudo iptables -X
+        sudo iptables -t nat -X
+        sudo iptables -t mangle -X
+
+        echo "=== Flushing ip6tables rules ==="
+        sudo ip6tables -F 2>/dev/null || true
+        sudo ip6tables -t nat -F 2>/dev/null || true
+        sudo ip6tables -t mangle -F 2>/dev/null || true
+        sudo ip6tables -X 2>/dev/null || true
+
+        echo "=== Flushing IPVS rules (if kube-proxy uses IPVS) ==="
+        sudo ipvsadm --clear 2>/dev/null || true
+
+        echo "=== Removing virtual network interfaces ==="
+        sudo ip link delete cni0 2>/dev/null || true
+        sudo ip link delete flannel.1 2>/dev/null || true
+        sudo ip link delete vxlan.calico 2>/dev/null || true
+        sudo ip link delete tunl0 2>/dev/null || true
+        sudo ip link delete kube-ipvs0 2>/dev/null || true
+        sudo ip link delete docker0 2>/dev/null || true
+        sudo ip link delete nodelocaldns 2>/dev/null || true
+
+        echo "=== Removing leftover container state (optional, ensures clean slate) ==="
+        # Remove any kubernetes-related containers still running
+        sudo crictl rm -af 2>/dev/null || true
+        # Clear containerd state for k8s namespace
+        sudo ctr -n k8s.io containers rm $(sudo ctr -n k8s.io containers list -q) 2>/dev/null || true
+        sudo ctr -n k8s.io images rm $(sudo ctr -n k8s.io images list -q) 2>/dev/null || true
+
+        echo "=== Restarting containerd ==="
+        sudo systemctl restart containerd
+
+        echo "=== Node reset complete ==="
+    '
+
     # Reset workers first
     for worker in "${WORKER_IPS[@]}"; do
         log INFO "Resetting worker node: $worker"
         if [[ "$DRY_RUN" != "true" ]]; then
-            ssh -o ConnectTimeout=10 "$worker" "sudo kubeadm reset -f && \
-                sudo rm -rf /etc/cni/net.d && \
-                sudo rm -rf /var/lib/kubelet/* && \
-                sudo rm -rf /var/lib/etcd/* && \
-                sudo rm -rf /var/lib/calico && \
-                sudo rm -rf /var/lib/cni && \
-                sudo rm -rf ~/.kube && \
-                sudo iptables -F && sudo iptables -t nat -F && sudo iptables -t mangle -F && sudo iptables -X && \
-                sudo ip link delete cni0 2>/dev/null; \
-                sudo ip link delete vxlan.calico 2>/dev/null; \
-                sudo systemctl restart containerd" 2>/dev/null || \
-                log WARN "Could not reset worker $worker"
+            ssh -o ConnectTimeout=10 "$worker" "$node_reset_cmd" 2>&1 | tee -a "$LOG_FILE" || \
+                log WARN "Could not fully reset worker $worker - may need manual cleanup"
+        else
+            log INFO "[DRY-RUN] Would reset worker: $worker"
         fi
     done
 
     # Reset master last
     log INFO "Resetting master node: $MASTER_IP"
     if [[ "$DRY_RUN" != "true" ]]; then
-        ssh -o ConnectTimeout=10 "$MASTER_IP" "sudo kubeadm reset -f && \
-            sudo rm -rf /etc/cni/net.d && \
-            sudo rm -rf /var/lib/kubelet/* && \
-            sudo rm -rf /var/lib/etcd/* && \
-            sudo rm -rf /var/lib/calico && \
-            sudo rm -rf /var/lib/cni && \
-            sudo rm -rf ~/.kube && \
-            sudo iptables -F && sudo iptables -t nat -F && sudo iptables -t mangle -F && sudo iptables -X && \
-            sudo ip link delete cni0 2>/dev/null; \
-            sudo ip link delete vxlan.calico 2>/dev/null; \
-            sudo systemctl restart containerd" 2>/dev/null || \
-            log WARN "Could not reset master $MASTER_IP"
+        ssh -o ConnectTimeout=10 "$MASTER_IP" "$node_reset_cmd" 2>&1 | tee -a "$LOG_FILE" || \
+            log WARN "Could not fully reset master $MASTER_IP - may need manual cleanup"
+    else
+        log INFO "[DRY-RUN] Would reset master: $MASTER_IP"
     fi
 
     # Clean up local kubeconfig
     log INFO "Cleaning local kubeconfig..."
     if [[ "$DRY_RUN" != "true" ]]; then
         rm -f ~/.kube/config 2>/dev/null || true
+        rm -rf ~/.kube/cache 2>/dev/null || true
     fi
 
     log OK "Cluster reset complete"
+    log INFO "All nodes are ready for fresh kubeadm init with any K8s version"
 }
 
 #===============================================================================

@@ -112,7 +112,7 @@ spec:
     - setting: AUTH_TOKEN_EXPIRATION
       value: "86400"
 
-  # Pod annotations
+  # Pod annotations for Prometheus scraping
   annotations: |
     prometheus.io/scrape: "true"
     prometheus.io/port: "8052"

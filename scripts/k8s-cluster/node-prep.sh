@@ -181,8 +181,13 @@ install_containerd() {
     run mkdir -p /etc/containerd
     containerd config default | run tee /etc/containerd/config.toml > /dev/null
 
-    # Enable systemd cgroup driver
-    run sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+    # Enable systemd cgroup driver (use global replacement)
+    run sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+
+    # CRITICAL: Set the correct pause (sandbox) image for Kubernetes 1.33+
+    # The default pause image is often outdated and causes kubeadm init to hang
+    # waiting for the sandbox to start. K8s 1.33 requires pause:3.10
+    run sed -i 's|sandbox_image = "registry.k8s.io/pause:.*"|sandbox_image = "registry.k8s.io/pause:3.10"|' /etc/containerd/config.toml
 
     run systemctl restart containerd
     run systemctl enable containerd
@@ -236,9 +241,15 @@ KUBELET_EXTRA_ARGS=
 EOF
 
     run systemctl daemon-reload
+    # Enable kubelet but do NOT start it yet
+    # IMPORTANT: kubelet must NOT be running before kubeadm init
+    # kubeadm init will start kubelet at the appropriate time
+    # The kubelet package has Restart=always, so if it starts prematurely
+    # it will keep restarting and bind port 10250, causing kubeadm preflight to fail
     run systemctl enable kubelet
+    run systemctl stop kubelet 2>/dev/null || true
 
-    log_ok "kubelet configured"
+    log_ok "kubelet configured (will be started by kubeadm init)"
 }
 
 enable_iscsid() {
