@@ -374,10 +374,10 @@ EOF
     log INFO "Initializing control plane on $MASTER_IP..."
     ssh "$MASTER_IP" "sudo kubeadm init --config=/tmp/kubeadm-config.yaml --upload-certs"
 
-    # Get kubeconfig
+    # Get kubeconfig (file is owned by root, so copy via sudo first)
     log INFO "Retrieving kubeconfig..."
     mkdir -p ~/.kube
-    scp "${MASTER_IP}:/etc/kubernetes/admin.conf" ~/.kube/config
+    ssh "$MASTER_IP" "sudo cat /etc/kubernetes/admin.conf" > ~/.kube/config
     chmod 600 ~/.kube/config
 
     # CRITICAL: Install CNI before waiting for nodes or joining workers
