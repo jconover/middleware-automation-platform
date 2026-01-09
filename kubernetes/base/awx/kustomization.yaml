@@ -1,0 +1,49 @@
+---
+# =============================================================================
+# AWX Kustomize Configuration
+# =============================================================================
+# Deploys AWX (Ansible Automation Platform) on Kubernetes using the AWX Operator.
+#
+# Prerequisites:
+#   1. Longhorn storage class installed (for PostgreSQL persistence)
+#   2. MetalLB installed (for LoadBalancer service)
+#   3. Admin password secret created (see awx-admin-secret-template.yaml)
+#
+# Deployment Steps:
+#   1. Create the admin password secret:
+#        kubectl create namespace awx
+#        kubectl create secret generic awx-admin-password \
+#          --namespace=awx \
+#          --from-literal=password='YOUR_SECURE_PASSWORD_HERE'
+#
+#   2. Deploy AWX:
+#        kubectl apply -k kubernetes/base/awx/
+#
+#   3. Wait for operator and AWX to become ready:
+#        kubectl -n awx get pods -w
+#
+#   4. Access AWX at http://192.168.68.206 (admin / your-password)
+#
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: awx-base
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+namespace: awx
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/part-of: middleware-platform
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/component: automation
+
+resources:
+  - namespace.yaml
+  - awx-operator.yaml
+  - awx-instance.yaml
+  # NetworkPolicy temporarily disabled - enable after AWX is running
+  # - awx-service.yaml

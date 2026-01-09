@@ -1,0 +1,283 @@
+---
+# =============================================================================
+# AWX Operator Deployment
+# =============================================================================
+# Installs the AWX Operator using Kustomize remote reference.
+# The operator manages the lifecycle of AWX instances.
+#
+# This uses the official AWX Operator kustomize configuration.
+# The operator version is pinned for reproducibility.
+#
+# To update the operator version:
+#   1. Check releases: https://github.com/ansible/awx-operator/releases
+#   2. Update the ref parameter below
+#   3. Re-apply: kubectl apply -k kubernetes/base/awx/
+#
+# Manual installation alternative:
+#   kubectl apply -f https://raw.githubusercontent.com/ansible/awx-operator/2.19.1/deploy/awx-operator.yaml
+# =============================================================================
+
+# The AWX Operator is installed via Kustomize remote reference in kustomization.yaml
+# This file serves as documentation. The actual operator deployment uses:
+#
+# resources:
+#   - github.com/ansible/awx-operator/config/default?ref=2.19.1
+#
+# However, since we want a simpler, more reliable approach, we include the
+# operator deployment manifest directly below.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: awx-operator-controller-manager
+  namespace: awx
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: awx-operator-manager-role
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "events", "persistentvolumeclaims", "pods", "secrets", "serviceaccounts", "services"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec", "pods/log"]
+    verbs: ["create", "get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["awx.ansible.com"]
+    resources: ["awxbackups", "awxbackups/status", "awxrestores", "awxrestores/status", "awxs", "awxs/status", "awxmeshingresses", "awxmeshingresses/status"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes", "routes/custom-host"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterrolebindings", "clusterroles", "rolebindings", "roles"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+
+---
+# Role for leader election in the AWX namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: awx-operator-leader-election-role
+  namespace: awx
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: awx-operator-leader-election-rolebinding
+  namespace: awx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: awx-operator-leader-election-role
+subjects:
+  - kind: ServiceAccount
+    name: awx-operator-controller-manager
+    namespace: awx
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: awx-operator-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: awx-operator-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: awx-operator-controller-manager
+    namespace: awx
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: awx-operator-controller-manager
+  namespace: awx
+  labels:
+    app.kubernetes.io/name: awx-operator
+    app.kubernetes.io/component: operator
+    control-plane: controller-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+        app.kubernetes.io/name: awx-operator
+    spec:
+      serviceAccountName: awx-operator-controller-manager
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: awx-manager
+          image: quay.io/ansible/awx-operator:2.19.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - --leader-elect
+            - --leader-election-id=awx-operator
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 6789
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 6789
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      terminationGracePeriodSeconds: 10
+
+---
+# AWX CRD (Custom Resource Definition)
+# Required for the AWX operator to function
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: awxs.awx.ansible.com
+spec:
+  group: awx.ansible.com
+  names:
+    kind: AWX
+    listKind: AWXList
+    plural: awxs
+    singular: awx
+  scope: Namespaced
+  versions:
+    - name: v1beta1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+          properties:
+            spec:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: awxbackups.awx.ansible.com
+spec:
+  group: awx.ansible.com
+  names:
+    kind: AWXBackup
+    listKind: AWXBackupList
+    plural: awxbackups
+    singular: awxbackup
+  scope: Namespaced
+  versions:
+    - name: v1beta1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: awxrestores.awx.ansible.com
+spec:
+  group: awx.ansible.com
+  names:
+    kind: AWXRestore
+    listKind: AWXRestoreList
+    plural: awxrestores
+    singular: awxrestore
+  scope: Namespaced
+  versions:
+    - name: v1beta1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+
+---
+# AWXMeshIngress CRD - Required for AWX Operator 2.19.1+
+# Used for mesh networking in distributed AWX deployments
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: awxmeshingresses.awx.ansible.com
+spec:
+  group: awx.ansible.com
+  names:
+    kind: AWXMeshIngress
+    listKind: AWXMeshIngressList
+    plural: awxmeshingresses
+    singular: awxmeshingress
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+          properties:
+            spec:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true

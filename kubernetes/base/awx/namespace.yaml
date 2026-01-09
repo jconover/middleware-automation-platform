@@ -1,0 +1,27 @@
+---
+# =============================================================================
+# AWX Namespace Configuration
+# =============================================================================
+# Dedicated namespace for AWX (Ansible Automation Platform) deployment.
+# Includes Pod Security Admission labels for security hardening.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: awx
+  labels:
+    name: awx
+    kubernetes.io/metadata.name: awx
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/component: automation
+    app.kubernetes.io/part-of: middleware-platform
+    # Pod Security Admission labels (Kubernetes 1.23+)
+    # AWX requires 'baseline' due to container requirements
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+  annotations:
+    description: "AWX automation platform namespace with security hardening"

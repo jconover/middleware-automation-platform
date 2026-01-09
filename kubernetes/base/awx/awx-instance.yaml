@@ -1,0 +1,163 @@
+---
+# =============================================================================
+# AWX Instance Configuration
+# =============================================================================
+# Defines the AWX Custom Resource that the AWX Operator will reconcile.
+# This creates the AWX web, task, and PostgreSQL components.
+#
+# Admin Password Secret:
+#   Before applying this manifest, create the admin password secret:
+#     kubectl create secret generic awx-admin-password \
+#       --namespace=awx \
+#       --from-literal=password='YOUR_SECURE_PASSWORD_HERE'
+#
+# Access:
+#   After deployment, access AWX at: http://192.168.68.206
+#   Username: admin
+#   Password: (value from awx-admin-password secret)
+# =============================================================================
+apiVersion: awx.ansible.com/v1beta1
+kind: AWX
+metadata:
+  name: awx
+  namespace: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/component: automation
+    app.kubernetes.io/part-of: middleware-platform
+    app.kubernetes.io/managed-by: awx-operator
+  annotations:
+    description: "AWX automation controller for middleware platform"
+spec:
+  # Service configuration - using ClusterIP, LoadBalancer is handled separately by awx-service.yaml
+  service_type: ClusterIP
+
+  # Ingress configuration - set to 'none' explicitly to prevent empty template issues
+  # This is required because the AWX operator has issues when ingress templates render empty
+  ingress_type: none
+
+  # Admin user configuration
+  admin_user: admin
+  admin_password_secret: awx-admin-password
+
+  # Web container resource management
+  web_resource_requirements:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  # Task container resource management
+  task_resource_requirements:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  # Execution Environment (EE) resource management
+  ee_resource_requirements:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+  # Redis container resource management
+  redis_resource_requirements:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+  # PostgreSQL configuration with Longhorn persistent storage
+  postgres_storage_class: longhorn
+  postgres_storage_requirements:
+    requests:
+      storage: 8Gi
+    limits:
+      storage: 20Gi
+
+  # PostgreSQL data volume init - enables init container for volume setup
+  postgres_data_volume_init: true
+
+  # Projects persistence for playbook storage
+  projects_persistence: true
+  projects_storage_class: longhorn
+  projects_storage_size: 5Gi
+
+  # Security context settings - removed to allow operator defaults
+  # The AWX operator handles security context internally
+  # security_context_settings:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+  #   fsGroup: 1000
+  #   fsGroupChangePolicy: OnRootMismatch
+
+  # Security-related extra settings
+  extra_settings:
+    - setting: SOCIAL_AUTH_REDIRECT_IS_HTTPS
+      value: "false"
+    - setting: SESSION_COOKIE_SECURE
+      value: "false"
+    - setting: CSRF_COOKIE_SECURE
+      value: "false"
+    # Increase token expiry for development
+    - setting: AUTH_TOKEN_EXPIRATION
+      value: "86400"
+
+  # Pod annotations
+  annotations: |
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8052"
+
+---
+# ResourceQuota for AWX namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: awx-resource-quota
+  namespace: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: "8Gi"
+    limits.cpu: "8"
+    limits.memory: "16Gi"
+    pods: "20"
+    persistentvolumeclaims: "10"
+
+---
+# LimitRange for AWX namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: awx-limit-range
+  namespace: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "250m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "50m"
+        memory: "128Mi"
+      min:
+        cpu: "5m"
+        memory: "32Mi"
+      max:
+        cpu: "2000m"
+        memory: "4Gi"

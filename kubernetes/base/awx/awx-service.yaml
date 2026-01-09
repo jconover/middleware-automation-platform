@@ -1,0 +1,133 @@
+---
+# =============================================================================
+# AWX LoadBalancer Service
+# =============================================================================
+# Exposes AWX web interface via MetalLB LoadBalancer.
+# Assigned IP: 192.168.68.206 (per homelab MetalLB pool)
+#
+# Access: http://192.168.68.206
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: awx-service-lb
+  namespace: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: middleware-platform
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: "192.168.68.206"
+    description: "AWX web interface load balancer"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
+  selector:
+    app.kubernetes.io/name: awx-web
+    app.kubernetes.io/managed-by: awx-operator
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8052
+      protocol: TCP
+
+---
+# NetworkPolicy for AWX
+# Restricts traffic to necessary endpoints only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: awx-network-policy
+  namespace: awx
+  labels:
+    app.kubernetes.io/name: awx
+    app.kubernetes.io/part-of: middleware-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8052
+    # Allow MetalLB traffic
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: metallb-system
+      ports:
+        - protocol: TCP
+          port: 8052
+    # Allow traffic from local homelab network
+    - from:
+        - ipBlock:
+            cidr: 192.168.68.0/24
+      ports:
+        - protocol: TCP
+          port: 8052
+    # Allow inter-pod communication within AWX namespace
+    - from:
+        - podSelector: {}
+  egress:
+    # Allow Kubernetes API access (required for operator)
+    - to:
+        - ipBlock:
+            cidr: 10.96.0.0/12
+      ports:
+        - protocol: TCP
+          port: 443
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow inter-pod communication within AWX namespace
+    - to:
+        - podSelector: {}
+    # Allow SSH to managed nodes (homelab network)
+    - to:
+        - ipBlock:
+            cidr: 192.168.68.0/24
+      ports:
+        - protocol: TCP
+          port: 22
+    # Allow SSH to any managed hosts (for external targets)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+      ports:
+        - protocol: TCP
+          port: 22
+    # Allow HTTPS for Git repos and container registries
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+    # Allow HTTP for package repos
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 80
