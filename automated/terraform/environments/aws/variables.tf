@@ -587,6 +587,12 @@ variable "enable_s3_replication" {
   default     = false
 }
 
+variable "enable_ecr_replication" {
+  description = "Enable ECR cross-region replication for disaster recovery of container images"
+  type        = bool
+  default     = false
+}
+
 variable "dr_region" {
   description = "AWS region for disaster recovery (S3 cross-region replication destination)"
   type        = string

@@ -478,6 +478,44 @@ output "security_group_ids" {
 }
 
 # -----------------------------------------------------------------------------
+# ECR Cross-Region Replication Outputs
+# -----------------------------------------------------------------------------
+
+output "ecr_replication_enabled" {
+  description = "Whether ECR cross-region replication is enabled"
+  value       = var.enable_ecr_replication && var.ecs_enabled
+}
+
+output "ecr_dr_repository_url" {
+  description = "ECR DR repository URL for container images"
+  value       = var.enable_ecr_replication && var.ecs_enabled ? aws_ecr_repository.liberty_dr[0].repository_url : null
+}
+
+output "ecr_dr_repository_arn" {
+  description = "ECR DR repository ARN"
+  value       = var.enable_ecr_replication && var.ecs_enabled ? aws_ecr_repository.liberty_dr[0].arn : null
+}
+
+output "ecr_replication_configuration" {
+  description = "Summary of ECR cross-region replication configuration"
+  value = var.enable_ecr_replication && var.ecs_enabled ? {
+    enabled            = true
+    source_region      = var.aws_region
+    destination_region = var.dr_region
+    source_repository  = module.ecs[0].ecr_repository_url
+    dr_repository      = aws_ecr_repository.liberty_dr[0].repository_url
+    filter_prefix      = local.name_prefix
+    filter_type        = "PREFIX_MATCH"
+    image_scanning     = true
+    encryption         = "AES256"
+    lifecycle_policy   = "7 days untagged, keep last 10 tagged"
+    } : {
+    enabled = false
+    message = "ECR cross-region replication is disabled. Set enable_ecr_replication = true and ecs_enabled = true to enable."
+  }
+}
+
+# -----------------------------------------------------------------------------
 # ECR Push Commands
 # -----------------------------------------------------------------------------
 
@@ -505,23 +543,24 @@ output "ecr_push_commands" {
 output "deployment_summary" {
   description = "Summary of deployed resources"
   value = {
-    environment            = var.environment
-    region                 = var.aws_region
-    vpc_id                 = module.networking.vpc_id
-    ecs_enabled            = var.ecs_enabled
-    ec2_count              = var.liberty_instance_count
-    monitoring             = var.create_monitoring_server
-    management             = var.create_management_server
-    app_url                = module.loadbalancer.app_url
-    db_endpoint            = module.database.db_effective_endpoint
-    cache_endpoint         = module.database.cache_endpoint
-    grafana_url            = var.create_monitoring_server ? module.monitoring[0].grafana_url : null
-    awx_url                = var.create_management_server ? "http://${aws_eip.management[0].public_ip}:30080" : null
-    waf_enabled            = var.enable_waf
-    guardduty_enabled      = var.enable_guardduty
-    cloudtrail_enabled     = var.enable_cloudtrail
-    slo_alarms_enabled     = var.enable_slo_alarms
-    s3_replication_enabled = var.enable_s3_replication
-    dr_region              = var.enable_s3_replication ? var.dr_region : null
+    environment             = var.environment
+    region                  = var.aws_region
+    vpc_id                  = module.networking.vpc_id
+    ecs_enabled             = var.ecs_enabled
+    ec2_count               = var.liberty_instance_count
+    monitoring              = var.create_monitoring_server
+    management              = var.create_management_server
+    app_url                 = module.loadbalancer.app_url
+    db_endpoint             = module.database.db_effective_endpoint
+    cache_endpoint          = module.database.cache_endpoint
+    grafana_url             = var.create_monitoring_server ? module.monitoring[0].grafana_url : null
+    awx_url                 = var.create_management_server ? "http://${aws_eip.management[0].public_ip}:30080" : null
+    waf_enabled             = var.enable_waf
+    guardduty_enabled       = var.enable_guardduty
+    cloudtrail_enabled      = var.enable_cloudtrail
+    slo_alarms_enabled      = var.enable_slo_alarms
+    s3_replication_enabled  = var.enable_s3_replication
+    ecr_replication_enabled = var.enable_ecr_replication && var.ecs_enabled
+    dr_region               = var.enable_s3_replication || var.enable_ecr_replication ? var.dr_region : null
   }
 }
