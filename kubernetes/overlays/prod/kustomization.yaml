@@ -114,22 +114,24 @@ configMapGenerator:
 # =============================================================================
 # Images - transform base image reference to ECR for production
 # =============================================================================
-# REQUIRED: Replace AWS_ACCOUNT_ID placeholder before applying!
+# REQUIRED: Use the deploy.sh script or resolve the placeholder before applying!
 #
-# Option 1: Manual replacement
-#   sed -i 's/AWS_ACCOUNT_ID/123456789012/g' kustomization.yaml
+# Recommended: Use the deploy script (handles everything automatically)
+#   ./deploy.sh
 #
-# Option 2: Use envsubst (set AWS_ACCOUNT_ID environment variable)
-#   export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-#   envsubst < kustomization.yaml > kustomization-resolved.yaml
+# Manual options:
+#   Option 1: Use envsubst
+#     export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+#     envsubst '${AWS_ACCOUNT_ID}' < kustomization.yaml | kubectl apply -f -
 #
-# Option 3: Get account ID from Terraform
-#   terraform -chdir=automated/terraform/environments/prod-aws output -raw aws_account_id
+#   Option 2: Get ECR URL from Terraform and use sed
+#     ECR_URL=$(terraform -chdir=automated/terraform/environments/aws output -raw ecr_repository_url)
+#     sed "s|\${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/mw-prod-liberty|${ECR_URL}|g" \
+#         kustomization.yaml | kubectl apply -f -
 #
 # This transforms the base deployment's docker.io/jconover/liberty-app image to ECR
 # =============================================================================
 images:
   - name: docker.io/jconover/liberty-app
-    # TODO: Replace AWS_ACCOUNT_ID with your 12-digit AWS account ID
-    newName: AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/mw-prod-liberty
+    newName: ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/mw-prod-liberty
     newTag: "1.0.0"
