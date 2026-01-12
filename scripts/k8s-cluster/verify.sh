@@ -52,7 +52,7 @@ JSON_RESULTS="[]"
 check_pass() {
     local name="$1"
     local details="${2:-}"
-    ((PASS_COUNT++))
+    PASS_COUNT=$((PASS_COUNT + 1))
 
     if [[ "$JSON_OUTPUT" == "true" ]]; then
         JSON_RESULTS=$(echo "$JSON_RESULTS" | jq --arg n "$name" --arg d "$details" '. + [{"name": $n, "status": "pass", "details": $d}]')
@@ -67,7 +67,7 @@ check_pass() {
 check_fail() {
     local name="$1"
     local details="${2:-}"
-    ((FAIL_COUNT++))
+    FAIL_COUNT=$((FAIL_COUNT + 1))
 
     if [[ "$JSON_OUTPUT" == "true" ]]; then
         JSON_RESULTS=$(echo "$JSON_RESULTS" | jq --arg n "$name" --arg d "$details" '. + [{"name": $n, "status": "fail", "details": $d}]')
@@ -82,7 +82,7 @@ check_fail() {
 check_warn() {
     local name="$1"
     local details="${2:-}"
-    ((WARN_COUNT++))
+    WARN_COUNT=$((WARN_COUNT + 1))
 
     if [[ "$JSON_OUTPUT" == "true" ]]; then
         JSON_RESULTS=$(echo "$JSON_RESULTS" | jq --arg n "$name" --arg d "$details" '. + [{"name": $n, "status": "warn", "details": $d}]')
