@@ -249,10 +249,6 @@ spec:
                   - sleep 15
 
           volumeMounts:
-            - name: config
-              mountPath: /config/server.xml
-              subPath: server.xml
-              readOnly: true
             # Writable directories required by Liberty
             - name: liberty-logs
               mountPath: /logs
@@ -262,10 +258,6 @@ spec:
               mountPath: /opt/ol/wlp/output/defaultServer
 
       volumes:
-        - name: config
-          configMap:
-            name: liberty-config
-            defaultMode: 0440
         # EmptyDir volumes for writable paths (ephemeral)
         - name: liberty-logs
           emptyDir:

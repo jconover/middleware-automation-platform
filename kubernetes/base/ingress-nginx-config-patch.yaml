@@ -1,0 +1,43 @@
+---
+# ingress-nginx Controller ConfigMap Patch
+#
+# This patch adds security headers to all responses by referencing the
+# security-headers ConfigMap. Apply this patch to the existing ingress-nginx
+# controller ConfigMap.
+#
+# Option 1: Apply via kubectl patch (recommended for existing installations)
+#   kubectl patch configmap ingress-nginx-controller -n ingress-nginx \
+#     --type merge -p '{"data":{"add-headers":"ingress-nginx/security-headers"}}'
+#
+# Option 2: Apply via Helm values (for Helm-managed installations)
+#   controller:
+#     addHeaders:
+#       X-Content-Type-Options: "nosniff"
+#       X-Frame-Options: "DENY"
+#       X-XSS-Protection: "1; mode=block"
+#       Referrer-Policy: "strict-origin-when-cross-origin"
+#       Content-Security-Policy: "default-src 'self'; frame-ancestors 'none'"
+#       Permissions-Policy: "geolocation=(), microphone=(), camera=()"
+#       Strict-Transport-Security: "max-age=31536000; includeSubDomains; preload"
+#
+# Option 3: Use this as a strategic merge patch ConfigMap
+#   kubectl apply -f ingress-nginx-config-patch.yaml
+#   Note: This will REPLACE the ConfigMap, so merge with existing config first
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/component: controller
+data:
+  # Reference the security-headers ConfigMap for response headers
+  # Format: <namespace>/<configmap-name>
+  add-headers: "ingress-nginx/security-headers"
+  # Optional: Uncomment to enable HSTS at the controller level
+  # hsts: "true"
+  # hsts-max-age: "31536000"
+  # hsts-include-subdomains: "true"
+  # hsts-preload: "true"

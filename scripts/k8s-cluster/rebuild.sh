@@ -571,8 +571,8 @@ phase_namespaces() {
         --overwrite 2>/dev/null || true
 
     kubectl label namespace monitoring \
-        pod-security.kubernetes.io/enforce=baseline \
-        pod-security.kubernetes.io/warn=restricted \
+        pod-security.kubernetes.io/enforce=privileged \
+        pod-security.kubernetes.io/warn=privileged \
         --overwrite 2>/dev/null || true
 
     kubectl label namespace jenkins \
@@ -614,27 +614,7 @@ phase_cert_manager() {
 }
 
 #===============================================================================
-# Phase 7: NGINX Ingress Controller
-#===============================================================================
-
-phase_ingress() {
-    log PHASE "Phase 7: Installing NGINX Ingress Controller"
-
-    run_cmd "Installing ingress-nginx" \
-        "helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-            --namespace ingress-nginx \
-            --set controller.service.type=LoadBalancer \
-            --set controller.service.loadBalancerIP=${IP_INGRESS} \
-            --set controller.service.annotations.\"metallb\\.universe\\.tf/loadBalancerIPs\"=${IP_INGRESS} \
-            --set controller.metrics.enabled=true \
-            --set controller.metrics.serviceMonitor.enabled=true \
-            --wait --timeout 5m"
-
-    log OK "NGINX Ingress Controller installed"
-}
-
-#===============================================================================
-# Phase 8: Monitoring Stack
+# Phase 7: Monitoring Stack (must be before ingress for ServiceMonitor CRDs)
 #===============================================================================
 
 phase_monitoring() {
@@ -643,7 +623,7 @@ phase_monitoring() {
         return 0
     fi
 
-    log PHASE "Phase 8: Installing Monitoring Stack"
+    log PHASE "Phase 7: Installing Monitoring Stack"
 
     # Install kube-prometheus-stack
     run_cmd "Installing kube-prometheus-stack" \
@@ -712,6 +692,25 @@ phase_monitoring() {
     fi
 
     log OK "Monitoring stack installed"
+}
+
+#===============================================================================
+# Phase 8: NGINX Ingress Controller (after monitoring for ServiceMonitor CRD)
+#===============================================================================
+
+phase_ingress() {
+    log PHASE "Phase 8: Installing NGINX Ingress Controller"
+
+    run_cmd "Installing ingress-nginx" \
+        "helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+            --namespace ingress-nginx \
+            --set controller.service.type=LoadBalancer \
+            --set controller.service.annotations.\"metallb\\.io/loadBalancerIPs\"=${IP_INGRESS} \
+            --set controller.metrics.enabled=true \
+            --set controller.metrics.serviceMonitor.enabled=true \
+            --wait --timeout 5m"
+
+    log OK "NGINX Ingress Controller installed"
 }
 
 #===============================================================================
@@ -1049,8 +1048,8 @@ main() {
     phase_metallb
     phase_namespaces
     phase_cert_manager
-    phase_ingress
-    phase_monitoring
+    phase_monitoring       # Phase 7: Must be before ingress (provides ServiceMonitor CRDs)
+    phase_ingress          # Phase 8: Requires ServiceMonitor CRD from monitoring
     phase_external_secrets
     phase_network_policies
     phase_secrets

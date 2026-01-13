@@ -515,7 +515,7 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 | SSL Redirect     | `ssl-redirect: "true"`         | Forces HTTP to HTTPS               |
 | Rate Limiting    | `limit-rps: "100"`             | 100 requests/second per IP         |
 | Connection Limit | `limit-connections: "50"`      | 50 concurrent connections per IP   |
-| Security Headers | `configuration-snippet`        | X-Frame-Options, CSP, HSTS, etc.   |
+| Security Headers | `add-headers` ConfigMap        | X-Frame-Options, CSP, HSTS, etc.   |
 | Strong TLS       | `ssl-protocols`, `ssl-ciphers` | TLS 1.2/1.3 with strong ciphers    |
 
 #### Troubleshooting Ingress

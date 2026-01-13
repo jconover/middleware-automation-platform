@@ -69,7 +69,6 @@ spec:
             - --secure-port=6443
             - --tls-cert-file=/var/run/serving-cert/tls.crt
             - --tls-private-key-file=/var/run/serving-cert/tls.key
-            - --logtostderr=true
             - --prometheus-url=http://prometheus-operated.monitoring.svc:9090/
             - --metrics-relist-interval=1m
             - --v=4
@@ -429,3 +428,15 @@ spec:
       ports:
         - protocol: TCP
           port: 9090
+    # Allow connection to Kubernetes API server
+    # Required for APIService registration and cluster resource access
+    - to:
+        - ipBlock:
+            cidr: 10.96.0.1/32  # Default Kubernetes API service ClusterIP
+      ports:
+        - protocol: TCP
+          port: 443
+    # Also allow egress to API server via any IP (for clusters with different API server IPs)
+    - ports:
+        - protocol: TCP
+          port: 6443

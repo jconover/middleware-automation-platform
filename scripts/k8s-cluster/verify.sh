@@ -290,13 +290,13 @@ verify_liberty() {
         # Health check
         if [[ "$QUICK_MODE" != "true" ]]; then
             local health_status
-            health_status=$(curl -s -o /dev/null -w "%{http_code}" "http://${IP_INGRESS}:9080/health/ready" 2>/dev/null || echo "000")
+            health_status=$(curl -sk -o /dev/null -w "%{http_code}" -H "Host: liberty.local" "https://${IP_INGRESS}/health/ready" 2>/dev/null || echo "000")
             if [[ "$health_status" == "200" ]]; then
-                check_pass "Liberty health endpoint" "HTTP $health_status"
+                check_pass "Liberty health endpoint" "HTTPS $health_status"
             elif [[ "$health_status" == "000" ]]; then
                 check_warn "Liberty health endpoint" "Not accessible"
             else
-                check_fail "Liberty health endpoint" "HTTP $health_status"
+                check_fail "Liberty health endpoint" "HTTPS $health_status"
             fi
         fi
 
@@ -431,7 +431,7 @@ verify_cicd() {
     # Jenkins
     if kubectl get namespace jenkins &>/dev/null; then
         local jenkins_ready
-        jenkins_ready=$(kubectl get pods -n jenkins -l app.kubernetes.io/name=jenkins --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+        jenkins_ready=$(kubectl get pods -n jenkins -l app.kubernetes.io/name=jenkins --no-headers 2>/dev/null | { grep "Running" || true; } | wc -l)
         if [[ "$jenkins_ready" -ge 1 ]]; then
             check_pass "Jenkins running"
         else
@@ -444,7 +444,7 @@ verify_cicd() {
     # AWX
     if kubectl get namespace awx &>/dev/null; then
         local awx_ready
-        awx_ready=$(kubectl get pods -n awx --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+        awx_ready=$(kubectl get pods -n awx --no-headers 2>/dev/null | { grep "Running" || true; } | wc -l)
         if [[ "$awx_ready" -ge 1 ]]; then
             check_pass "AWX running"
         else

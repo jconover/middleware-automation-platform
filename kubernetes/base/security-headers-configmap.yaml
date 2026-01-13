@@ -1,0 +1,35 @@
+---
+# Security Headers ConfigMap for ingress-nginx
+#
+# This ConfigMap contains security headers that will be added to all responses
+# from the ingress-nginx controller. This approach is preferred over using
+# configuration-snippet annotations for security reasons (CVE-2021-25742).
+#
+# To enable these headers, the ingress-nginx controller ConfigMap must reference
+# this ConfigMap using the 'add-headers' key. See ingress-nginx-config-patch.yaml
+# for the required controller configuration.
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-headers
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/component: security-headers
+    app.kubernetes.io/part-of: middleware-platform
+data:
+  # Prevent MIME type sniffing
+  X-Content-Type-Options: "nosniff"
+  # Prevent clickjacking
+  X-Frame-Options: "DENY"
+  # Enable XSS filter in browsers (legacy, but still useful for older browsers)
+  X-XSS-Protection: "1; mode=block"
+  # Referrer policy for privacy
+  Referrer-Policy: "strict-origin-when-cross-origin"
+  # Content Security Policy (adjust as needed for your application)
+  Content-Security-Policy: "default-src 'self'; frame-ancestors 'none'"
+  # Permissions policy (formerly Feature-Policy)
+  Permissions-Policy: "geolocation=(), microphone=(), camera=()"
+  # Strict Transport Security (HSTS) - enforce HTTPS for 1 year
+  Strict-Transport-Security: "max-age=31536000; includeSubDomains; preload"

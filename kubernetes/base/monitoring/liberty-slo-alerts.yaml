@@ -444,9 +444,9 @@ spec:
             slo: apdex
             component: liberty
           annotations:
-            summary: "Warning: Liberty Apdex score is {{ $value | printf \"%.2f\" }}"
+            summary: 'Warning: Liberty Apdex score is {{ $value | printf "%.2f" }}'
             description: |
-              User experience has degraded. Apdex score is {{ $value | printf \"%.2f\" }} (target: > 0.85).
+              User experience has degraded. Apdex score is {{ $value | printf "%.2f" }} (target: > 0.85).
               This means a significant portion of users are experiencing slow or frustrating response times.
               Satisfied threshold: 500ms, Tolerating threshold: 2s
             runbook_url: "docs/runbooks/liberty-slow-responses.md"
