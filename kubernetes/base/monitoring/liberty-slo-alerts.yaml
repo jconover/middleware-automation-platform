@@ -51,16 +51,16 @@ spec:
             (
               # 1-hour burn rate > 14.4x
               (
-                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[1h]))
-                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[1h]))
+                sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[1h]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[1h]))
               ) > (14.4 * 0.0005)
             )
             and
             (
               # 5-minute burn rate > 14.4x (confirms ongoing issue)
               (
-                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[5m]))
-                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[5m]))
+                sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[5m]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[5m]))
               ) > (14.4 * 0.0005)
             )
           for: 2m
@@ -88,16 +88,16 @@ spec:
             (
               # 6-hour burn rate > 6x
               (
-                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[6h]))
-                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[6h]))
+                sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[6h]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[6h]))
               ) > (6 * 0.0005)
             )
             and
             (
               # 30-minute burn rate > 6x (confirms ongoing issue)
               (
-                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[30m]))
-                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[30m]))
+                sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[30m]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[30m]))
               ) > (6 * 0.0005)
             )
           for: 5m
@@ -124,16 +124,16 @@ spec:
             (
               # 1-day burn rate > 3x
               (
-                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[1d]))
-                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[1d]))
+                sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[1d]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[1d]))
               ) > (3 * 0.0005)
             )
             and
             (
               # 2-hour burn rate > 3x
               (
-                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[2h]))
-                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[2h]))
+                sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[2h]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[2h]))
               ) > (3 * 0.0005)
             )
           for: 15m
@@ -160,16 +160,16 @@ spec:
             (
               # 3-day burn rate > 1x (consuming more than sustainable)
               (
-                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[3d]))
-                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[3d]))
+                sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[3d]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[3d]))
               ) > 0.0005
             )
             and
             (
               # 6-hour burn rate > 1x
               (
-                sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[6h]))
-                / sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[6h]))
+                sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[6h]))
+                / sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[6h]))
               ) > 0.0005
             )
           for: 1h
@@ -203,16 +203,16 @@ spec:
             (
               # 1-hour: less than 95% of requests within 500ms (5% error budget consumption)
               (
-                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[1h]))
-                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[1h]))
+                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor", le="0.5"}[1h]))
+                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="vendor"}[1h]))
               ) < 0.95
             )
             and
             (
               # 5-minute: confirms ongoing issue
               (
-                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[5m]))
-                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[5m]))
+                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor", le="0.5"}[5m]))
+                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="vendor"}[5m]))
               ) < 0.95
             )
           for: 2m
@@ -237,16 +237,16 @@ spec:
             (
               # 6-hour: less than 98% of requests within 500ms
               (
-                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[6h]))
-                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[6h]))
+                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor", le="0.5"}[6h]))
+                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="vendor"}[6h]))
               ) < 0.98
             )
             and
             (
               # 30-minute: confirms trend
               (
-                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[30m]))
-                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[30m]))
+                sum(increase(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor", le="0.5"}[30m]))
+                / sum(increase(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="vendor"}[30m]))
               ) < 0.98
             )
           for: 5m
@@ -268,7 +268,7 @@ spec:
         - alert: LibertySLOLatencyP95High
           expr: |
             histogram_quantile(0.95,
-              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor"}[5m])) by (le)
             ) > 0.5
           for: 5m
           labels:
@@ -289,7 +289,7 @@ spec:
         - alert: LibertySLOLatencyP99Critical
           expr: |
             histogram_quantile(0.99,
-              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor"}[5m])) by (le)
             ) > 2
           for: 5m
           labels:
@@ -427,16 +427,16 @@ spec:
             (
               (
                 # Satisfied requests (< 500ms)
-                sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[5m]))
+                sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor", le="0.5"}[5m]))
                 +
                 # Tolerated requests (500ms - 2s) / 2
                 (
-                  sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="2"}[5m]))
-                  - sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[5m]))
+                  sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor", le="2"}[5m]))
+                  - sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor", le="0.5"}[5m]))
                 ) / 2
               )
               /
-              sum(rate(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[5m]))
+              sum(rate(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="vendor"}[5m]))
             ) < 0.85
           for: 5m
           labels:

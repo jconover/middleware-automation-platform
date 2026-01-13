@@ -85,14 +85,14 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # DNS resolution
+    # DNS resolution - allow to kube-system namespace
+    # NOTE: Using namespaceSelector only (no podSelector) to avoid Kustomize
+    # commonLabels being injected into the selector, which would break DNS
+    # since CoreDNS pods don't have app.kubernetes.io/managed-by labels
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
-          podSelector:
-            matchLabels:
-              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
@@ -134,25 +134,25 @@ spec:
       ports:
         - protocol: TCP
           port: 3100
-    # DNS resolution
+    # DNS resolution - allow to kube-system namespace
+    # NOTE: Using namespaceSelector only (no podSelector) to avoid Kustomize
+    # commonLabels being injected into the selector, which would break DNS
+    # since CoreDNS pods don't have app.kubernetes.io/managed-by labels
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
-          podSelector:
-            matchLabels:
-              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
           port: 53
     # Kubernetes API for service discovery
-    # NOTE: This IP is k3s-specific (default API service ClusterIP).
-    # Update for other Kubernetes distributions.
+    # NOTE: This IP is for kubeadm clusters (default API service ClusterIP).
+    # For k3s, use 10.43.0.1/32 instead.
     - to:
         - ipBlock:
-            cidr: 10.43.0.1/32
+            cidr: 10.96.0.1/32
       ports:
         - protocol: TCP
           port: 443

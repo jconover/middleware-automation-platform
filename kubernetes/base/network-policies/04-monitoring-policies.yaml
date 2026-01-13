@@ -213,6 +213,14 @@ spec:
       ports:
         - protocol: TCP
           port: 9093
+    # Query Loki (log aggregation)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: loki
+      ports:
+        - protocol: TCP
+          port: 3100
     # DNS resolution
     - to:
         - namespaceSelector:

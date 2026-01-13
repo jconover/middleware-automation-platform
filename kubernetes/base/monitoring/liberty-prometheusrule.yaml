@@ -61,8 +61,8 @@ spec:
         - alert: LibertyHighHeapUsage
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
           expr: |
-            100 * memory_usedHeap_bytes{job="liberty", mp_scope="base"}
-              / memory_maxHeap_bytes{job="liberty", mp_scope="base"} > 85
+            100 * memory_usedHeap_bytes{job="liberty", mp_scope="vendor"}
+              / memory_maxHeap_bytes{job="liberty", mp_scope="vendor"} > 85
           for: 5m
           labels:
             severity: warning
@@ -75,8 +75,8 @@ spec:
         - alert: LibertyCriticalHeapUsage
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
           expr: |
-            100 * memory_usedHeap_bytes{job="liberty", mp_scope="base"}
-              / memory_maxHeap_bytes{job="liberty", mp_scope="base"} > 95
+            100 * memory_usedHeap_bytes{job="liberty", mp_scope="vendor"}
+              / memory_maxHeap_bytes{job="liberty", mp_scope="vendor"} > 95
           for: 2m
           labels:
             severity: critical
@@ -89,7 +89,7 @@ spec:
         - alert: LibertyHighGCTime
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
           expr: |
-            rate(gc_time_total_seconds{job="liberty", mp_scope="base"}[5m]) > 0.1
+            rate(gc_time_total_seconds{job="liberty", mp_scope="vendor"}[5m]) > 0.1
           for: 5m
           labels:
             severity: warning
@@ -123,8 +123,8 @@ spec:
         - alert: LibertyHighErrorRate
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
           expr: |
-            sum(rate(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[5m]))
-              / sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m])) > 0.05
+            sum(rate(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[5m]))
+              / sum(rate(servlet_request_total{job="liberty", mp_scope="vendor"}[5m])) > 0.05
           for: 5m
           labels:
             severity: warning
@@ -137,8 +137,8 @@ spec:
         - alert: LibertyCriticalErrorRate
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
           expr: |
-            sum(rate(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[5m]))
-              / sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m])) > 0.10
+            sum(rate(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[5m]))
+              / sum(rate(servlet_request_total{job="liberty", mp_scope="vendor"}[5m])) > 0.10
           for: 2m
           labels:
             severity: critical
@@ -152,7 +152,7 @@ spec:
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
           expr: |
             histogram_quantile(0.95,
-              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor"}[5m])) by (le)
             ) > 2
           for: 5m
           labels:
@@ -166,7 +166,7 @@ spec:
         - alert: LibertyNoRequests
           # MicroProfile Metrics 5.0 uses mp_scope label instead of prefix
           expr: |
-            sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m])) == 0
+            sum(rate(servlet_request_total{job="liberty", mp_scope="vendor"}[5m])) == 0
           for: 10m
           labels:
             severity: warning

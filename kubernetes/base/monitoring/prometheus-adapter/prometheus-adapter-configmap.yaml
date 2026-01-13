@@ -87,7 +87,7 @@ data:
       # HPA uses this to scale based on load distribution across pods.
       # Target: 1000 RPS per pod
       # ========================================================================
-      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="base"}'
+      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="vendor"}'
         resources:
           overrides:
             namespace:
@@ -105,7 +105,7 @@ data:
       # ========================================================================
       # Same as above but with different naming convention for flexibility.
       # ========================================================================
-      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="base"}'
+      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="vendor"}'
         resources:
           overrides:
             namespace:
@@ -125,7 +125,7 @@ data:
       # Enables scaling based on response time degradation.
       # Target: 500ms (0.5 seconds)
       # ========================================================================
-      - seriesQuery: 'servlet_request_elapsedTime_seconds_bucket{job="liberty",mp_scope="base"}'
+      - seriesQuery: 'servlet_request_elapsedTime_seconds_bucket{job="liberty",mp_scope="vendor"}'
         resources:
           overrides:
             namespace:
@@ -143,7 +143,7 @@ data:
       # ========================================================================
       # For more aggressive scaling based on tail latency.
       # ========================================================================
-      - seriesQuery: 'servlet_request_elapsedTime_seconds_bucket{job="liberty",mp_scope="base"}'
+      - seriesQuery: 'servlet_request_elapsedTime_seconds_bucket{job="liberty",mp_scope="vendor"}'
         resources:
           overrides:
             namespace:
@@ -162,7 +162,7 @@ data:
       # Maps error requests to total requests ratio.
       # Can trigger scale-up during error spikes or scale-down when stable.
       # ========================================================================
-      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="base"}'
+      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="vendor"}'
         resources:
           overrides:
             namespace:
@@ -183,7 +183,7 @@ data:
       # ========================================================================
       # Enables scaling based on JVM memory pressure.
       # ========================================================================
-      - seriesQuery: 'memory_usedHeap_bytes{job="liberty",mp_scope="base"}'
+      - seriesQuery: 'memory_usedHeap_bytes{job="liberty",mp_scope="vendor"}'
         resources:
           overrides:
             namespace:
@@ -247,7 +247,7 @@ data:
     # --------------------------------------------------------------------------
     externalRules:
       # Aggregate request rate across all Liberty pods
-      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="base"}'
+      - seriesQuery: 'servlet_request_total{job="liberty",mp_scope="vendor"}'
         resources:
           namespaced: true
         name:

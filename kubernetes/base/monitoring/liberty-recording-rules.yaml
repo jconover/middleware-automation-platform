@@ -33,34 +33,34 @@ spec:
         # Total request rate across all Liberty pods (5m window)
         - record: liberty:http_requests:rate5m
           expr: |
-            sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m]))
+            sum(rate(servlet_request_total{job="liberty", mp_scope="vendor"}[5m]))
 
         # Total request rate by pod (5m window)
         - record: liberty:http_requests_by_pod:rate5m
           expr: |
-            sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m])) by (pod)
+            sum(rate(servlet_request_total{job="liberty", mp_scope="vendor"}[5m])) by (pod)
 
         # Total request rate by status code class (5m window)
         - record: liberty:http_requests_by_status:rate5m
           expr: |
-            sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m])) by (status)
+            sum(rate(servlet_request_total{job="liberty", mp_scope="vendor"}[5m])) by (status)
 
         # Total request count over rolling windows (for SLO calculations)
         - record: liberty:http_requests:increase1h
           expr: |
-            sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[1h]))
+            sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[1h]))
 
         - record: liberty:http_requests:increase6h
           expr: |
-            sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[6h]))
+            sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[6h]))
 
         - record: liberty:http_requests:increase1d
           expr: |
-            sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[1d]))
+            sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[1d]))
 
         - record: liberty:http_requests:increase30d
           expr: |
-            sum(increase(servlet_request_total{job="liberty", mp_scope="base"}[30d]))
+            sum(increase(servlet_request_total{job="liberty", mp_scope="vendor"}[30d]))
 
     # =========================================================================
     # Error Rate Recording Rules
@@ -72,34 +72,34 @@ spec:
         - record: liberty:http_error_rate:ratio5m
           expr: |
             (
-              sum(rate(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[5m]))
-              / sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m]))
+              sum(rate(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[5m]))
+              / sum(rate(servlet_request_total{job="liberty", mp_scope="vendor"}[5m]))
             ) or vector(0)
 
         # 5xx error rate by pod (5m window)
         - record: liberty:http_error_rate_by_pod:ratio5m
           expr: |
             (
-              sum(rate(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[5m])) by (pod)
-              / sum(rate(servlet_request_total{job="liberty", mp_scope="base"}[5m])) by (pod)
+              sum(rate(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[5m])) by (pod)
+              / sum(rate(servlet_request_total{job="liberty", mp_scope="vendor"}[5m])) by (pod)
             ) or vector(0)
 
         # 5xx error count over rolling windows (for SLO calculations)
         - record: liberty:http_errors:increase1h
           expr: |
-            sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[1h]))
+            sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[1h]))
 
         - record: liberty:http_errors:increase6h
           expr: |
-            sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[6h]))
+            sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[6h]))
 
         - record: liberty:http_errors:increase1d
           expr: |
-            sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[1d]))
+            sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[1d]))
 
         - record: liberty:http_errors:increase30d
           expr: |
-            sum(increase(servlet_request_total{job="liberty", mp_scope="base", status=~"5.."}[30d]))
+            sum(increase(servlet_request_total{job="liberty", mp_scope="vendor", status=~"5.."}[30d]))
 
         # Availability (success rate) - inverse of error rate
         - record: liberty:availability:ratio5m
@@ -116,49 +116,49 @@ spec:
         - record: liberty:http_request_duration:p50
           expr: |
             histogram_quantile(0.50,
-              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor"}[5m])) by (le)
             )
 
         # p90 latency
         - record: liberty:http_request_duration:p90
           expr: |
             histogram_quantile(0.90,
-              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor"}[5m])) by (le)
             )
 
         # p95 latency (SLO target: < 500ms)
         - record: liberty:http_request_duration:p95
           expr: |
             histogram_quantile(0.95,
-              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor"}[5m])) by (le)
             )
 
         # p99 latency
         - record: liberty:http_request_duration:p99
           expr: |
             histogram_quantile(0.99,
-              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (le)
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor"}[5m])) by (le)
             )
 
         # p95 latency by pod (for identifying slow instances)
         - record: liberty:http_request_duration_by_pod:p95
           expr: |
             histogram_quantile(0.95,
-              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base"}[5m])) by (pod, le)
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor"}[5m])) by (pod, le)
             )
 
         # Requests exceeding SLO latency threshold (500ms)
         # Count of requests above threshold for SLO calculation
         - record: liberty:http_requests_slow:rate5m
           expr: |
-            sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[5m]))
+            sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor", le="0.5"}[5m]))
 
         # Latency SLI: ratio of requests within SLO (< 500ms)
         - record: liberty:latency_slo_ratio:ratio5m
           expr: |
             (
-              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="base", le="0.5"}[5m]))
-              / sum(rate(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="base"}[5m]))
+              sum(rate(servlet_request_elapsedTime_seconds_bucket{job="liberty", mp_scope="vendor", le="0.5"}[5m]))
+              / sum(rate(servlet_request_elapsedTime_seconds_count{job="liberty", mp_scope="vendor"}[5m]))
             ) or vector(1)
 
     # =========================================================================
@@ -224,22 +224,22 @@ spec:
         - record: liberty:jvm_heap_usage:ratio
           expr: |
             avg(
-              memory_usedHeap_bytes{job="liberty", mp_scope="base"}
-              / memory_maxHeap_bytes{job="liberty", mp_scope="base"}
+              memory_usedHeap_bytes{job="liberty", mp_scope="vendor"}
+              / memory_maxHeap_bytes{job="liberty", mp_scope="vendor"}
             )
 
         # Max heap usage percentage (worst performing pod)
         - record: liberty:jvm_heap_usage:max_ratio
           expr: |
             max(
-              memory_usedHeap_bytes{job="liberty", mp_scope="base"}
-              / memory_maxHeap_bytes{job="liberty", mp_scope="base"}
+              memory_usedHeap_bytes{job="liberty", mp_scope="vendor"}
+              / memory_maxHeap_bytes{job="liberty", mp_scope="vendor"}
             )
 
         # Average GC time rate
         - record: liberty:jvm_gc_time:rate5m
           expr: |
-            avg(rate(gc_time_total_seconds{job="liberty", mp_scope="base"}[5m]))
+            avg(rate(gc_time_total_seconds{job="liberty", mp_scope="vendor"}[5m]))
 
         # Thread pool utilization
         - record: liberty:threadpool_utilization:ratio
