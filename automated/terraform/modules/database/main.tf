@@ -361,18 +361,18 @@ resource "aws_cloudwatch_metric_alarm" "rds_proxy_connections" {
   alarm_name          = "${var.name_prefix}-rds-proxy-connections-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "DatabaseConnections"
-  namespace           = "AWS/RDS"
+  metric_name         = "ClientConnections"
+  namespace           = "AWS/RDSProxy"
   period              = 300
   statistic           = "Average"
-  threshold           = var.rds_proxy_max_connections_percent * 0.8
+  threshold           = 80 # Alert at 80 connections (adjust via variable if needed)
 
   dimensions = {
-    DBProxyName = aws_db_proxy.main[0].name
+    ProxyName = aws_db_proxy.main[0].name
   }
 
-  alarm_description = "RDS Proxy connections approaching limit"
-  alarm_actions     = []
+  alarm_description = "RDS Proxy client connections exceeding threshold"
+  alarm_actions     = var.alarm_sns_topic_arn != "" ? [var.alarm_sns_topic_arn] : []
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-rds-proxy-connections-alarm"
@@ -385,18 +385,18 @@ resource "aws_cloudwatch_metric_alarm" "rds_proxy_no_tls" {
   alarm_name          = "${var.name_prefix}-rds-proxy-client-connections-no-tls"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "ClientConnectionsNoTls"
-  namespace           = "AWS/RDS"
+  metric_name         = "ClientConnectionsNoTLS"
+  namespace           = "AWS/RDSProxy"
   period              = 60
   statistic           = "Sum"
   threshold           = 0
 
   dimensions = {
-    DBProxyName = aws_db_proxy.main[0].name
+    ProxyName = aws_db_proxy.main[0].name
   }
 
   alarm_description = "RDS Proxy receiving non-TLS connections (should be 0)"
-  alarm_actions     = []
+  alarm_actions     = var.alarm_sns_topic_arn != "" ? [var.alarm_sns_topic_arn] : []
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-rds-proxy-no-tls-alarm"

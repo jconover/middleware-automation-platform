@@ -164,7 +164,7 @@ output "memory_alarm_arn" {
 
 output "unhealthy_tasks_alarm_arn" {
   description = "ARN of the unhealthy tasks alarm"
-  value       = var.enable_slo_alarms && var.target_group_arn != null && var.alb_arn_suffix != null ? aws_cloudwatch_metric_alarm.unhealthy_tasks[0].arn : null
+  value       = var.enable_slo_alarms && var.enable_request_scaling ? aws_cloudwatch_metric_alarm.unhealthy_tasks[0].arn : null
 }
 
 # =============================================================================

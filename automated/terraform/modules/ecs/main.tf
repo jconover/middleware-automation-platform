@@ -224,7 +224,7 @@ resource "aws_ecs_service" "main" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.main.arn
   desired_count   = var.desired_count
-  launch_type     = "FARGATE"
+  # Note: launch_type removed - using cluster default capacity providers (FARGATE + FARGATE_SPOT)
 
   network_configuration {
     subnets          = var.private_subnet_ids
@@ -498,7 +498,7 @@ resource "aws_codedeploy_app" "ecs" {
 # CodeDeploy Deployment Group
 # -----------------------------------------------------------------------------
 resource "aws_codedeploy_deployment_group" "ecs" {
-  count = var.enable_blue_green ? 1 : 0
+  count = var.enable_blue_green && var.listener_arn != null ? 1 : 0
 
   app_name               = aws_codedeploy_app.ecs[0].name
   deployment_group_name  = "${var.name_prefix}-liberty-dg"

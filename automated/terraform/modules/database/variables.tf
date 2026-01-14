@@ -289,6 +289,12 @@ variable "rds_proxy_max_connections_percent" {
   }
 }
 
+variable "alarm_sns_topic_arn" {
+  description = "SNS topic ARN for CloudWatch alarm notifications (optional). If empty, alarms will not send notifications."
+  type        = string
+  default     = ""
+}
+
 variable "rds_proxy_require_iam" {
   description = <<-EOT
     Require IAM authentication for RDS Proxy connections.

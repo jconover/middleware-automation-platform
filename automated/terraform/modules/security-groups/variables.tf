@@ -69,9 +69,9 @@ variable "create_rds_proxy_sg" {
 # Egress Restriction
 # -----------------------------------------------------------------------------
 variable "restrict_egress" {
-  description = "Restrict egress rules for ECS and Liberty SGs to specific ports (HTTPS, DB, Cache) instead of allowing all traffic. Set to false for backward compatibility."
+  description = "Restrict egress rules for ECS and Liberty SGs to specific ports (HTTPS, DB, Cache) instead of allowing all traffic. Recommended for security."
   type        = bool
-  default     = false
+  default     = true
 }
 
 # -----------------------------------------------------------------------------

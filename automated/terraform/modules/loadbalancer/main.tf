@@ -21,6 +21,7 @@ resource "aws_lb" "main" {
 
   idle_timeout               = var.idle_timeout
   enable_deletion_protection = var.enable_deletion_protection
+  drop_invalid_header_fields = true # Security: Prevent HTTP request smuggling
 
   dynamic "access_logs" {
     for_each = var.enable_access_logs ? [1] : []
@@ -128,12 +129,28 @@ resource "aws_s3_bucket_policy" "alb_logs" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid    = "AllowELBAccessLogs"
         Effect = "Allow"
         Principal = {
           AWS = data.aws_elb_service_account.main.arn
         }
         Action   = "s3:PutObject"
         Resource = "${aws_s3_bucket.alb_logs[0].arn}/alb/*"
+      },
+      {
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource = [
+          aws_s3_bucket.alb_logs[0].arn,
+          "${aws_s3_bucket.alb_logs[0].arn}/*"
+        ]
+        Condition = {
+          Bool = {
+            "aws:SecureTransport" = "false"
+          }
+        }
       }
     ]
   })

@@ -246,8 +246,14 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
         Action    = "s3:PutObject"
         Resource  = "${aws_s3_bucket.cloudtrail[0].arn}/*"
         Condition = {
-          StringNotEquals = {
+          # Deny uploads not using KMS encryption, but allow CloudTrail service
+          # which uses bucket default encryption
+          StringNotEqualsIfExists = {
             "s3:x-amz-server-side-encryption" = "aws:kms"
+          }
+          # Only apply this deny to non-CloudTrail principals
+          StringNotEquals = {
+            "aws:PrincipalServiceName" = "cloudtrail.amazonaws.com"
           }
         }
       }
@@ -933,6 +939,63 @@ resource "aws_iam_role_policy" "guardduty_malware_protection" {
 # =============================================================================
 
 # -----------------------------------------------------------------------------
+# KMS Key for WAF Log Encryption
+# -----------------------------------------------------------------------------
+resource "aws_kms_key" "waf_logs" {
+  count = var.enable_waf && var.waf_enable_logging ? 1 : 0
+
+  description             = "KMS key for WAF log encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EnableRootAccountPermissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowCloudWatchLogsToEncrypt"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${var.aws_region}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt*",
+          "kms:Decrypt*",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:Describe*"
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:aws-waf-logs-*"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-waf-logs-key"
+  })
+}
+
+resource "aws_kms_alias" "waf_logs" {
+  count = var.enable_waf && var.waf_enable_logging ? 1 : 0
+
+  name          = "alias/${var.name_prefix}-waf-logs"
+  target_key_id = aws_kms_key.waf_logs[0].key_id
+}
+
+# -----------------------------------------------------------------------------
 # WAFv2 Web ACL
 # -----------------------------------------------------------------------------
 resource "aws_wafv2_web_acl" "main" {
@@ -1080,6 +1143,7 @@ resource "aws_cloudwatch_log_group" "waf" {
 
   name              = "aws-waf-logs-${var.name_prefix}"
   retention_in_days = 30
+  kms_key_id        = aws_kms_key.waf_logs[0].arn
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-waf-logs"

@@ -228,7 +228,8 @@ resource "aws_appautoscaling_policy" "liberty_cpu" {
 // Add to Jenkinsfile
 stage('Build Container') {
   steps {
-    sh 'podman build -t liberty-app:${BUILD_NUMBER} containers/liberty/'
+    // Build context is project root (for sample-app), Containerfile specified with -f
+    sh 'podman build -t liberty-app:${BUILD_NUMBER} -f containers/liberty/Containerfile .'
   }
 }
 

@@ -352,7 +352,7 @@ verify_monitoring() {
 
         if [[ "$QUICK_MODE" != "true" ]]; then
             local grafana_status
-            grafana_status=$(curl -s -o /dev/null -w "%{http_code}" "http://${IP_GRAFANA}:3000/api/health" 2>/dev/null || echo "000")
+            grafana_status=$(curl -s -o /dev/null -w "%{http_code}" "http://${IP_GRAFANA}:80/api/health" 2>/dev/null || echo "000")
             if [[ "$grafana_status" == "200" ]]; then
                 check_pass "Grafana endpoint" "HTTP $grafana_status"
             else

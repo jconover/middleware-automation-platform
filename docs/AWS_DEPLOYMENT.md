@@ -287,8 +287,10 @@ aws ecs describe-services --cluster mw-prod-cluster --services mw-prod-liberty \
 # Failed tasks
 aws ecs list-tasks --cluster mw-prod-cluster --desired-status STOPPED
 
-# Target health
-aws elbv2 describe-target-health --target-group-arn $(terraform output -raw ecs_target_group_arn)
+# Target health (ECS target group)
+aws elbv2 describe-target-health --target-group-arn \
+  $(aws elbv2 describe-target-groups --names mw-prod-liberty-ecs-tg \
+    --query 'TargetGroups[0].TargetGroupArn' --output text)
 ```
 
 ---
