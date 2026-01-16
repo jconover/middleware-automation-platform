@@ -8,7 +8,7 @@
 #   terraform init
 #   terraform apply
 #
-# After this completes, the prod-aws environment can use remote state.
+# After this completes, all environments (dev/stage/prod) can use remote state.
 # =============================================================================
 
 terraform {
@@ -47,7 +47,7 @@ variable "state_bucket_name" {
 variable "lock_table_name" {
   description = "Name of the DynamoDB table for state locking"
   type        = string
-  default     = "middleware-platform-terraform-locks"
+  default     = "terraform-state-lock"
 }
 
 # -----------------------------------------------------------------------------
@@ -124,19 +124,25 @@ output "lock_table_name" {
 }
 
 output "backend_config" {
-  description = "Backend configuration to add to prod-aws/backend.tf"
+  description = "Backend configuration for the unified environments/aws setup"
   value       = <<-EOT
 
-    Add this to your terraform configuration:
+    The unified environment uses backend config files in environments/aws/backends/.
+    Each environment has its own state file:
 
-    terraform {
-      backend "s3" {
-        bucket         = "${aws_s3_bucket.terraform_state.id}"
-        key            = "prod-aws/terraform.tfstate"
-        region         = "${var.aws_region}"
-        dynamodb_table = "${aws_dynamodb_table.terraform_locks.name}"
-        encrypt        = true
-      }
-    }
+    - dev:   environments/dev/terraform.tfstate
+    - stage: environments/stage/terraform.tfstate
+    - prod:  environments/prod/terraform.tfstate
+
+    Usage:
+      cd environments/aws
+      terraform init -backend-config=backends/dev.backend.hcl
+      terraform init -backend-config=backends/prod.backend.hcl -reconfigure
+
+    Backend config files use:
+      bucket         = "${aws_s3_bucket.terraform_state.id}"
+      dynamodb_table = "${aws_dynamodb_table.terraform_locks.name}"
+      region         = "${var.aws_region}"
+      encrypt        = true
   EOT
 }
