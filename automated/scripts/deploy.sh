@@ -68,7 +68,8 @@ stop_timer() {
 }
 
 validate_environment() {
-    local allowed_environments=("dev" "staging" "prod-aws")
+    # Unified environment structure: dev, stage, prod
+    local allowed_environments=("dev" "stage" "prod")
     local valid=false
     for env in "${allowed_environments[@]}"; do
         [[ "$ENVIRONMENT" == "$env" ]] && valid=true && break
@@ -102,25 +103,32 @@ deploy_infrastructure() {
     log_phase "Phase 1: Infrastructure"
     start_timer "infrastructure"
 
-    if [[ "$ENVIRONMENT" == "prod-aws" ]]; then
-        cd "${PROJECT_ROOT}/automated/terraform/environments/prod-aws"
-        terraform init -input=false
-        if [[ "$DRY_RUN" == true ]]; then
-            terraform plan
-        else
-            terraform plan
-            if [[ "$FORCE" != true ]]; then
-                echo ""
-                read -p "Apply these changes? (yes/no): " confirm
-                if [[ "$confirm" != "yes" ]]; then
-                    echo "Aborted."
-                    exit 1
-                fi
-            fi
-            terraform apply -auto-approve
-        fi
+    # Use unified environment structure: environments/aws with per-env configs
+    local tf_dir="${PROJECT_ROOT}/automated/terraform/environments/aws"
+    local backend_config="backends/${ENVIRONMENT}.backend.hcl"
+    local var_file="envs/${ENVIRONMENT}.tfvars"
+
+    cd "$tf_dir"
+    log_info "Deploying to AWS environment: ${ENVIRONMENT}"
+    log_info "Using backend config: ${backend_config}"
+    log_info "Using var file: ${var_file}"
+
+    # Initialize with environment-specific backend
+    terraform init -input=false -backend-config="${backend_config}" -reconfigure
+
+    if [[ "$DRY_RUN" == true ]]; then
+        terraform plan -var-file="${var_file}"
     else
-        log_info "Using existing local infrastructure"
+        terraform plan -var-file="${var_file}"
+        if [[ "$FORCE" != true ]]; then
+            echo ""
+            read -p "Apply these changes? (yes/no): " confirm
+            if [[ "$confirm" != "yes" ]]; then
+                echo "Aborted."
+                exit 1
+            fi
+        fi
+        terraform apply -auto-approve -var-file="${var_file}"
     fi
 
     stop_timer "infrastructure"
@@ -183,12 +191,27 @@ show_help() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  -e, --environment   Environment (dev, staging, prod-aws)"
+    echo "  -e, --environment   Environment (dev, stage, prod) [default: dev]"
     echo "  -p, --phase         Phase (all, infrastructure, liberty, monitoring)"
     echo "  -v, --version       Liberty version to deploy (e.g., 1.0.0)"
     echo "  -d, --dry-run       Dry run mode"
     echo "  -f, --force         Skip confirmation prompts (use with caution)"
     echo "  -h, --help          Show help"
+    echo ""
+    echo "Examples:"
+    echo "  $0 -e dev                    # Deploy to dev environment"
+    echo "  $0 -e prod -f                # Deploy to prod without confirmation"
+    echo "  $0 -e stage -p infrastructure # Only deploy infrastructure to stage"
+    echo "  $0 -e dev -d                 # Dry run for dev environment"
+    echo ""
+    echo "Infrastructure:"
+    echo "  Uses unified Terraform environment: environments/aws/"
+    echo "  Backend configs: backends/{dev,stage,prod}.backend.hcl"
+    echo "  Variable files:  envs/{dev,stage,prod}.tfvars"
+    echo ""
+    echo "ECS Resources (when enabled):"
+    echo "  Cluster: mw-{env}-cluster"
+    echo "  Service: mw-{env}-liberty"
 }
 
 main() {

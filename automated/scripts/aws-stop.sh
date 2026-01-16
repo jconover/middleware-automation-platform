@@ -8,14 +8,18 @@
 # Usage: ./aws-stop.sh [OPTIONS]
 #
 # Options:
-#   -d, --dry-run  Preview operations without executing them
-#   --destroy      Fully destroy infrastructure (terraform destroy)
-#   -h, --help     Show this help message and exit
+#   -e, --environment ENV  Target environment: dev, stage, prod (default: prod)
+#   -d, --dry-run          Preview operations without executing them
+#   --destroy              Fully destroy infrastructure (terraform destroy)
+#   -h, --help             Show this help message and exit
 #
 # Examples:
-#   ./aws-stop.sh              # Stop all services
-#   ./aws-stop.sh --dry-run    # Preview what would be stopped
-#   ./aws-stop.sh --destroy    # Fully destroy infrastructure
+#   ./aws-stop.sh                       # Stop all prod services (default)
+#   ./aws-stop.sh -e dev                # Stop all dev services
+#   ./aws-stop.sh --environment stage   # Stop all stage services
+#   ./aws-stop.sh -e dev --dry-run      # Preview what would be stopped in dev
+#   ./aws-stop.sh --destroy             # Fully destroy prod infrastructure
+#   ./aws-stop.sh -e dev --destroy      # Fully destroy dev infrastructure
 # =============================================================================
 
 set -euo pipefail
@@ -37,10 +41,13 @@ fi
 
 # Configuration
 AWS_REGION="${AWS_REGION:-us-east-1}"
-NAME_PREFIX="mw-prod"
-TERRAFORM_DIR="$(dirname "$0")/../terraform/environments/prod-aws"
+ENVIRONMENT="prod"
 DRY_RUN=false
 DESTROY_MODE=false
+
+# These are set dynamically after parsing arguments
+NAME_PREFIX=""
+TERRAFORM_DIR=""
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
@@ -57,14 +64,23 @@ usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  -d, --dry-run  Preview operations without executing them"
-    echo "  --destroy      Fully destroy infrastructure (terraform destroy)"
-    echo "  -h, --help     Show this help message and exit"
+    echo "  -e, --environment ENV  Target environment: dev, stage, prod (default: prod)"
+    echo "  -d, --dry-run          Preview operations without executing them"
+    echo "  --destroy              Fully destroy infrastructure (terraform destroy)"
+    echo "  -h, --help             Show this help message and exit"
+    echo ""
+    echo "Environments:"
+    echo "  dev    Development environment (mw-dev-*)"
+    echo "  stage  Staging environment (mw-stage-*)"
+    echo "  prod   Production environment (mw-prod-*) [default]"
     echo ""
     echo "Examples:"
-    echo "  $0              # Stop all services"
-    echo "  $0 --dry-run    # Preview what would be stopped"
-    echo "  $0 --destroy    # Fully destroy infrastructure"
+    echo "  $0                       # Stop all prod services (default)"
+    echo "  $0 -e dev                # Stop all dev services"
+    echo "  $0 --environment stage   # Stop all stage services"
+    echo "  $0 -e dev --dry-run      # Preview what would be stopped in dev"
+    echo "  $0 --destroy             # Fully destroy prod infrastructure"
+    echo "  $0 -e dev --destroy      # Fully destroy dev infrastructure"
     exit 0
 }
 
@@ -73,6 +89,7 @@ print_banner() {
     echo "╔═══════════════════════════════════════════════════════════════════════════╗"
     echo "║           AWS Services Stop Script                                         ║"
     echo "║           Middleware Automation Platform                                   ║"
+    echo "║           Environment: ${ENVIRONMENT}                                                 ║"
     echo "╚═══════════════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -209,7 +226,7 @@ print_cost_summary() {
     echo "  • Elastic IPs (if instances stopped, ~\$0.005/hour each)"
     echo "  • EBS volumes (~\$0.10/GB/month)"
     echo ""
-    echo -e "${YELLOW}To fully stop all charges, run: ./aws-stop.sh --destroy${NC}"
+    echo -e "${YELLOW}To fully stop all charges, run: ./aws-stop.sh -e ${ENVIRONMENT} --destroy${NC}"
     echo ""
 }
 
@@ -235,7 +252,7 @@ terraform_destroy() {
 
     if [[ "$CONFIRM" == "yes" ]]; then
         cd "$TERRAFORM_DIR"
-        terraform destroy -auto-approve
+        terraform destroy -var-file="envs/${ENVIRONMENT}.tfvars" -auto-approve
         log_info "Infrastructure destroyed."
     else
         log_info "Destroy cancelled."
@@ -245,7 +262,7 @@ terraform_destroy() {
 print_restart_instructions() {
     echo ""
     echo -e "${GREEN}To restart services, run:${NC}"
-    echo "  ./aws-start.sh"
+    echo "  ./aws-start.sh -e ${ENVIRONMENT}"
     echo ""
     echo "Or manually:"
     echo "  # Start RDS (do this first, takes ~5-10 min)"
@@ -259,11 +276,40 @@ print_restart_instructions() {
     echo ""
 }
 
+validate_environment() {
+    case "$ENVIRONMENT" in
+        dev|stage|prod)
+            return 0
+            ;;
+        *)
+            log_error "Invalid environment: $ENVIRONMENT"
+            echo "Valid environments: dev, stage, prod"
+            exit 1
+            ;;
+    esac
+}
+
+set_environment_config() {
+    # Set NAME_PREFIX based on environment
+    NAME_PREFIX="mw-${ENVIRONMENT}"
+
+    # Set TERRAFORM_DIR to unified environment
+    TERRAFORM_DIR="$(dirname "$0")/../terraform/environments/aws"
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help)
                 usage
+                ;;
+            -e|--environment)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "Option $1 requires an argument."
+                    exit 1
+                fi
+                ENVIRONMENT="$2"
+                shift 2
                 ;;
             -d|--dry-run)
                 DRY_RUN=true
@@ -285,6 +331,10 @@ parse_args() {
                 ;;
         esac
     done
+
+    # Validate and set environment-specific configuration
+    validate_environment
+    set_environment_config
 }
 
 print_dry_run_summary() {

@@ -193,7 +193,14 @@ Should reference unified environment.
 | Findings document created | Complete | Jan 2026 | This document |
 | AWS_DEPLOYMENT.md update | Complete | Jan 2026 | All sections updated |
 | CLAUDE.md update | Complete | Jan 2026 | ECR path reference fixed |
-| Operations scripts update | Pending | | Future iteration - add environment parameter |
+| Operations scripts update | Complete | Jan 2026 | Added -e/--environment parameter to all scripts |
+| Database migrations docs | Complete | Jan 2026 | Flyway integration documented |
+| Rollback procedures docs | Complete | Jan 2026 | ECS and database rollback documented |
+| DR features docs | Complete | Jan 2026 | Route53, S3/ECR replication documented |
+| Cost estimates update | Complete | Jan 2026 | Fargate Spot, Multi-AZ NAT, RDS Proxy costs |
+| SLO alerting docs | Complete | Jan 2026 | Availability, latency, error rate alarms |
+| X-Ray observability docs | Complete | Jan 2026 | Distributed tracing, sampling, OTEL |
+| Blue-Green deployment docs | Complete | Jan 2026 | CodeDeploy workflow, traffic shifting |
 
 ### Changes Made to AWS_DEPLOYMENT.md
 

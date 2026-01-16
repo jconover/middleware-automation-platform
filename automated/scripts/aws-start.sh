@@ -7,12 +7,15 @@
 # Usage: ./aws-start.sh [OPTIONS]
 #
 # Options:
-#   -h, --help     Show this help message and exit
-#   -d, --dry-run  Preview operations without executing them
+#   -e, --environment ENV  Target environment: dev, stage, prod (default: prod)
+#   -h, --help             Show this help message and exit
+#   -d, --dry-run          Preview operations without executing them
 #
 # Examples:
-#   ./aws-start.sh              # Start all AWS services
-#   ./aws-start.sh --dry-run    # Preview what would be started
+#   ./aws-start.sh                      # Start all prod AWS services (default)
+#   ./aws-start.sh -e dev               # Start all dev AWS services
+#   ./aws-start.sh --environment stage  # Start all stage AWS services
+#   ./aws-start.sh -e prod --dry-run    # Preview what would be started in prod
 # =============================================================================
 
 set -euo pipefail
@@ -34,9 +37,11 @@ fi
 
 # Configuration
 AWS_REGION="${AWS_REGION:-us-east-1}"
-NAME_PREFIX="mw-prod"
+ENVIRONMENT="prod"  # Default environment, can be overridden with -e/--environment
 ECS_DESIRED_COUNT="${ECS_DESIRED_COUNT:-2}"
 DRY_RUN=false
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TERRAFORM_DIR="${SCRIPT_DIR}/../terraform/environments/aws"
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
@@ -45,9 +50,23 @@ log_step() { echo -e "\n${BLUE}▶ $1${NC}"; }
 log_dry_run() { echo -e "${YELLOW}[DRY-RUN]${NC} $1"; }
 
 usage() {
-    # Extract usage from header comments (lines 2-16)
-    sed -n '2,16p' "$0" | grep '^#' | sed 's/^# //' | sed 's/^#//'
+    # Extract usage from header comments (lines 2-18)
+    sed -n '2,18p' "$0" | grep '^#' | sed 's/^# //' | sed 's/^#//'
     exit 0
+}
+
+validate_environment() {
+    local env="$1"
+    case "$env" in
+        dev|stage|prod)
+            return 0
+            ;;
+        *)
+            log_error "Invalid environment: $env"
+            echo "Valid environments: dev, stage, prod"
+            exit 1
+            ;;
+    esac
 }
 
 parse_args() {
@@ -55,6 +74,15 @@ parse_args() {
         case "$1" in
             -h|--help)
                 usage
+                ;;
+            -e|--environment)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "Option $1 requires an argument"
+                    exit 1
+                fi
+                ENVIRONMENT="$2"
+                validate_environment "$ENVIRONMENT"
+                shift 2
                 ;;
             -d|--dry-run)
                 DRY_RUN=true
@@ -75,10 +103,15 @@ parse_args() {
 }
 
 print_banner() {
+    # Set NAME_PREFIX based on environment
+    NAME_PREFIX="mw-${ENVIRONMENT}"
+
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════════════════════╗"
     echo "║           AWS Services Start Script                                        ║"
     echo "║           Middleware Automation Platform                                   ║"
+    echo "╠═══════════════════════════════════════════════════════════════════════════╣"
+    printf "║  %-73s ║\n" "Environment: ${ENVIRONMENT} (prefix: ${NAME_PREFIX})"
     echo "╚═══════════════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
