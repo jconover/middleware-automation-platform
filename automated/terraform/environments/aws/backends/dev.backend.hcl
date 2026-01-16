@@ -5,4 +5,4 @@ bucket         = "middleware-platform-terraform-state"
 key            = "environments/dev/terraform.tfstate"
 region         = "us-east-1"
 encrypt        = true
-dynamodb_table = "terraform-state-lock"
+dynamodb_table = "middleware-platform-terraform-locks"
