@@ -2,6 +2,8 @@
 
 Deploy Open Liberty application servers to AWS using ECS Fargate or EC2.
 
+> **Note:** This guide uses the unified `environments/aws/` environment which supports dev/stage/prod deployments. The legacy `environments/prod-aws/` is deprecated.
+
 ---
 
 ## Prerequisites
@@ -43,30 +45,68 @@ cd automated/terraform/bootstrap
 terraform init && terraform apply -auto-approve
 
 # 2. Configure and deploy infrastructure
-cd ../environments/prod-aws
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars - set your IP in management_allowed_cidrs
+cd ../environments/aws
+# Edit envs/prod.tfvars - set your IP in management_allowed_cidrs
 
-terraform init && terraform apply
+terraform init -backend-config=backends/prod.backend.hcl
+terraform plan -var-file=envs/prod.tfvars
+terraform apply -var-file=envs/prod.tfvars
 
-# 3. Build and push container
+# 3. Build and push container (multi-stage build compiles sample-app from source)
 cd ../../..
-mvn -f sample-app/pom.xml clean package
-podman build -t liberty-app:latest -f containers/liberty/Containerfile .
+podman build -t liberty-app:1.0.0 -f containers/liberty/Containerfile .
 
 aws ecr get-login-password --region us-east-1 | \
-  podman login --username AWS --password-stdin $(terraform -chdir=automated/terraform/environments/prod-aws output -raw ecr_repository_url | cut -d/ -f1)
+  podman login --username AWS --password-stdin $(terraform -chdir=automated/terraform/environments/aws output -raw ecr_repository_url | cut -d/ -f1)
 
-ECR_URL=$(terraform -chdir=automated/terraform/environments/prod-aws output -raw ecr_repository_url)
-podman tag liberty-app:latest ${ECR_URL}:latest
-podman push ${ECR_URL}:latest
+ECR_URL=$(terraform -chdir=automated/terraform/environments/aws output -raw ecr_repository_url)
+podman tag liberty-app:1.0.0 ${ECR_URL}:1.0.0
+podman push ${ECR_URL}:1.0.0
 
 # 4. Deploy to ECS
 aws ecs update-service --cluster mw-prod-cluster --service mw-prod-liberty --force-new-deployment
 
 # 5. Verify
-ALB_DNS=$(terraform -chdir=automated/terraform/environments/prod-aws output -raw alb_dns_name)
+ALB_DNS=$(terraform -chdir=automated/terraform/environments/aws output -raw alb_dns_name)
 curl http://$ALB_DNS/health/ready
+```
+
+---
+
+## Multi-Environment Deployment
+
+The unified environment supports dev/stage/prod from a single codebase with isolated state.
+
+### Environment Differences
+
+| Setting | Dev | Stage | Prod |
+|---------|-----|-------|------|
+| VPC CIDR | 10.10.0.0/16 | 10.20.0.0/16 | 10.30.0.0/16 |
+| Availability Zones | 2 | 2 | 3 |
+| ECS Tasks | 1-2 | 2-4 | 2-6 |
+| Fargate Spot | 80% | 70% | 70% |
+| RDS Multi-AZ | No | Yes | Yes |
+| RDS Proxy | No | Yes | Yes |
+| WAF | No | Yes | Yes |
+| GuardDuty | No | Yes | Yes |
+| Blue-Green Deploy | No | Yes | Yes |
+| S3/ECR Replication | No | No | Yes |
+
+### Switching Environments
+
+```bash
+# Development
+cd automated/terraform/environments/aws
+terraform init -backend-config=backends/dev.backend.hcl
+terraform apply -var-file=envs/dev.tfvars
+
+# Staging (use -reconfigure when switching backends)
+terraform init -backend-config=backends/stage.backend.hcl -reconfigure
+terraform apply -var-file=envs/stage.tfvars
+
+# Production
+terraform init -backend-config=backends/prod.backend.hcl -reconfigure
+terraform apply -var-file=envs/prod.tfvars
 ```
 
 ---
@@ -74,29 +114,36 @@ curl http://$ALB_DNS/health/ready
 ## Architecture
 
 ```
-                           Internet
-                              │
-                        ┌─────┴─────┐
-                        │    ALB    │  (Public Subnets)
-                        └─────┬─────┘
-                              │
-           ┌──────────────────┴──────────────────┐
-           │                                     │
-    ┌──────┴──────┐                       ┌──────┴──────┐
-    │ ECS Fargate │                       │     EC2     │
-    │  (default)  │                       │ (optional)  │
-    └──────┬──────┘                       └──────┬──────┘
-           │                                     │
-           └─────────────────┬───────────────────┘
-                             │
-                    (Private Subnets)
-                             │
-              ┌──────────────┴──────────────┐
-              │                             │
-        ┌─────┴─────┐                 ┌─────┴─────┐
-        │    RDS    │                 │   Redis   │
-        │ PostgreSQL│                 │ElastiCache│
-        └───────────┘                 └───────────┘
+                              Internet
+                                 │
+                           ┌─────┴─────┐
+                           │    WAF    │  AWS Managed Rules
+                           └─────┬─────┘
+                                 │
+                           ┌─────┴─────┐
+                           │    ALB    │  (Public Subnets)
+                           └─────┬─────┘
+                                 │
+              ┌──────────────────┼──────────────────┐
+              │                  │                  │
+       ┌──────┴──────┐    ┌──────┴──────┐    ┌─────┴─────┐
+       │ ECS Fargate │    │     EC2     │    │ Monitoring│
+       │  (default)  │    │ (optional)  │    │  Server   │
+       └──────┬──────┘    └──────┬──────┘    └───────────┘
+              │                  │           Prometheus/Grafana
+              └────────┬─────────┘
+                       │ (Private Subnets)
+            ┌──────────┼──────────┐
+            │          │          │
+       ┌────┴────┐ ┌───┴────┐ ┌───┴───┐
+       │   RDS   │ │ Redis  │ │  NAT  │
+       │PostgreSQL│ │ElastiCache│ │Gateway│
+       └─────────┘ └────────┘ └───────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ Security: CloudTrail │ GuardDuty │ Security Hub │ WAF   │
+│ Storage:  ECR │ S3 (ALB Logs) │ Secrets Manager        │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ### Compute Options
@@ -112,18 +159,24 @@ curl http://$ALB_DNS/health/ready
 | Component | Service | Description |
 |-----------|---------|-------------|
 | VPC | 10.10.0.0/16 | 2 public + 2 private subnets |
-| ALB | Application LB | Health checks on `/health/ready` |
+| WAF | Web Application Firewall | AWS Managed Rules (OWASP, SQLi, rate limiting) |
+| ALB | Application LB | Health checks on `/health/ready`, HTTPS with auto-redirect |
 | ECS Fargate | Serverless | Auto-scales 2-6 tasks |
 | RDS | PostgreSQL 15 | Encrypted, auto-scaling storage |
-| ElastiCache | Redis 7.0 | Session cache |
-| ECR | Container Registry | Liberty images |
-| Monitoring | EC2 | Prometheus + Grafana |
+| ElastiCache | Redis 7.0 | Session cache with TLS + AUTH token |
+| ECR | Container Registry | Liberty images with vulnerability scanning |
+| NAT Gateway | Egress | Internet access for private subnets |
+| Monitoring | EC2 | Prometheus + Grafana with ECS service discovery |
+| Secrets Manager | Credentials | Auto-generated DB, Redis, and Grafana passwords |
+| CloudTrail | Audit Logs | API activity logging with S3 + CloudWatch |
+| GuardDuty | Threat Detection | Malware protection, security findings |
+| Security Hub | Compliance | CIS Benchmarks, AWS Best Practices |
 
 ---
 
 ## Configuration
 
-Edit `automated/terraform/environments/prod-aws/terraform.tfvars`:
+Edit `automated/terraform/environments/aws/envs/prod.tfvars` (or `dev.tfvars`/`stage.tfvars` for other environments):
 
 ### Compute Selection
 
@@ -155,21 +208,25 @@ Edit `automated/terraform/environments/prod-aws/terraform.tfvars`:
 
 ## Building and Pushing Containers
 
-```bash
-# Build application
-mvn -f sample-app/pom.xml clean package
+The Containerfile uses a multi-stage build that compiles the sample-app from source, so no separate Maven build step is required.
 
-# Build container
-podman build -t liberty-app:latest -f containers/liberty/Containerfile .
+```bash
+# Get complete push commands from terraform output
+terraform -chdir=automated/terraform/environments/aws output ecr_push_commands
+
+# Or manually:
+
+# Build container (multi-stage build compiles app from source)
+podman build -t liberty-app:1.0.0 -f containers/liberty/Containerfile .
 
 # Login to ECR
 aws ecr get-login-password --region us-east-1 | \
   podman login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
 
 # Push to ECR
-ECR_URL=$(terraform -chdir=automated/terraform/environments/prod-aws output -raw ecr_repository_url)
-podman tag liberty-app:latest ${ECR_URL}:latest
-podman push ${ECR_URL}:latest
+ECR_URL=$(terraform -chdir=automated/terraform/environments/aws output -raw ecr_repository_url)
+podman tag liberty-app:1.0.0 ${ECR_URL}:1.0.0
+podman push ${ECR_URL}:1.0.0
 
 # Deploy to ECS
 aws ecs update-service --cluster mw-prod-cluster --service mw-prod-liberty --force-new-deployment
@@ -181,14 +238,16 @@ aws ecs update-service --cluster mw-prod-cluster --service mw-prod-liberty --for
 
 ### Start/Stop Services
 
+> **Note:** These scripts currently only work with the legacy `environments/prod-aws/` environment. For the unified environment, use terraform directly.
+
 ```bash
-# Stop all (cost saving)
+# Stop all (cost saving) - legacy environment only
 ./automated/scripts/aws-stop.sh
 
-# Start all
+# Start all - legacy environment only
 ./automated/scripts/aws-start.sh
 
-# Full destroy
+# Full destroy - legacy environment only
 ./automated/scripts/aws-stop.sh --destroy
 ```
 
@@ -215,7 +274,7 @@ aws logs tail /ecs/mw-prod-liberty --since 1h
 ### Health Checks
 
 ```bash
-ALB_DNS=$(terraform -chdir=automated/terraform/environments/prod-aws output -raw alb_dns_name)
+ALB_DNS=$(terraform -chdir=automated/terraform/environments/aws output -raw alb_dns_name)
 curl http://${ALB_DNS}/health/ready
 curl http://${ALB_DNS}/health/live
 ```
@@ -234,20 +293,63 @@ aws rds describe-db-instances --db-instance-identifier mw-prod-postgres \
 
 ---
 
+## Security
+
+### WAF Protection
+
+WAF is enabled in stage and prod environments with:
+- AWS Managed Rules (Common, SQLi, Known Bad Inputs)
+- Rate limiting (2000-3000 requests per 5 minutes)
+- WAF logging to CloudWatch
+
+### Encryption
+
+| Component | Encryption |
+|-----------|------------|
+| RDS | AES-256 storage encryption |
+| ElastiCache | At-rest and in-transit (TLS + AUTH) |
+| S3 | AES-256 (ALB logs), KMS (CloudTrail) |
+| Secrets | AWS Secrets Manager |
+
+### Compliance (Stage/Prod)
+
+| Service | Purpose |
+|---------|---------|
+| CloudTrail | API audit logging |
+| GuardDuty | Threat detection, malware protection |
+| Security Hub | CIS Benchmarks, AWS Best Practices |
+| VPC Flow Logs | Network traffic logging |
+
+### Secrets Management
+
+Credentials are auto-generated and stored in AWS Secrets Manager:
+```bash
+# Grafana password (for prod environment)
+aws secretsmanager get-secret-value --secret-id mw-prod/monitoring/grafana-credentials \
+  --query SecretString --output text | jq -r .admin_password
+
+# Database credentials
+aws secretsmanager get-secret-value --secret-id mw-prod/database/credentials \
+  --query SecretString --output text | jq -r '.username, .password'
+```
+
+---
+
 ## Monitoring
 
 ### URLs
 
 ```bash
-terraform -chdir=automated/terraform/environments/prod-aws output grafana_url
-terraform -chdir=automated/terraform/environments/prod-aws output prometheus_url
+terraform -chdir=automated/terraform/environments/aws output grafana_url
+terraform -chdir=automated/terraform/environments/aws output prometheus_url
 ```
 
 ### Grafana Login
 
 - **Username**: `admin`
-- **Password**:
+- **Password**: Stored in Secrets Manager at `mw-{env}/monitoring/grafana-credentials`
   ```bash
+  # For prod environment
   aws secretsmanager get-secret-value --secret-id mw-prod/monitoring/grafana-credentials \
     --query SecretString --output text | jq -r .admin_password
   ```
@@ -276,6 +378,9 @@ Import `monitoring/grafana/dashboards/ecs-liberty.json` in Grafana.
 | Secret scheduled for deletion | `aws secretsmanager delete-secret --secret-id <id> --force-delete-without-recovery` |
 | ECR push denied | Re-run ECR login command |
 | ECS stuck deploying | Check logs, fix issue, force new deployment |
+| Terraform state lock | Wait for other operation, or `terraform force-unlock <LOCK_ID>` if stuck |
+| WAF blocking requests | Check WAF logs in CloudWatch; adjust rules or add IP to allow list |
+| Multi-environment state conflict | Use correct backend: `terraform init -backend-config=backends/{env}.backend.hcl -reconfigure` |
 
 ### Debug Commands
 
@@ -298,12 +403,12 @@ aws elbv2 describe-target-health --target-group-arn \
 ## Teardown
 
 ```bash
-# Full destroy
+# Full destroy (legacy environment only)
 ./automated/scripts/aws-stop.sh --destroy
 
-# Or directly
-cd automated/terraform/environments/prod-aws
-terraform destroy
+# For unified environment
+cd automated/terraform/environments/aws
+terraform destroy -var-file=envs/prod.tfvars
 ```
 
 ### Warnings
