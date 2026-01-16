@@ -109,6 +109,43 @@ terraform init -backend-config=backends/prod.backend.hcl -reconfigure
 terraform apply -var-file=envs/prod.tfvars
 ```
 
+### Production Workflow Best Practices
+
+For production deployments, always use a saved plan file to ensure that the changes you reviewed are exactly what gets applied. This prevents any drift between plan and apply due to concurrent changes.
+
+**Why use `-out=tfplan`:**
+- Guarantees the apply matches what you reviewed
+- Prevents race conditions if infrastructure changes between plan and apply
+- Creates an audit trail of planned changes
+- Enables approval workflows where one person plans and another applies
+
+**Safe Production Deployment Workflow:**
+
+```bash
+# 1. Initialize for production (if not already done)
+cd automated/terraform/environments/aws
+terraform init -backend-config=backends/prod.backend.hcl -reconfigure
+
+# 2. Generate and save the plan
+terraform plan -var-file=envs/prod.tfvars -out=tfplan
+
+# 3. Review the plan output carefully
+#    - Verify resources being created/modified/destroyed
+#    - Check for unexpected changes
+#    - Confirm no sensitive data exposure
+
+# 4. Apply the saved plan (no additional approval prompt)
+terraform apply tfplan
+
+# 5. Clean up the plan file (contains sensitive data)
+rm tfplan
+```
+
+**Additional Tips:**
+- Store plan files securely if implementing approval workflows (they may contain sensitive values)
+- Use `terraform show tfplan` to review the saved plan in detail before applying
+- Consider using `terraform plan -var-file=envs/prod.tfvars -out=tfplan -detailed-exitcode` for CI/CD pipelines (exit code 2 indicates changes pending)
+
 ---
 
 ## Architecture
@@ -728,6 +765,118 @@ WAF is enabled in stage and prod environments with:
 | Security Hub | CIS Benchmarks, AWS Best Practices |
 | VPC Flow Logs | Network traffic logging |
 
+### VPC Flow Logs
+
+VPC Flow Logs capture network traffic metadata for all network interfaces in the VPC, providing visibility into traffic patterns, security analysis, and troubleshooting capabilities.
+
+#### What Flow Logs Capture
+
+Flow logs record information about IP traffic going to and from network interfaces in your VPC:
+
+| Field | Description |
+|-------|-------------|
+| Source/Destination IP | IP addresses of traffic endpoints |
+| Source/Destination Port | Port numbers for the connection |
+| Protocol | IANA protocol number (6=TCP, 17=UDP, 1=ICMP) |
+| Packets/Bytes | Number of packets and bytes transferred |
+| Action | ACCEPT or REJECT based on security groups/NACLs |
+| Log Status | OK, NODATA, or SKIPDATA |
+
+#### Enabling Flow Logs
+
+VPC Flow Logs are **enabled by default** in the networking module. To customize the configuration, set these variables in your environment's `.tfvars` file:
+
+```hcl
+# Flow logs are enabled by default - these are the default values
+# enable_flow_logs = true           # Set to false to disable
+# flow_logs_traffic_type = "ALL"    # Options: ALL, ACCEPT, REJECT
+# flow_logs_retention_days = 30     # Log retention in days
+# enable_flow_logs_encryption = true # KMS encryption for logs
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `enable_flow_logs` | `true` | Enable/disable VPC flow logs |
+| `flow_logs_traffic_type` | `ALL` | Traffic to log: ALL, ACCEPT, or REJECT |
+| `flow_logs_retention_days` | `30` | Days to retain logs in CloudWatch |
+| `enable_flow_logs_encryption` | `true` | Encrypt logs with KMS |
+
+#### Log Storage Location
+
+Flow logs are stored in CloudWatch Logs:
+
+- **Log Group**: `/aws/vpc/{project}-{environment}-flow-logs`
+  - Example: `/aws/vpc/mw-prod-flow-logs`
+- **Encryption**: KMS-encrypted by default (key auto-created)
+- **Retention**: Configurable (default 30 days)
+
+To view the log group in AWS Console:
+```
+CloudWatch > Log groups > /aws/vpc/mw-prod-flow-logs
+```
+
+#### Querying Flow Logs for Troubleshooting
+
+Use CloudWatch Logs Insights to query flow logs. Navigate to:
+```
+CloudWatch > Logs > Logs Insights
+```
+
+Select the flow log group (`/aws/vpc/mw-prod-flow-logs`) and run queries.
+
+**Example: Find rejected traffic to a specific port (e.g., database port 5432)**
+```sql
+fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, action
+| filter action = "REJECT" and dstPort = 5432
+| sort @timestamp desc
+| limit 100
+```
+
+**Example: Top talkers by bytes transferred**
+```sql
+stats sum(bytes) as totalBytes by srcAddr
+| sort totalBytes desc
+| limit 20
+```
+
+**Example: Traffic from a specific source IP**
+```sql
+fields @timestamp, srcAddr, dstAddr, dstPort, action, protocol, bytes
+| filter srcAddr = "10.10.1.50"
+| sort @timestamp desc
+| limit 100
+```
+
+**Example: Rejected SSH attempts**
+```sql
+fields @timestamp, srcAddr, dstAddr, action
+| filter action = "REJECT" and dstPort = 22
+| stats count(*) as attempts by srcAddr
+| sort attempts desc
+| limit 20
+```
+
+**Example: Traffic between ECS tasks and RDS**
+```sql
+fields @timestamp, srcAddr, dstAddr, dstPort, bytes, packets
+| filter dstPort = 5432 and action = "ACCEPT"
+| stats sum(bytes) as totalBytes, sum(packets) as totalPackets by srcAddr, dstAddr
+| sort totalBytes desc
+```
+
+#### Cost Considerations
+
+| Component | Approximate Cost |
+|-----------|-----------------|
+| Flow Logs ingestion | $0.50 per GB ingested |
+| CloudWatch Logs storage | $0.03 per GB/month |
+| KMS key | $1.00 per month + $0.03 per 10,000 requests |
+
+**Cost optimization tips:**
+- Use `flow_logs_traffic_type = "REJECT"` to log only rejected traffic (reduces volume significantly)
+- Reduce `flow_logs_retention_days` for non-production environments
+- Set `enable_flow_logs = false` in dev if not needed for troubleshooting
+
 ### Secrets Management
 
 Credentials are auto-generated and stored in AWS Secrets Manager:
@@ -739,6 +888,291 @@ aws secretsmanager get-secret-value --secret-id mw-prod/monitoring/grafana-crede
 # Database credentials
 aws secretsmanager get-secret-value --secret-id mw-prod/database/credentials \
   --query SecretString --output text | jq -r '.username, .password'
+```
+
+### EC2 Instance Metadata Security
+
+All EC2 instances in the unified environment enforce IMDSv2 (Instance Metadata Service version 2) for improved security against SSRF and credential theft attacks.
+
+#### What is IMDSv2?
+
+The Instance Metadata Service (IMDS) allows EC2 instances to access instance metadata and temporary IAM credentials at `http://169.254.169.254`. IMDSv2 is an enhanced version that requires session-based authentication:
+
+| Feature | IMDSv1 | IMDSv2 |
+|---------|--------|--------|
+| Authentication | None (open GET request) | Session token required |
+| Request method | GET | PUT (token) + GET (with token header) |
+| SSRF protection | Vulnerable | Protected |
+| Token TTL | N/A | Configurable (1-6 hours) |
+
+#### Why IMDSv2 is More Secure
+
+IMDSv1 is vulnerable to Server-Side Request Forgery (SSRF) attacks. If an attacker can make the application perform HTTP requests (e.g., via a URL parameter vulnerability), they can:
+
+1. Request `http://169.254.169.254/latest/meta-data/iam/security-credentials/ROLE_NAME`
+2. Retrieve temporary AWS credentials
+3. Use those credentials to access AWS resources
+
+**IMDSv2 blocks this attack** because:
+
+- The initial token request requires an HTTP `PUT` method (most SSRF vulnerabilities only allow GET)
+- The token request requires an `X-aws-ec2-metadata-token-ttl-seconds` header
+- The metadata request requires an `X-aws-ec2-metadata-token` header with the session token
+- Tokens cannot traverse network boundaries (blocked by hop limit)
+
+#### Configuration in This Environment
+
+All EC2 instances are configured with:
+
+```hcl
+# In modules/compute/main.tf and modules/monitoring/main.tf
+metadata_options {
+  http_endpoint               = "enabled"
+  http_tokens                 = "required"    # Enforces IMDSv2
+  http_put_response_hop_limit = 1             # Prevents token forwarding
+}
+```
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `http_endpoint` | `enabled` | IMDS is available |
+| `http_tokens` | `required` | Only IMDSv2 requests accepted (v1 blocked) |
+| `http_put_response_hop_limit` | `1` | Token cannot traverse network hops (container/proxy protection) |
+
+The **hop limit of 1** ensures that:
+- Requests from the instance itself work (0 hops)
+- Requests from containers on the instance work (1 hop)
+- Requests forwarded through proxies or from other hosts are blocked
+
+#### Retrieving Metadata with IMDSv2
+
+Applications and scripts running on EC2 instances must use the IMDSv2 token-based flow:
+
+```bash
+# Step 1: Get a session token (valid for 6 hours)
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" \
+  -s)
+
+# Step 2: Use the token to retrieve metadata
+# Get instance ID
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/instance-id
+
+# Get instance type
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/instance-type
+
+# Get IAM role credentials
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/iam/security-credentials/
+
+# Get the region
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/placement/region
+```
+
+**Using AWS SDKs**: The AWS SDKs (boto3, AWS SDK for Java, etc.) automatically handle IMDSv2 when running on EC2 instances. No code changes are required if using SDK version:
+- AWS SDK for Python (boto3): 1.13.0+
+- AWS SDK for Java: 1.11.678+ / 2.10.21+
+- AWS CLI: 1.16.289+
+
+#### Verifying IMDSv2 Enforcement
+
+To verify that an instance requires IMDSv2:
+
+```bash
+# Check instance metadata options
+aws ec2 describe-instances \
+  --instance-ids i-1234567890abcdef0 \
+  --query 'Reservations[0].Instances[0].MetadataOptions'
+
+# Expected output for enforced IMDSv2:
+# {
+#     "State": "applied",
+#     "HttpTokens": "required",
+#     "HttpPutResponseHopLimit": 1,
+#     "HttpEndpoint": "enabled"
+# }
+```
+
+To verify IMDSv1 is blocked:
+
+```bash
+# This should fail with HTTP 401 when IMDSv2 is enforced
+curl http://169.254.169.254/latest/meta-data/instance-id
+# Expected: 401 Unauthorized
+```
+
+### Security Monitoring
+
+The unified environment creates CloudWatch metric filters that monitor CloudTrail logs for security-relevant events. These filters detect suspicious activity and trigger alarms that notify your security team.
+
+#### CloudWatch Metric Filters
+
+When `enable_cloudtrail = true` (default for stage/prod), the following metric filters are created:
+
+| Metric Filter | Description | Alarm Threshold |
+|---------------|-------------|-----------------|
+| **Unauthorized API Calls** | Detects AccessDenied, UnauthorizedAccess, and AuthorizationError events | >5 in 5 minutes |
+| **Root Account Usage** | Any use of the AWS root account (excluding AWS service events) | >0 (any usage) |
+| **Console Login Without MFA** | Successful IAM user console logins without MFA | >0 (any login) |
+
+All metrics are published to the `{name_prefix}/CloudTrail` namespace (e.g., `mw-prod/CloudTrail`).
+
+#### How Alerts Are Triggered
+
+1. **CloudTrail** logs all AWS API activity to a CloudWatch Log Group
+2. **Metric Filters** scan logs in real-time using filter patterns
+3. **CloudWatch Alarms** evaluate metrics and trigger when thresholds are exceeded
+4. **SNS Topic** (`{name_prefix}-cloudtrail-alarms`) sends email notifications
+5. **Email Subscriber** receives alert with alarm details
+
+**Prerequisites for email alerts:**
+- Set `security_alert_email` in your tfvars file
+- Confirm the SNS subscription email after deployment (check spam folder)
+
+```hcl
+# In envs/prod.tfvars
+security_alert_email = "security-team@example.com"
+```
+
+#### Viewing Security Metrics in CloudWatch
+
+**Console:**
+1. Navigate to **CloudWatch > Metrics > All metrics**
+2. Select the `{name_prefix}/CloudTrail` namespace (e.g., `mw-prod/CloudTrail`)
+3. View metrics: `UnauthorizedAPICalls`, `RootAccountUsage`, `ConsoleLoginWithoutMFA`
+
+**CLI:**
+```bash
+# View unauthorized API calls over the last hour
+aws cloudwatch get-metric-statistics \
+  --namespace "mw-prod/CloudTrail" \
+  --metric-name "UnauthorizedAPICalls" \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --period 300 \
+  --statistics Sum
+
+# List all CloudTrail alarms
+aws cloudwatch describe-alarms --alarm-name-prefix "mw-prod-"
+
+# View alarm history
+aws cloudwatch describe-alarm-history \
+  --alarm-name "mw-prod-unauthorized-api-calls" \
+  --history-item-type StateUpdate
+```
+
+**CloudWatch Logs Insights (query raw events):**
+```bash
+# Query unauthorized API calls in the last 24 hours
+aws logs start-query \
+  --log-group-name "/aws/cloudtrail/mw-prod" \
+  --start-time $(date -u -d '24 hours ago' +%s) \
+  --end-time $(date -u +%s) \
+  --query-string 'fields @timestamp, userIdentity.arn, eventName, errorCode, errorMessage
+    | filter errorCode like /AccessDenied|UnauthorizedAccess|AuthorizationError/
+    | sort @timestamp desc
+    | limit 50'
+```
+
+#### Customizing or Adding Additional Filters
+
+To add custom metric filters, extend the security-compliance module or create additional filters in your environment:
+
+**Example: Detect IAM policy changes**
+
+```hcl
+# In automated/terraform/environments/aws/main.tf (or a custom module)
+
+resource "aws_cloudwatch_log_metric_filter" "iam_policy_changes" {
+  name           = "${local.name_prefix}-iam-policy-changes"
+  pattern        = "{ ($.eventName = DeleteGroupPolicy) || ($.eventName = DeleteRolePolicy) || ($.eventName = DeleteUserPolicy) || ($.eventName = PutGroupPolicy) || ($.eventName = PutRolePolicy) || ($.eventName = PutUserPolicy) || ($.eventName = CreatePolicy) || ($.eventName = DeletePolicy) || ($.eventName = CreatePolicyVersion) || ($.eventName = DeletePolicyVersion) || ($.eventName = AttachRolePolicy) || ($.eventName = DetachRolePolicy) || ($.eventName = AttachUserPolicy) || ($.eventName = DetachUserPolicy) || ($.eventName = AttachGroupPolicy) || ($.eventName = DetachGroupPolicy) }"
+  log_group_name = module.security_compliance.cloudtrail_log_group_name
+
+  metric_transformation {
+    name          = "IAMPolicyChanges"
+    namespace     = "${local.name_prefix}/CloudTrail"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "iam_policy_changes" {
+  alarm_name          = "${local.name_prefix}-iam-policy-changes"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "IAMPolicyChanges"
+  namespace           = "${local.name_prefix}/CloudTrail"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "IAM policy was created, modified, or deleted"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [module.security_compliance.cloudtrail_sns_topic_arn]
+}
+```
+
+**Common filter patterns for CIS Benchmarks:**
+
+| Event Type | Filter Pattern |
+|------------|----------------|
+| Security group changes | `{ ($.eventName = AuthorizeSecurityGroupIngress) \|\| ($.eventName = RevokeSecurityGroupIngress) \|\| ... }` |
+| Network ACL changes | `{ ($.eventName = CreateNetworkAcl) \|\| ($.eventName = DeleteNetworkAcl) \|\| ... }` |
+| CloudTrail config changes | `{ ($.eventName = CreateTrail) \|\| ($.eventName = UpdateTrail) \|\| ($.eventName = DeleteTrail) \|\| ... }` |
+| S3 bucket policy changes | `{ ($.eventSource = s3.amazonaws.com) && (($.eventName = PutBucketAcl) \|\| ($.eventName = PutBucketPolicy) \|\| ...) }` |
+
+See [AWS CIS Benchmark documentation](https://docs.aws.amazon.com/securityhub/latest/userguide/cis-aws-foundations-benchmark.html) for the complete list of recommended filters.
+
+#### Integration with Security Hub Findings
+
+The security-compliance module integrates CloudWatch metric alerts with Security Hub and GuardDuty:
+
+**How it works:**
+1. **GuardDuty** detects threats (malware, compromised credentials, reconnaissance)
+2. **Security Hub** aggregates findings from GuardDuty + CIS Benchmarks + AWS Best Practices
+3. **EventBridge Rules** capture HIGH/CRITICAL findings
+4. **SNS Topic** (`{name_prefix}-security-alerts`) sends email notifications
+
+**Finding severity routing:**
+
+| Source | Severity | Action |
+|--------|----------|--------|
+| GuardDuty | >= 7.0 (High/Critical) | Email alert via SNS |
+| Security Hub | CRITICAL or HIGH | Email alert via SNS |
+| CloudTrail Metrics | Threshold exceeded | Email alert via SNS |
+
+**Viewing Security Hub findings:**
+
+```bash
+# List critical/high findings
+aws securityhub get-findings \
+  --filters '{"SeverityLabel": [{"Value": "CRITICAL", "Comparison": "EQUALS"}, {"Value": "HIGH", "Comparison": "EQUALS"}], "RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}]}' \
+  --max-results 20
+
+# Get finding count by severity
+aws securityhub get-findings \
+  --filters '{"RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}]}' \
+  --query 'Findings | group_by(Severity.Label) | length(@)'
+```
+
+**Console access:**
+- **Security Hub**: https://{region}.console.aws.amazon.com/securityhub/home
+- **GuardDuty**: https://{region}.console.aws.amazon.com/guardduty/home
+- **CloudWatch Alarms**: https://{region}.console.aws.amazon.com/cloudwatch/home#alarmsV2:
+
+**Suppressing false positives:**
+
+For expected activity (e.g., CI/CD pipelines), you can suppress findings:
+
+```bash
+# Suppress a specific Security Hub finding
+aws securityhub batch-update-findings \
+  --finding-identifiers '[{"Id": "<finding-id>", "ProductArn": "<product-arn>"}]' \
+  --workflow '{"Status": "SUPPRESSED"}' \
+  --note '{"Text": "Expected CI/CD activity", "UpdatedBy": "security-team"}'
 ```
 
 ---

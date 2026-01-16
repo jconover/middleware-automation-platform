@@ -53,39 +53,39 @@ environments/aws/
 
 ### 2. Terraform Best Practices Issues
 
-- [ ] No `terraform plan` shown before `terraform apply`
-- [ ] Using `latest` tag in examples (unified env validates against this)
-- [ ] Missing `-var-file=` parameter for destroy commands
-- [ ] No instructions for switching between dev/stage/prod environments
-- [ ] No `-out=tfplan` for production workflows
+- [x] No `terraform plan` shown before `terraform apply`
+- [x] Using `latest` tag in examples (unified env validates against this)
+- [x] Missing `-var-file=` parameter for destroy commands
+- [x] No instructions for switching between dev/stage/prod environments
+- [x] No `-out=tfplan` for production workflows
 
 ### 3. Architecture Diagram Missing Components
 
 Current diagram is missing:
-- [ ] WAF (Web Application Firewall) - attached to ALB
-- [ ] NAT Gateway - required for private subnet egress
-- [ ] CloudTrail - API audit logging
-- [ ] GuardDuty / Security Hub - threat detection
-- [ ] Secrets Manager - credential storage
-- [ ] KMS Keys - encryption
-- [ ] ECR - container registry
-- [ ] Monitoring Server (Prometheus/Grafana)
-- [ ] S3 Buckets (ALB logs, CloudTrail logs)
-- [ ] VPC Flow Logs
+- [x] WAF (Web Application Firewall) - attached to ALB
+- [x] NAT Gateway - required for private subnet egress
+- [x] CloudTrail - API audit logging
+- [x] GuardDuty / Security Hub - threat detection
+- [x] Secrets Manager - credential storage
+- [x] KMS Keys - encryption
+- [x] ECR - container registry
+- [x] Monitoring Server (Prometheus/Grafana)
+- [x] S3 Buckets (ALB logs, CloudTrail logs)
+- [x] VPC Flow Logs
 
 ### 4. Undocumented Security Features
 
 The unified environment includes security features not documented:
-- [ ] WAF with AWS Managed Rules (Common, SQLi, Known Bad Inputs)
-- [ ] Rate limiting (configurable, default 2000 req/5min)
-- [ ] RDS/ElastiCache encryption at rest and in transit
-- [ ] S3 bucket encryption (KMS for CloudTrail)
-- [ ] CloudTrail multi-region with log validation
-- [ ] CloudWatch metric filters for unauthorized API calls
-- [ ] GuardDuty threat detection with malware protection
-- [ ] Security Hub with CIS AWS Foundations Benchmark v1.4.0
-- [ ] IMDSv2 enforcement for EC2 instances
-- [ ] Secrets auto-generation for DB, Redis, Grafana
+- [x] WAF with AWS Managed Rules (Common, SQLi, Known Bad Inputs)
+- [x] Rate limiting (configurable, default 2000 req/5min)
+- [x] RDS/ElastiCache encryption at rest and in transit
+- [x] S3 bucket encryption (KMS for CloudTrail)
+- [x] CloudTrail multi-region with log validation
+- [x] CloudWatch metric filters for unauthorized API calls
+- [x] GuardDuty threat detection with malware protection
+- [x] Security Hub with CIS AWS Foundations Benchmark v1.4.0
+- [x] IMDSv2 enforcement for EC2 instances
+- [x] Secrets auto-generation for DB, Redis, Grafana
 
 ### 5. Undocumented Features in Unified Environment
 
@@ -167,10 +167,10 @@ Should reference unified environment.
 4. Add deprecation notice for legacy `prod-aws`
 
 ### Priority 2 (High)
-5. Update architecture diagram with all components
-6. Add Security Architecture section
-7. Document database migrations and rollback procedures
-8. Fix Terraform best practices (plan before apply, versioned tags)
+5. ~~Update architecture diagram with all components~~ **DONE**
+6. ~~Add Security Architecture section~~ **DONE**
+7. ~~Document database migrations and rollback procedures~~ **DONE**
+8. ~~Fix Terraform best practices (plan before apply, versioned tags)~~ **DONE**
 
 ### Priority 3 (Medium)
 9. Document DR features (replication, Route53 failover)
