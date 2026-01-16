@@ -241,6 +241,215 @@ Edit `automated/terraform/environments/aws/envs/prod.tfvars` (or `dev.tfvars`/`s
 | `create_monitoring_server` | `true` | ~$30/mo |
 | `create_management_server` | `true` | ~$30/mo |
 
+### Conditional Resources
+
+Many resources in the unified environment are optional and controlled by feature flags. This allows you to enable or disable features based on environment needs and cost considerations.
+
+| Resource | Variable | Default | Description |
+|----------|----------|---------|-------------|
+| Monitoring Server | `create_monitoring_server` | `true` | Prometheus/Grafana EC2 instance |
+| Management Server | `create_management_server` | `false` | AWX/Jenkins EC2 instance |
+| RDS Proxy | `enable_rds_proxy` | `false` (prod: `true`) | Connection pooling for database |
+| WAF | `enable_waf` | `true` | Web Application Firewall on ALB |
+| GuardDuty | `enable_guardduty` | `true` | Threat detection and security monitoring |
+| Blue-Green | `enable_blue_green` | `false` | CodeDeploy zero-downtime deployments |
+| X-Ray | `enable_xray` | `false` | Distributed tracing |
+| SLO Alarms | `enable_slo_alarms` | `false` | Availability and latency monitoring |
+| S3 Replication | `enable_s3_replication` | `false` (prod: `true`) | Cross-region DR for logs |
+| ECR Replication | `enable_ecr_replication` | `false` (prod: `true`) | Cross-region DR for images |
+| Route53 Failover | `enable_route53_failover` | `false` | DNS failover routing |
+| VPC Flow Logs | `enable_flow_logs` | `true` | Network traffic logging |
+
+**Environment Defaults:**
+
+The `.tfvars` files for each environment override these defaults:
+
+- **Dev**: Minimal features enabled (no WAF, GuardDuty, replication, or RDS Proxy)
+- **Stage**: Security features enabled (WAF, GuardDuty, blue-green), no replication
+- **Prod**: All security and DR features enabled (WAF, GuardDuty, RDS Proxy, replication)
+
+To customize, override in your environment's `.tfvars` file:
+
+```hcl
+# Example: Enable X-Ray tracing in dev
+enable_xray = true
+
+# Example: Disable WAF in dev to reduce costs
+enable_waf = false
+
+# Example: Enable SLO alerting
+enable_slo_alarms = true
+slo_alert_email   = "oncall@example.com"
+```
+
+### ECS Environment Variables
+
+The ECS task definition injects environment variables and secrets into the Liberty container at runtime. These provide database connectivity, cache configuration, and observability settings without hardcoding sensitive values.
+
+#### Environment Block vs Secrets Block
+
+ECS supports two methods for injecting configuration:
+
+| Method | Use Case | Source | Visibility |
+|--------|----------|--------|------------|
+| `environment` | Non-sensitive configuration | Plaintext in task definition | Visible in ECS console, logs |
+| `secrets` | Sensitive credentials | AWS Secrets Manager | Hidden, fetched at container start |
+
+**Important:** Never put passwords, tokens, or keys in the `environment` block. Always use the `secrets` block with Secrets Manager references.
+
+#### Application Environment Variables
+
+These variables are injected via the `environment` block and visible to the Liberty application:
+
+| Variable | Description | Example Value |
+|----------|-------------|---------------|
+| `ENVIRONMENT` | Deployment environment identifier | `dev`, `stage`, `prod` |
+| `DB_HOST` | Database hostname (RDS endpoint or RDS Proxy endpoint) | `mw-prod-postgres.xxxx.us-east-1.rds.amazonaws.com` |
+| `DB_PORT` | Database port | `5432` |
+| `DB_NAME` | Database name | `middleware` |
+| `CACHE_HOST` | ElastiCache Redis endpoint | `mw-prod-redis.xxxx.cache.amazonaws.com` |
+| `CACHE_PORT` | Redis port | `6379` |
+
+**Database Endpoint Selection:**
+- When `enable_rds_proxy = true`: `DB_HOST` uses the RDS Proxy endpoint for connection pooling
+- When `enable_rds_proxy = false`: `DB_HOST` uses the direct RDS instance endpoint
+
+#### Secrets (from AWS Secrets Manager)
+
+These credentials are fetched from Secrets Manager at container startup and injected as environment variables:
+
+| Variable | Secret Path | Description |
+|----------|-------------|-------------|
+| `DB_PASSWORD` | `mw-{env}/database/credentials:password` | PostgreSQL database password |
+| `CACHE_AUTH_TOKEN` | `mw-{env}/cache/auth-token:auth_token` | Redis AUTH token for ElastiCache |
+
+**Secret ARN Format:**
+```
+{secret_arn}:{json_key}::
+```
+
+The `::` suffix indicates "latest version, no specific stage". Example:
+```
+arn:aws:secretsmanager:us-east-1:123456789012:secret:mw-prod/database/credentials-AbCdEf:password::
+```
+
+#### OpenTelemetry/X-Ray Configuration
+
+When `enable_xray = true` or an OpenTelemetry collector is configured, these additional environment variables are set:
+
+| Variable | Value (X-Ray) | Value (External OTLP) | Description |
+|----------|---------------|------------------------|-------------|
+| `OTEL_SERVICE_NAME` | `liberty-app` | `liberty-app` | Service identifier in traces |
+| `OTEL_RESOURCE_ATTRIBUTES` | `service.namespace=middleware-platform,deployment.environment={env}` | Same | Resource attributes for filtering |
+| `OTEL_TRACES_EXPORTER` | `xray` | `otlp` | Trace export destination |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:2000` | Configured endpoint | Collector endpoint |
+| `OTEL_PROPAGATORS` | `tracecontext,baggage,xray` | Same | Context propagation formats |
+| `OTEL_METRICS_EXPORTER` | `none` | `none` | Metrics disabled (use Prometheus) |
+| `OTEL_LOGS_EXPORTER` | `none` | `none` | Logs disabled (use CloudWatch) |
+
+**Note:** These OTEL variables are only set when tracing is enabled. The Liberty application should use an OpenTelemetry-compatible SDK (e.g., OpenTelemetry Java Agent) to automatically instrument traces.
+
+#### Retrieving Current Environment Variables
+
+To view the environment variables configured for running ECS tasks:
+
+```bash
+# Get the current task definition
+TASK_DEF=$(aws ecs describe-services \
+  --cluster mw-prod-cluster \
+  --services mw-prod-liberty \
+  --query 'services[0].taskDefinition' \
+  --output text)
+
+# View environment variables (non-sensitive)
+aws ecs describe-task-definition \
+  --task-definition $TASK_DEF \
+  --query 'taskDefinition.containerDefinitions[0].environment'
+
+# View secrets configuration (ARNs only, not values)
+aws ecs describe-task-definition \
+  --task-definition $TASK_DEF \
+  --query 'taskDefinition.containerDefinitions[0].secrets'
+```
+
+To retrieve the actual secret values:
+
+```bash
+# Database credentials
+aws secretsmanager get-secret-value \
+  --secret-id mw-prod/database/credentials \
+  --query SecretString --output text | jq .
+
+# Cache auth token
+aws secretsmanager get-secret-value \
+  --secret-id mw-prod/cache/auth-token \
+  --query SecretString --output text | jq .
+```
+
+#### Using Environment Variables in Liberty
+
+The Liberty `server.xml` can reference these environment variables using the `${env.VARIABLE_NAME}` syntax:
+
+```xml
+<!-- Database connection using environment variables -->
+<dataSource id="DefaultDataSource" jndiName="jdbc/defaultDS">
+    <jdbcDriver libraryRef="PostgreSQLLib"/>
+    <properties.postgresql
+        serverName="${env.DB_HOST}"
+        portNumber="${env.DB_PORT}"
+        databaseName="${env.DB_NAME}"
+        user="liberty_app"
+        password="${env.DB_PASSWORD}"/>
+</dataSource>
+
+<!-- Redis session cache -->
+<httpSessionCache libraryRef="JCacheLib">
+    <properties
+        uri="redis://${env.CACHE_HOST}:${env.CACHE_PORT}"
+        password="${env.CACHE_AUTH_TOKEN}"/>
+</httpSessionCache>
+```
+
+#### Adding Custom Environment Variables
+
+To add additional environment variables, modify the `environment_variables` list in `automated/terraform/environments/aws/main.tf`:
+
+```hcl
+module "ecs" {
+  # ... existing configuration ...
+
+  environment_variables = [
+    # Existing variables
+    { name = "ENVIRONMENT", value = var.environment },
+    { name = "DB_HOST", value = module.database.db_endpoint },
+    # ... other existing vars ...
+
+    # Add custom variables
+    { name = "CUSTOM_FEATURE_FLAG", value = "enabled" },
+    { name = "LOG_LEVEL", value = "INFO" },
+  ]
+}
+```
+
+For sensitive custom values, add them to Secrets Manager and reference them in the `secrets` block:
+
+```hcl
+secrets = [
+  # Existing secrets
+  { name = "DB_PASSWORD", valueFrom = "${module.database.db_secret_arn}:password::" },
+  # ... other existing secrets ...
+
+  # Add custom secret
+  { name = "API_KEY", valueFrom = "arn:aws:secretsmanager:us-east-1:123456789012:secret:my-api-key-AbCdEf:key::" },
+]
+
+secrets_arns = [
+  module.database.db_secret_arn,
+  # ... other existing ARNs ...
+  "arn:aws:secretsmanager:us-east-1:123456789012:secret:my-api-key-AbCdEf",  # Add ARN for IAM access
+]
+```
+
 ---
 
 ## Building and Pushing Containers
@@ -1658,6 +1867,9 @@ Alarm descriptions reference runbooks for incident response:
 | Terraform state lock | Wait for other operation, or `terraform force-unlock <LOCK_ID>` if stuck |
 | WAF blocking requests | Check WAF logs in CloudWatch; adjust rules or add IP to allow list |
 | Multi-environment state conflict | Use correct backend: `terraform init -backend-config=backends/{env}.backend.hcl -reconfigure` |
+| RDS Proxy connection issues | Use proxy endpoint for ECS; direct endpoint for bastion/debugging. Check `terraform output rds_proxy_endpoint` |
+| ECS task won't start (resource limits) | Check task CPU/memory in task definition; ensure values match Fargate supported combinations (see [AWS docs](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html)) |
+| Fargate Spot task terminated | Normal behavior; ECS auto-replaces. Ensure app handles SIGTERM gracefully with 120s shutdown |
 
 ### Debug Commands
 

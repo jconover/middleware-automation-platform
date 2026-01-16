@@ -141,20 +141,20 @@ The unified environment includes security features not documented:
 ### 9. Troubleshooting Gaps
 
 Missing troubleshooting topics:
-- [ ] Terraform state locking (S3/DynamoDB backend)
-- [ ] WAF blocking requests (when enabled in prod)
-- [ ] Multi-environment state conflicts
-- [ ] RDS Proxy vs direct endpoint confusion
-- [ ] ECS task definition CPU/memory limits
-- [ ] Fargate Spot interruptions
+- [x] Terraform state locking (S3/DynamoDB backend)
+- [x] WAF blocking requests (when enabled in prod)
+- [x] Multi-environment state conflicts
+- [x] RDS Proxy vs direct endpoint confusion
+- [x] ECS task definition CPU/memory limits
+- [x] Fargate Spot interruptions
 
 ### 10. CLAUDE.md Inconsistency
 
-Line 116-117 references legacy environment:
+~~Line 116-117 references legacy environment:~~
 ```bash
 terraform -chdir=automated/terraform/environments/prod-aws output ecr_push_commands
 ```
-Should reference unified environment.
+~~Should reference unified environment.~~ **FIXED** - CLAUDE.md now documents both legacy and unified environments appropriately.
 
 ---
 
@@ -173,15 +173,15 @@ Should reference unified environment.
 8. ~~Fix Terraform best practices (plan before apply, versioned tags)~~ **DONE**
 
 ### Priority 3 (Medium)
-9. Document DR features (replication, Route53 failover)
-10. Update cost estimates with Fargate Spot options
-11. Add SLO alerting and observability documentation
-12. Update troubleshooting section
+9. ~~Document DR features (replication, Route53 failover)~~ **DONE**
+10. ~~Update cost estimates with Fargate Spot options~~ **DONE**
+11. ~~Add SLO alerting and observability documentation~~ **DONE**
+12. ~~Update troubleshooting section~~ **DONE**
 
 ### Priority 4 (Lower)
-13. Update operations scripts with environment parameter
-14. Add conditional resource documentation
-15. Document Blue-Green deployment workflow
+13. ~~Update operations scripts with environment parameter~~ **DONE**
+14. ~~Add conditional resource documentation~~ **DONE**
+15. ~~Document Blue-Green deployment workflow~~ **DONE**
 
 ---
 
