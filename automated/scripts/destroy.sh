@@ -218,29 +218,62 @@ EOF
 }
 
 destroy_infrastructure() {
-    log_phase "Infrastructure (AWS only)"
+    log_phase "Infrastructure (AWS)"
 
-    if [[ "$ENVIRONMENT" == "prod-aws" ]]; then
-        cd "${PROJECT_ROOT}/automated/terraform/environments/prod-aws"
-        terraform destroy -auto-approve
-        log_info "AWS infrastructure destroyed"
-    else
-        log_warn "Local infrastructure - nothing to destroy (managed outside Terraform)"
+    # Use unified terraform environment (same as deploy.sh)
+    local tf_dir="${PROJECT_ROOT}/automated/terraform/environments/aws"
+    local backend_config="backends/${ENVIRONMENT}.backend.hcl"
+    local var_file="envs/${ENVIRONMENT}.tfvars"
+
+    # Verify terraform files exist
+    if [[ ! -f "${tf_dir}/${backend_config}" ]]; then
+        echo "ERROR: Backend config not found: ${tf_dir}/${backend_config}"
+        echo "Valid environments: dev, stage, prod"
+        exit 1
     fi
+
+    if [[ ! -f "${tf_dir}/${var_file}" ]]; then
+        echo "ERROR: Variable file not found: ${tf_dir}/${var_file}"
+        exit 1
+    fi
+
+    cd "$tf_dir"
+
+    log_info "Initializing Terraform with backend: ${backend_config}"
+    terraform init -input=false -backend-config="${backend_config}" -reconfigure
+
+    log_info "Destroying infrastructure for environment: ${ENVIRONMENT}"
+    terraform destroy -auto-approve -var-file="${var_file}"
+
+    log_info "AWS infrastructure destroyed"
+}
+
+validate_environment() {
+    case "$ENVIRONMENT" in
+        dev|stage|prod)
+            return 0
+            ;;
+        *)
+            echo "ERROR: Invalid environment: $ENVIRONMENT"
+            echo "Valid environments: dev, stage, prod"
+            exit 1
+            ;;
+    esac
 }
 
 show_help() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  -e, --environment   Environment (dev, staging, prod-aws)"
+    echo "  -e, --environment   Environment (dev, stage, prod) [default: dev]"
     echo "  -p, --phase         Phase to destroy (all, liberty, monitoring, infrastructure)"
     echo "  -f, --force         Skip confirmation prompt"
     echo "  -h, --help          Show help"
     echo ""
     echo "Examples:"
     echo "  $0 --environment dev                    # Destroy everything in dev"
-    echo "  $0 --environment dev --phase liberty    # Only destroy Liberty"
+    echo "  $0 -e stage --phase infrastructure      # Only destroy stage AWS infrastructure"
+    echo "  $0 --environment prod --phase liberty   # Only destroy Liberty in prod"
     echo "  $0 --environment dev --force            # Skip confirmation"
 }
 
@@ -263,7 +296,13 @@ main() {
         esac
     done
 
+    # Validate environment before proceeding
+    validate_environment
+
     print_banner
+    echo -e "${CYAN}Environment: ${ENVIRONMENT}${NC}"
+    echo -e "${CYAN}Phase: ${PHASE}${NC}"
+    echo ""
     confirm_destroy
 
     # Create secure temporary directory for playbook files
