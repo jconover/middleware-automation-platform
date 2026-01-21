@@ -77,7 +77,7 @@ scrape_configs:
   - job_name: 'liberty'
     metrics_path: '/metrics'
     static_configs:
-      - targets: [%{ for i, target in liberty_targets }'${contains(target, ":") ? target : "${target}:9080"}'%{ if i < length(liberty_targets) - 1 }, %{ endif }%{ endfor }]
+      - targets: [%{ for i, target in liberty_targets }'${strcontains(target, ":") ? target : "${target}:9080"}'%{ if i < length(liberty_targets) - 1 }, %{ endif }%{ endfor }]
         labels:
           environment: 'production'
           deployment_type: 'ec2'
@@ -162,7 +162,7 @@ scrape_configs:
   - job_name: 'liberty'
     metrics_path: '/metrics'
     static_configs:
-      - targets: [%{ for i, target in liberty_targets }'${contains(target, ":") ? target : "${target}:9080"}'%{ if i < length(liberty_targets) - 1 }, %{ endif }%{ endfor }]
+      - targets: [%{ for i, target in liberty_targets }'${strcontains(target, ":") ? target : "${target}:9080"}'%{ if i < length(liberty_targets) - 1 }, %{ endif }%{ endfor }]
         labels:
           environment: 'production'
 

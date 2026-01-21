@@ -140,6 +140,12 @@ variable "target_security_group_id" {
   }
 }
 
+variable "enable_target_monitoring_rules" {
+  description = "Whether to create security group rules for monitoring targets. Use this instead of checking target_security_group_id to avoid plan-time issues."
+  type        = bool
+  default     = false
+}
+
 # -----------------------------------------------------------------------------
 # Instance Configuration
 # -----------------------------------------------------------------------------

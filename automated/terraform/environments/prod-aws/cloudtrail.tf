@@ -103,7 +103,8 @@ resource "aws_kms_alias" "cloudtrail" {
 resource "aws_s3_bucket" "cloudtrail" {
   count = var.enable_cloudtrail ? 1 : 0
 
-  bucket = "${local.name_prefix}-cloudtrail-logs-${data.aws_caller_identity.current.account_id}"
+  bucket        = "${local.name_prefix}-cloudtrail-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true # Allow terraform destroy to delete bucket with contents
 
   tags = {
     Name = "${local.name_prefix}-cloudtrail-logs"

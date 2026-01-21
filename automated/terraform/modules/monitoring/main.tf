@@ -332,7 +332,7 @@ resource "aws_instance" "monitoring" {
 # Only created when target_security_group_id is provided.
 
 resource "aws_security_group_rule" "target_metrics_from_monitoring" {
-  count = var.target_security_group_id != "" ? 1 : 0
+  count = var.enable_target_monitoring_rules ? 1 : 0
 
   type                     = "ingress"
   from_port                = 9080
@@ -344,7 +344,7 @@ resource "aws_security_group_rule" "target_metrics_from_monitoring" {
 }
 
 resource "aws_security_group_rule" "target_node_exporter_from_monitoring" {
-  count = var.target_security_group_id != "" ? 1 : 0
+  count = var.enable_target_monitoring_rules ? 1 : 0
 
   type                     = "ingress"
   from_port                = 9100

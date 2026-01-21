@@ -174,10 +174,7 @@ resource "aws_instance" "this" {
     encrypted             = var.root_volume_encrypted
     kms_key_id            = var.root_volume_kms_key_id
     delete_on_termination = var.root_volume_delete_on_termination
-
-    tags = merge(var.tags, {
-      Name = "${var.name_prefix}-${count.index + 1}-root"
-    })
+    # Note: tags are applied via volume_tags to avoid conflict
   }
 
   # Additional EBS volumes
@@ -190,10 +187,7 @@ resource "aws_instance" "this" {
       encrypted             = lookup(ebs_block_device.value, "encrypted", true)
       kms_key_id            = lookup(ebs_block_device.value, "kms_key_id", null)
       delete_on_termination = lookup(ebs_block_device.value, "delete_on_termination", true)
-
-      tags = merge(var.tags, {
-        Name = "${var.name_prefix}-${count.index + 1}-${ebs_block_device.value.device_name}"
-      })
+      # Note: tags are applied via volume_tags to avoid conflict
     }
   }
 

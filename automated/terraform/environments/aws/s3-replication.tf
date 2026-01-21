@@ -186,7 +186,8 @@ resource "aws_s3_bucket" "alb_logs_dr" {
   count    = var.enable_s3_replication ? 1 : 0
   provider = aws.dr
 
-  bucket = "${local.name_prefix}-alb-logs-dr-${local.account_id}"
+  bucket        = "${local.name_prefix}-alb-logs-dr-${local.account_id}"
+  force_destroy = true # Allow terraform destroy to delete bucket with contents
 
   tags = merge(local.common_tags, {
     Name         = "${local.name_prefix}-alb-logs-dr"
@@ -349,6 +350,13 @@ resource "aws_s3_bucket_replication_configuration" "alb_logs" {
       }
     }
 
+    # Enable Server Side Encryption KMS for source objects
+    source_selection_criteria {
+      sse_kms_encrypted_objects {
+        status = "Enabled"
+      }
+    }
+
     # Replicate delete markers for complete audit trail
     delete_marker_replication {
       status = "Enabled"
@@ -364,7 +372,8 @@ resource "aws_s3_bucket" "cloudtrail_dr" {
   count    = var.enable_s3_replication && var.enable_cloudtrail ? 1 : 0
   provider = aws.dr
 
-  bucket = "${local.name_prefix}-cloudtrail-logs-dr-${local.account_id}"
+  bucket        = "${local.name_prefix}-cloudtrail-logs-dr-${local.account_id}"
+  force_destroy = true # Allow terraform destroy to delete bucket with contents
 
   tags = merge(local.common_tags, {
     Name         = "${local.name_prefix}-cloudtrail-logs-dr"

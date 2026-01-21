@@ -402,7 +402,8 @@ module "monitoring" {
   ] : []
 
   # Add target SG for scraping Liberty instances
-  target_security_group_id = var.liberty_instance_count > 0 ? module.security_groups.liberty_security_group_id : ""
+  enable_target_monitoring_rules = var.liberty_instance_count > 0
+  target_security_group_id       = var.liberty_instance_count > 0 ? module.security_groups.liberty_security_group_id : ""
 
   # Prometheus Configuration
   prometheus_retention_days = 15

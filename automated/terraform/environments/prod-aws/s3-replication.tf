@@ -204,7 +204,8 @@ resource "aws_s3_bucket" "alb_logs_dr" {
   count    = var.enable_s3_replication ? 1 : 0
   provider = aws.dr
 
-  bucket = "${local.name_prefix}-alb-logs-dr-${data.aws_caller_identity.current.account_id}"
+  bucket        = "${local.name_prefix}-alb-logs-dr-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true # Allow terraform destroy to delete bucket with contents
 
   tags = {
     Name         = "${local.name_prefix}-alb-logs-dr"
@@ -384,7 +385,8 @@ resource "aws_s3_bucket" "cloudtrail_dr" {
   count    = var.enable_s3_replication && var.enable_cloudtrail ? 1 : 0
   provider = aws.dr
 
-  bucket = "${local.name_prefix}-cloudtrail-logs-dr-${data.aws_caller_identity.current.account_id}"
+  bucket        = "${local.name_prefix}-cloudtrail-logs-dr-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true # Allow terraform destroy to delete bucket with contents
 
   tags = {
     Name         = "${local.name_prefix}-cloudtrail-logs-dr"
