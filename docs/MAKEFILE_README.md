@@ -6,6 +6,7 @@ This document provides comprehensive documentation for the Middleware Automation
 
 - [Prerequisites](#prerequisites)
 - [Quick Start Guides](#quick-start-guides)
+- [AWS Compute Options](#aws-compute-options)
 - [Configuration Variables](#configuration-variables)
 - [Terraform Commands](#terraform-commands)
 - [Container Build & Push](#container-build--push)
@@ -188,6 +189,64 @@ make deploy-local
 ```bash
 # Infrastructure + Application in one command
 make deploy-full ENV=dev
+```
+
+---
+
+## AWS Compute Options
+
+The Terraform infrastructure supports three compute models, controlled via the tfvars files:
+
+### Option 1: ECS Fargate (Container-based) - Default
+
+```hcl
+# In envs/dev.tfvars or envs/prod.tfvars
+ecs_enabled            = true
+liberty_instance_count = 0
+```
+
+- Serverless containers, no EC2 management
+- Auto-scaling based on CPU/memory/requests
+- Faster deployments (image pull vs full provisioning)
+- Deploy with: `make deploy-aws-ecs ENV=dev`
+
+### Option 2: EC2 Instances (Traditional VMs)
+
+```hcl
+ecs_enabled            = false
+liberty_instance_count = 2
+```
+
+- Traditional VM-based deployment
+- Ansible-based configuration management
+- Full control over the OS and runtime
+- Deploy with: `make deploy-aws-ec2 ENV=dev`
+
+### Option 3: Both (Migration/Comparison)
+
+```hcl
+ecs_enabled            = true
+liberty_instance_count = 2
+```
+
+- Run both side-by-side for comparison or migration
+- Useful for A/B testing or gradual migration
+
+### Switching Compute Models
+
+To switch from ECS to EC2:
+
+```bash
+# 1. Edit the tfvars file
+vi automated/terraform/environments/aws/envs/dev.tfvars
+# Change: ecs_enabled = false, liberty_instance_count = 2
+
+# 2. Apply infrastructure changes
+make tf-plan ENV=dev    # Review changes
+make tf-apply ENV=dev   # Apply changes
+
+# 3. Deploy application via Ansible
+make deploy-aws-ec2 ENV=dev
 ```
 
 ---
