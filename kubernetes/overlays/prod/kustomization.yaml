@@ -19,10 +19,12 @@ namespace: liberty-prod
 namePrefix: prod-
 
 # Common labels for production environment
-commonLabels:
-  environment: production
-  app.kubernetes.io/instance: liberty-prod
-  security.compliance/level: restricted
+labels:
+  - pairs:
+      environment: production
+      app.kubernetes.io/instance: liberty-prod
+      security.compliance/level: restricted
+    includeSelectors: true
 
 # Common annotations for production
 commonAnnotations:
@@ -102,6 +104,18 @@ patches:
           limits.memory: "160Gi"
           pods: "50"
           persistentvolumeclaims: "20"
+
+  # Use different hostname for prod ingress
+  - target:
+      kind: Ingress
+      name: liberty-ingress
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: liberty-prod.local
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: liberty-prod.local
 
 # ConfigMap overrides for production
 configMapGenerator:

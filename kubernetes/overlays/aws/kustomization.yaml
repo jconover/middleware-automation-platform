@@ -16,9 +16,11 @@ resources:
 namespace: liberty
 
 # Common labels for AWS environment
-commonLabels:
-  environment: aws
-  app.kubernetes.io/instance: liberty-aws
+labels:
+  - pairs:
+      environment: aws
+      app.kubernetes.io/instance: liberty-aws
+    includeSelectors: true
 
 # Common annotations
 commonAnnotations:

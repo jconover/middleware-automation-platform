@@ -18,9 +18,11 @@ namespace: liberty-dev
 namePrefix: dev-
 
 # Common labels for dev environment
-commonLabels:
-  environment: development
-  app.kubernetes.io/instance: liberty-dev
+labels:
+  - pairs:
+      environment: development
+      app.kubernetes.io/instance: liberty-dev
+    includeSelectors: true
 
 # Common annotations
 commonAnnotations:
@@ -89,6 +91,18 @@ patches:
           limits.memory: "16Gi"
           pods: "10"
           persistentvolumeclaims: "5"
+
+  # Use different hostname for dev ingress
+  - target:
+      kind: Ingress
+      name: liberty-ingress
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: liberty-dev.local
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: liberty-dev.local
 
 # ConfigMap overrides for dev
 configMapGenerator:

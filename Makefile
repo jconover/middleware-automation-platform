@@ -43,7 +43,7 @@ ECR_REPO := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(LIBERTY_IMAG
 DOCKERHUB_REPO := docker.io/$(DOCKER_HUB_USER)/$(LIBERTY_IMAGE)
 
 # Kubernetes namespaces
-K8S_NAMESPACE ?= default
+K8S_NAMESPACE ?= liberty
 MONITORING_NAMESPACE ?= monitoring
 
 # Homelab IPs
@@ -330,47 +330,54 @@ k8s-services: ## List all services
 ## Liberty Deployments
 k8s-deploy-local: ## Deploy Liberty to local homelab
 	@echo "$(GREEN)Deploying Liberty to local homelab...$(RESET)"
+	@kubectl create namespace liberty --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -k $(K8S_DIR)/overlays/local-homelab
 
 k8s-deploy-dev: ## Deploy Liberty to dev environment
+	@echo "$(GREEN)Deploying Liberty to dev...$(RESET)"
+	@kubectl create namespace liberty-dev --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -k $(K8S_DIR)/overlays/dev
 
 k8s-deploy-prod: ## Deploy Liberty to prod environment
+	@echo "$(GREEN)Deploying Liberty to prod...$(RESET)"
+	@kubectl create namespace liberty-prod --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -k $(K8S_DIR)/overlays/prod
 
 k8s-deploy-aws: ## Deploy Liberty to AWS overlay
+	@echo "$(GREEN)Deploying Liberty to AWS...$(RESET)"
+	@kubectl create namespace liberty --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -k $(K8S_DIR)/overlays/aws
 
 k8s-delete-local: ## Delete Liberty from local homelab
 	kubectl delete -k $(K8S_DIR)/overlays/local-homelab
 
 k8s-status: ## Show Liberty deployment status
-	kubectl get deployment,pod,service,ingress -l app=liberty-app
+	kubectl get deployment,pod,service,ingress -n $(K8S_NAMESPACE) -l app=liberty
 
 k8s-logs: ## View Liberty pod logs
-	kubectl logs -l app=liberty-app -f --tail=100
+	kubectl logs -n $(K8S_NAMESPACE) -l app=liberty -f --tail=100
 
 k8s-describe: ## Describe Liberty pods
-	kubectl describe pods -l app=liberty-app
+	kubectl describe pods -n $(K8S_NAMESPACE) -l app=liberty
 
 k8s-shell: ## Shell into Liberty pod
-	kubectl exec -it $$(kubectl get pod -l app=liberty-app -o jsonpath='{.items[0].metadata.name}') -- /bin/bash
+	kubectl exec -n $(K8S_NAMESPACE) -it $$(kubectl get pod -n $(K8S_NAMESPACE) -l app=liberty -o jsonpath='{.items[0].metadata.name}') -- /bin/bash
 
 k8s-restart: ## Restart Liberty deployment
-	kubectl rollout restart deployment liberty-app
+	kubectl rollout restart deployment -n $(K8S_NAMESPACE) liberty-app
 
 k8s-rollout-status: ## Check rollout status
-	kubectl rollout status deployment liberty-app
+	kubectl rollout status deployment -n $(K8S_NAMESPACE) liberty-app
 
 k8s-rollback: ## Rollback Liberty deployment
-	kubectl rollout undo deployment liberty-app
+	kubectl rollout undo deployment -n $(K8S_NAMESPACE) liberty-app
 
 k8s-scale: ## Scale Liberty deployment (REPLICAS=3)
-	kubectl scale deployment liberty-app --replicas=$(REPLICAS)
+	kubectl scale deployment -n $(K8S_NAMESPACE) liberty-app --replicas=$(REPLICAS)
 
 ## Port Forwarding
 k8s-port-forward-liberty: ## Port forward to Liberty
-	kubectl port-forward svc/liberty-app 9080:9080
+	kubectl port-forward -n $(K8S_NAMESPACE) svc/liberty-service 9080:9080
 
 k8s-port-forward-prometheus: ## Port forward to Prometheus
 	kubectl port-forward -n $(MONITORING_NAMESPACE) svc/prometheus-kube-prometheus-prometheus 9090:9090
