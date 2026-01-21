@@ -10,9 +10,11 @@ metadata:
     config.kubernetes.io/local-config: "true"
 
 # Common labels applied to all resources
-commonLabels:
-  app.kubernetes.io/part-of: middleware-platform
-  app.kubernetes.io/managed-by: kustomize
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: middleware-platform
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
 
 # Resources included in this base
 resources:
