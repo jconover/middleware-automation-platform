@@ -19,7 +19,7 @@ labels:
   - pairs:
       environment: local-homelab
       app.kubernetes.io/instance: liberty-homelab
-    includeSelectors: false
+    includeSelectors: true
 
 # Common annotations
 commonAnnotations:

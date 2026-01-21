@@ -14,7 +14,7 @@ labels:
   - pairs:
       app.kubernetes.io/part-of: middleware-platform
       app.kubernetes.io/managed-by: kustomize
-    includeSelectors: false
+    includeSelectors: true
 
 # Resources included in this base
 resources:
