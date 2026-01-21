@@ -39,7 +39,8 @@ SAMPLE_APP_DIR := $(PROJECT_ROOT)/sample-app
 
 # Container image names
 LIBERTY_IMAGE := liberty-app
-ECR_REPO := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(LIBERTY_IMAGE)
+ECR_REPO_NAME := mw-$(ENV)-liberty
+ECR_REPO := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(ECR_REPO_NAME)
 DOCKERHUB_REPO := docker.io/$(DOCKER_HUB_USER)/$(LIBERTY_IMAGE)
 
 # Kubernetes namespaces
@@ -290,7 +291,7 @@ ecr-push: container-build ecr-login ## Build and push to ECR
 	$(CONTAINER_RUNTIME) push $(ECR_REPO):latest
 
 ecr-list: ## List images in ECR
-	aws ecr describe-images --repository-name $(LIBERTY_IMAGE) --region $(AWS_REGION)
+	aws ecr describe-images --repository-name $(ECR_REPO_NAME) --region $(AWS_REGION)
 
 ## Docker Hub Operations
 dockerhub-login: ## Login to Docker Hub
@@ -345,7 +346,7 @@ k8s-deploy-prod: ## Deploy Liberty to prod environment
 
 k8s-deploy-aws: ## Deploy Liberty to AWS overlay
 	@echo "$(GREEN)Deploying Liberty to AWS...$(RESET)"
-	@kubectl create namespace liberty --dry-run=client -o yaml | kubectl apply -f -
+	@kubectl create namespace liberty-aws --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -k $(K8S_DIR)/overlays/aws
 
 k8s-delete-local: ## Delete Liberty from local homelab

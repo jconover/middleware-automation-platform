@@ -13,7 +13,7 @@ resources:
   - network-policies-patch.yaml
 
 # Namespace for AWS
-namespace: liberty
+namespace: liberty-aws
 
 # Common labels for AWS environment
 labels:
@@ -66,6 +66,18 @@ patches:
       - op: replace
         path: /spec/maxReplicas
         value: 10
+
+  # Use different hostname for AWS ingress
+  - target:
+      kind: Ingress
+      name: liberty-ingress
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: liberty-aws.local
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: liberty-aws.local
 
 # ConfigMap overrides for AWS
 configMapGenerator:
